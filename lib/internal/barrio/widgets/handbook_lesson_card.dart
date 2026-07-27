@@ -646,9 +646,9 @@ List<_BodyBlock> _parseBlocks(List<String> paras) {
 /// Full unit body, rendered as typed blocks (prose, bullet list,
 /// numbered list, table) with consistent spacing so every slide reads
 /// the same way. Words are the verbatim body string, unchanged; only the
-/// layout is structured. Units with images keep the same interleaving:
-/// each image is inserted after its [HandbookUnitImage.afterParagraph]
-/// blank-line-paragraph index (-1 = before the first paragraph).
+/// layout is structured. Every unit with images is picture-first: all of
+/// its images render above the body text, in source list order, so the
+/// reader always sees the picture before the words.
 class _UnitBody extends StatelessWidget {
   final HandbookUnit unit;
   final List<String> highlightTerms;
@@ -697,51 +697,21 @@ class _UnitBody extends StatelessWidget {
     if (unit.images.isEmpty) {
       return _renderRun(paragraphs, linked);
     }
-    // Picture-first TERM cards (visual-first pass rec #1, 2026-07-24):
-    // glossary definition cards show the dish/ingredient BEFORE the
-    // words, so every image renders above the body regardless of its
-    // afterParagraph anchor (this early return replaces interleaving,
-    // so no image can double-render). Non-TERM cards keep the exact
-    // source interleaving below.
-    if (unit.badgeHint == 'TERM') {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (final image in unit.images)
-            _UnitImage(image: image, cardTitle: unit.title),
-          _renderRun(paragraphs, linked),
-        ],
-      );
-    }
-    final byBoundary = <int, List<HandbookUnitImage>>{};
-    for (final image in unit.images) {
-      final boundary = image.afterParagraph.clamp(-1, paragraphs.length - 1);
-      byBoundary.putIfAbsent(boundary, () => []).add(image);
-    }
-    final children = <Widget>[];
-    _addImages(children, byBoundary[-1]);
-    var runStart = 0;
-    for (var p = 0; p < paragraphs.length; p++) {
-      final imagesAfter = byBoundary[p];
-      if (imagesAfter == null) continue;
-      children.add(_renderRun(paragraphs.sublist(runStart, p + 1), linked));
-      _addImages(children, imagesAfter);
-      runStart = p + 1;
-    }
-    if (runStart < paragraphs.length) {
-      children.add(_renderRun(paragraphs.sublist(runStart), linked));
-    }
+    // Picture-first for every imaged card (visual-first pass rec #1,
+    // 2026-07-24; extended 2026-07-26 from TERM glossary cards to ALL
+    // cards): any card that has an image shows the image(s) BEFORE the
+    // words, rendered in source list order above the full body. This
+    // single return replaces the old per-image afterParagraph
+    // interleaving, so no image can double-render. Cards with no images
+    // (handled above) are unchanged.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: children,
+      children: [
+        for (final image in unit.images)
+          _UnitImage(image: image, cardTitle: unit.title),
+        _renderRun(paragraphs, linked),
+      ],
     );
-  }
-
-  void _addImages(List<Widget> out, List<HandbookUnitImage>? images) {
-    if (images == null) return;
-    for (final image in images) {
-      out.add(_UnitImage(image: image, cardTitle: unit.title));
-    }
   }
 
   /// Renders a contiguous paragraph slice. A lone prose paragraph renders
