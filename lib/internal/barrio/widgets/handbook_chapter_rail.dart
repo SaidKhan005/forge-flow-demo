@@ -21,7 +21,7 @@ const _chapterIcons = <int, IconData>{
 /// Horizontal chapter selector rail for the Company Handbook screen.
 ///
 /// Active chapter uses the destination's accent color with a subtle glow.
-/// Inactive chapters are dark glass tiles.
+/// Inactive chapters are light glass tiles on the cream shell.
 ///
 /// Accessibility pass (rec #12, 2026-07-24): the rail height grows with
 /// the effective text scale instead of clipping its tiles. The formula
@@ -229,12 +229,12 @@ class _ChapterRailTile extends StatelessWidget {
     return BoxDecoration(
       color: isActive
           ? activeAccent.withValues(alpha: 0.15)
-          : const Color(0x0FFFFFFF),
+          : const Color(0x0A16243B),
       borderRadius: BorderRadius.circular(12),
       border: Border.all(
         color: isActive
             ? activeAccent.withValues(alpha: 0.50)
-            : const Color(0x1AFFFFFF),
+            : const Color(0x2216243B),
       ),
       boxShadow: isActive
           ? [

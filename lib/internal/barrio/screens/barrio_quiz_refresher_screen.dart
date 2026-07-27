@@ -230,6 +230,12 @@ class _AdvanceButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Light theme: solid accent primary with a luminance-picked label;
+    // quiet accent-outline secondary with a slate label.
+    final onAccent =
+        ThemeData.estimateBrightnessForColor(accent) == Brightness.dark
+            ? Colors.white
+            : const Color(0xFF10151F);
     // Accessibility (rec #12): a proper button role; the visible text
     // merges in as the label.
     return MergeSemantics(
@@ -242,12 +248,11 @@ class _AdvanceButton extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 14),
             decoration: BoxDecoration(
-              color:
-                  filled ? accent.withValues(alpha: 0.18) : Colors.transparent,
+              color: filled ? accent : Colors.transparent,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: accent.withValues(alpha: filled ? 0.55 : 0.40),
-              ),
+              border: filled
+                  ? null
+                  : Border.all(color: accent.withValues(alpha: 0.40)),
             ),
             child: Center(
               child: Text(
@@ -255,7 +260,7 @@ class _AdvanceButton extends StatelessWidget {
                 style: GoogleFonts.ibmPlexSans(
                   fontSize: 14,
                   fontWeight: filled ? FontWeight.w700 : FontWeight.w600,
-                  color: filled ? accent : BarrioColors.textSecondary,
+                  color: filled ? onAccent : BarrioColors.textSecondary,
                 ),
               ),
             ),

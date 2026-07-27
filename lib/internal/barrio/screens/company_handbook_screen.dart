@@ -307,8 +307,9 @@ class _HandbookPremiumBackground extends StatelessWidget {
           ),
         ),
 
-        // Layer 2: Dark gradient scrim for text legibility
-        // Heavy at top (AppBar/hero area) and bottom, lighter in center
+        // Layer 2: Cream veil for text legibility (uses the light shell
+        // color) - heavy at top (AppBar/hero area) and bottom, lighter
+        // in center
         Positioned.fill(
           child: IgnorePointer(
             child: DecoratedBox(

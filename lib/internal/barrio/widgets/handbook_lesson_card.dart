@@ -13,7 +13,7 @@ import '../services/barrio_term_links.dart';
 
 final _whitespaceRegExp = RegExp(r'\s+');
 
-/// Renders a single [HandbookUnit] as a premium dark glassmorphism card.
+/// Renders a single [HandbookUnit] as a premium light glassmorphism card.
 ///
 /// Features: expand/collapse for interactive cards, reading time estimate,
 /// correct-answer sparkle, haptic feedback, premium badge depth.
@@ -77,11 +77,11 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
   Color get _borderColor {
     switch (widget.unit.type) {
       case HandbookUnitType.explainer:
-        return const Color(0x22FFFFFF);
+        return const Color(0x1F16243B); // hairline navy on the white card
       case HandbookUnitType.decision:
-        return const Color(0xFF2ECC71).withValues(alpha: 0.22);
+        return const Color(0xFF2ECC71).withValues(alpha: 0.35);
       case HandbookUnitType.checkpoint:
-        return const Color(0xFFF39C12).withValues(alpha: 0.22);
+        return const Color(0xFFF39C12).withValues(alpha: 0.35);
     }
   }
 
@@ -143,7 +143,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
         child: Container(
           margin: carousel ? EdgeInsets.zero : const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
-            color: const Color(0x14FFFFFF), // premium glass fill
+            color: const Color(0xF2FFFFFF), // premium white glass fill
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: _borderColor),
             boxShadow: [
@@ -153,9 +153,9 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
                 blurRadius: _isPressed ? 12 : 20,
                 spreadRadius: -4,
               ),
-              // Outer ambient shadow
+              // Outer soft lift (navy-tinted, light UI)
               BoxShadow(
-                color: const Color(0x44000000),
+                color: const Color(0x1416243B),
                 blurRadius: _isPressed ? 14 : 28,
                 spreadRadius: _isPressed ? -6 : -2,
               ),
@@ -426,23 +426,22 @@ class _TypeBadge extends StatelessWidget {
       HandbookUnitType.checkpoint => ('CHECK',  const Color(0xFFF39C12)),
     };
     final label = badgeHint ?? defaultLabel;
+    // Solid accent chip with a luminance-picked foreground so the label
+    // stays legible on the white card (the old pale-tint-on-dark badge
+    // relied on bright accent text against a dark surface).
+    final onColor =
+        ThemeData.estimateBrightnessForColor(color) == Brightness.dark
+            ? Colors.white
+            : const Color(0xFF10151F);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            color.withValues(alpha: 0.18),
-            color.withValues(alpha: 0.10),
-          ],
-        ),
+        color: color,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withValues(alpha: 0.30)),
         boxShadow: [
           BoxShadow(
-            color: color.withValues(alpha: 0.08),
-            blurRadius: 4,
+            color: color.withValues(alpha: 0.28),
+            blurRadius: 5,
             offset: const Offset(0, 1),
           ),
         ],
@@ -453,7 +452,7 @@ class _TypeBadge extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w700,
           letterSpacing: 1.0,
-          color: color,
+          color: onColor,
         ),
       ),
     );
@@ -495,7 +494,7 @@ class _OptionTile extends StatelessWidget {
         const Color(0xFFE74C3C).withValues(alpha: 0.10),
       );
     }
-    return (const Color(0x1AFFFFFF), const Color(0x08FFFFFF));
+    return (const Color(0x2216243B), const Color(0x0A16243B));
   }
 
   /// Merged screen-reader label (rec #12): one button per option, with
@@ -549,7 +548,7 @@ class _OptionTile extends StatelessWidget {
                     style: GoogleFonts.ibmPlexMono(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: BarrioColors.tealWarm,
+                      color: BarrioColors.tealDeep,
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -826,7 +825,7 @@ class _UnitBody extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 6),
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0x14FFFFFF))),
+        border: Border(bottom: BorderSide(color: Color(0x1416243B))),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1106,7 +1105,7 @@ class _UnitImage extends StatelessWidget {
                 errorBuilder: (context, error, stackTrace) => Container(
                   width: double.infinity,
                   height: 120,
-                  color: const Color(0x14FFFFFF),
+                  color: const Color(0x0F16243B),
                   child: Icon(
                     Icons.image_not_supported_outlined,
                     size: 28,

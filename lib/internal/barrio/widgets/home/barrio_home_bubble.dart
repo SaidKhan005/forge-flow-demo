@@ -245,11 +245,12 @@ class _BarrioHomeCenterBubbleState extends State<BarrioHomeCenterBubble>
           ),
           child: Stack(
             children: [
-              // Dark glass base.
+              // Frosted white glass base (light theme) so the navy label
+              // and the blue/orange wash read on the cream backdrop.
               Container(
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Color(0x38000000),
+                  color: Color(0xCCFFFFFF),
                 ),
               ),
               // Blue to orange diagonal fill: light wash, not opaque.
@@ -320,7 +321,7 @@ class _BarrioHomeCenterBubbleState extends State<BarrioHomeCenterBubble>
             color: BarrioColors.textPrimary,
             height: 1.2,
             shadows: const [
-              Shadow(color: Color(0x60000000), blurRadius: 8),
+              Shadow(color: Color(0x14000000), blurRadius: 8),
             ],
           ),
         ),
@@ -460,20 +461,21 @@ class _BarrioHomeOrbitBubbleState extends State<BarrioHomeOrbitBubble> {
             shape: BoxShape.circle,
             border: Border.all(
               color: isDimmed
-                  ? const Color(0x14FFFFFF)
+                  ? const Color(0x1416243B)
                   : accent.withValues(alpha: 0.55),
               width: 1.0,
             ),
           ),
           child: Stack(
             children: [
-              // Dark glass base.
+              // Frosted glass base (light theme): near-white for active
+              // bubbles, a faint navy grey for dimmed ones.
               Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: isDimmed
-                      ? const Color(0x20000000)
-                      : const Color(0x30000000),
+                      ? const Color(0x0F16243B)
+                      : const Color(0xCCFFFFFF),
                 ),
               ),
               // Accent fill: weighted to bottom, low alpha = tint.
@@ -614,7 +616,7 @@ class _BarrioHomeOrbitBubbleState extends State<BarrioHomeOrbitBubble> {
         height: 1.2,
         shadows: isDimmed
             ? null
-            : const [Shadow(color: Color(0x50000000), blurRadius: 6)],
+            : const [Shadow(color: Color(0x14000000), blurRadius: 6)],
       ),
     );
   }

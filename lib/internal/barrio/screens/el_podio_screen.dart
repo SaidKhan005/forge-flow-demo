@@ -443,12 +443,12 @@ class _RankTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: const Color(0x14FFFFFF),
+        color: const Color(0xF2FFFFFF),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isNegative
-              ? const Color(0x18FFFFFF)
-              : entry.avatarColor.withValues(alpha: 0.18),
+              ? const Color(0x1A16243B)
+              : entry.avatarColor.withValues(alpha: 0.30),
         ),
         boxShadow: [
           // Inner accent glow
@@ -457,9 +457,9 @@ class _RankTile extends StatelessWidget {
             blurRadius: 16,
             spreadRadius: -4,
           ),
-          // Outer ambient
+          // Outer soft lift (navy-tinted, light UI)
           const BoxShadow(
-            color: Color(0x33000000),
+            color: Color(0x1416243B),
             blurRadius: 20,
             spreadRadius: -4,
           ),
@@ -498,7 +498,7 @@ class _RankTile extends StatelessWidget {
                 fontWeight: FontWeight.w700,
                 color: isNegative
                     ? BarrioColors.textMuted.withValues(alpha: 0.4)
-                    : BarrioColors.tealWarm.withValues(alpha: 0.6),
+                    : BarrioColors.tealDeep.withValues(alpha: 0.8),
               ),
             ),
           ),
@@ -663,7 +663,7 @@ class _ElPodioPremiumBackground extends StatelessWidget {
           ),
         ),
 
-        // Layer 2: Heavy dark scrim for text legibility over photo
+        // Layer 2: Heavy cream veil for text legibility over photo
         Positioned.fill(
           child: IgnorePointer(
             child: DecoratedBox(

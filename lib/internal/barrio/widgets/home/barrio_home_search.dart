@@ -262,13 +262,13 @@ class _EmptyState extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 56, 20, 0),
       child: Container(
-        // Same near-opaque dark card as the result rows: the empty
-        // state also sits over the photo's lightest scrim zone.
+        // Same near-opaque white card as the result rows, with a
+        // hairline navy edge so it reads on the cream backdrop.
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
         decoration: BoxDecoration(
           color: BarrioColors.shellMid.withValues(alpha: 0.92),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0x24FFFFFF)),
+          border: Border.all(color: const Color(0x1416243B)),
         ),
         child: Column(
           children: [
@@ -321,12 +321,11 @@ class _SearchResultRow extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                // Near-opaque dark card: the rows sit over the home photo,
-                // whose scrim is lightest mid-screen, so a translucent wash
-                // is unreadable there (operator report 2026-07-11).
+                // Near-opaque white card with a hairline navy edge so
+                // each result row reads cleanly on the cream backdrop.
                 color: BarrioColors.shellMid.withValues(alpha: 0.92),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0x24FFFFFF)),
+                border: Border.all(color: const Color(0x1416243B)),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,

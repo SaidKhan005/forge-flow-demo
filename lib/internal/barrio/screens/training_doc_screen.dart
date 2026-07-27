@@ -622,10 +622,12 @@ const Map<String, String> _kDocBackdrops = <String, String>{
   'training_cheers_responsibility': 'assets/internal/barrio/handbook_bg.jpg',
 };
 
-/// Full-bleed photo + heavy dark scrim + the standard accent blooms.
+/// Full-bleed photo + heavy cream veil + the standard accent blooms.
 /// Mirrors the parked curated screens' backdrop recipe (see
 /// `_HandbookPremiumBackground` in company_handbook_screen.dart) so
-/// body text keeps the same legibility it had on those surfaces. Docs
+/// body text keeps the same legibility it had on those surfaces. The
+/// veil uses the cream shell color at high alpha, so the reader stays a
+/// light surface with only a faint photo texture behind it. Docs
 /// without a mapped photo, and test environments (errorBuilder), fall
 /// back to the plain premium background unchanged.
 class _TrainingDocBackground extends StatelessWidget {
@@ -661,8 +663,9 @@ class _TrainingDocBackground extends StatelessWidget {
             ),
           ),
         ),
-        // Dark scrim for text legibility: heavy at top (AppBar/hero) and
-        // bottom, lighter in the center (curated-screen stops).
+        // Cream veil for text legibility: heavy at top (AppBar/hero) and
+        // bottom, lighter in the center (curated-screen stops). Uses the
+        // cream shell color, so the surface reads light.
         Positioned.fill(
           child: IgnorePointer(
             child: DecoratedBox(
@@ -819,6 +822,12 @@ class _FlashcardsChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Luminance-picked foreground so the label stays legible on any
+    // manual accent (white on dark accents, near-black on bright ones).
+    final onAccent =
+        ThemeData.estimateBrightnessForColor(accent) == Brightness.dark
+            ? Colors.white
+            : const Color(0xFF10151F);
     return Semantics(
       button: true,
       label: 'Review as flashcards',
@@ -842,10 +851,10 @@ class _FlashcardsChip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
+              Icon(
                 Icons.style_rounded,
                 size: 16,
-                color: BarrioColors.shellDeep,
+                color: onAccent,
               ),
               const SizedBox(width: 6),
               Text(
@@ -854,7 +863,7 @@ class _FlashcardsChip extends StatelessWidget {
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.0,
-                  color: BarrioColors.shellDeep,
+                  color: onAccent,
                 ),
               ),
             ],

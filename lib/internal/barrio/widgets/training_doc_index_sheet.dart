@@ -220,7 +220,7 @@ class _TrainingDocIndexSheetState extends State<TrainingDocIndexSheet> {
         decoration: const BoxDecoration(
           color: BarrioColors.shellDeep,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border(top: BorderSide(color: Color(0x24FFFFFF))),
+          border: Border(top: BorderSide(color: Color(0x1F16243B))),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -302,7 +302,7 @@ class _SheetHandle extends StatelessWidget {
         width: 36,
         height: 4,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.24),
+          color: const Color(0x3316243B),
           borderRadius: BorderRadius.circular(2),
         ),
       ),
@@ -440,7 +440,7 @@ class _TogglePill extends StatelessWidget {
             border: Border.all(
               color: selected
                   ? accent.withValues(alpha: 0.55)
-                  : Colors.white.withValues(alpha: 0.18),
+                  : const Color(0x2916243B),
             ),
           ),
           child: Text(
@@ -504,7 +504,7 @@ class _PhotoTile extends StatelessWidget {
                   child: Icon(
                     Icons.image_not_supported_outlined,
                     size: 22,
-                    color: Colors.white.withValues(alpha: 0.30),
+                    color: BarrioColors.textMuted.withValues(alpha: 0.6),
                   ),
                 ),
               ),
@@ -560,7 +560,7 @@ class _LetterHeader extends StatelessWidget {
           Expanded(
             child: Container(
               height: 1,
-              color: Colors.white.withValues(alpha: 0.10),
+              color: const Color(0x1A16243B),
             ),
           ),
         ],

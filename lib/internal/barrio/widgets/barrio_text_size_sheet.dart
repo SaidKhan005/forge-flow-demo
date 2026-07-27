@@ -30,7 +30,7 @@ class BarrioTextSizeSheet extends StatelessWidget {
       decoration: const BoxDecoration(
         color: BarrioColors.shellDeep,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        border: Border(top: BorderSide(color: Color(0x24FFFFFF))),
+        border: Border(top: BorderSide(color: Color(0x1F16243B))),
       ),
       child: SafeArea(
         top: false,
@@ -122,12 +122,12 @@ class _SizeOptionRow extends StatelessWidget {
               decoration: BoxDecoration(
                 color: selected
                     ? accent.withValues(alpha: 0.10)
-                    : const Color(0x08FFFFFF),
+                    : const Color(0x0A16243B),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: selected
                       ? accent.withValues(alpha: 0.55)
-                      : const Color(0x1AFFFFFF),
+                      : const Color(0x2216243B),
                 ),
               ),
               child: Row(
@@ -175,9 +175,9 @@ class _PreviewLine extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0x08FFFFFF),
+        color: const Color(0x0A16243B),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0x1AFFFFFF)),
+        border: Border.all(color: const Color(0x2216243B)),
       ),
       child: Text(
         'Card text will read like this.',
@@ -202,7 +202,7 @@ class _SheetHandle extends StatelessWidget {
         height: 4,
         margin: const EdgeInsets.only(top: 10, bottom: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.24),
+          color: const Color(0x3316243B),
           borderRadius: BorderRadius.circular(2),
         ),
       ),

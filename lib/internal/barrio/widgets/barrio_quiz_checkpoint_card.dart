@@ -3,7 +3,7 @@
 //
 // Renders one BarrioQuizQuestion from the #1479 operator-reviewable
 // bank as a tap-to-answer checkpoint card inside the training reader's
-// deck. Same premium dark-glass card family as HandbookLessonCard.
+// deck. Same premium light-glass card family as HandbookLessonCard.
 //
 // Honesty rules (Metric Honesty Doctrine):
 //   * The card records nothing itself. The screen holds the pick for
@@ -139,9 +139,9 @@ class BarrioQuizCheckpointCard extends StatelessWidget {
   }
 }
 
-/// The premium dark-glass shell shared with the lesson card family:
-/// glass fill, amber border and glow, specular highlight, and accent
-/// bottom tint, around a padded [child]. The decorations are
+/// The premium light-glass shell shared with the lesson card family:
+/// white glass fill, amber border and glow, specular highlight, and
+/// accent bottom tint, around a padded [child]. The decorations are
 /// IgnorePointer'd so only real content ever claims a tap.
 class _QuizGlassShell extends StatelessWidget {
   final Widget child;
@@ -152,9 +152,9 @@ class _QuizGlassShell extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0x14FFFFFF), // premium glass fill
+        color: const Color(0xF2FFFFFF), // premium white glass fill
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _kQuizAccent.withValues(alpha: 0.22)),
+        border: Border.all(color: _kQuizAccent.withValues(alpha: 0.35)),
         boxShadow: const [
           // Inner accent glow
           BoxShadow(
@@ -162,9 +162,9 @@ class _QuizGlassShell extends StatelessWidget {
             blurRadius: 20,
             spreadRadius: -4,
           ),
-          // Outer ambient shadow
+          // Outer soft lift (navy-tinted, light UI)
           BoxShadow(
-            color: Color(0x44000000),
+            color: Color(0x1416243B),
             blurRadius: 28,
             spreadRadius: -2,
           ),
@@ -223,23 +223,17 @@ class _QuickCheckBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Solid amber chip with a near-black label so it stays legible on
+    // the white card (was a pale-tint badge tuned for the dark shell).
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            _kQuizAccent.withValues(alpha: 0.18),
-            _kQuizAccent.withValues(alpha: 0.10),
-          ],
-        ),
+        color: _kQuizAccent,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: _kQuizAccent.withValues(alpha: 0.30)),
         boxShadow: [
           BoxShadow(
-            color: _kQuizAccent.withValues(alpha: 0.08),
-            blurRadius: 4,
+            color: _kQuizAccent.withValues(alpha: 0.28),
+            blurRadius: 5,
             offset: const Offset(0, 1),
           ),
         ],
@@ -250,7 +244,7 @@ class _QuickCheckBadge extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w700,
           letterSpacing: 1.0,
-          color: _kQuizAccent,
+          color: const Color(0xFF10151F),
         ),
       ),
     );
@@ -308,8 +302,8 @@ class _QuizOptionRow extends StatelessWidget {
       borderColor = _kWrongRed.withValues(alpha: 0.40);
       bgColor = _kWrongRed.withValues(alpha: 0.07);
     } else {
-      borderColor = const Color(0x1AFFFFFF);
-      bgColor = const Color(0x08FFFFFF);
+      borderColor = const Color(0x2216243B);
+      bgColor = const Color(0x0A16243B);
     }
     final labelColor = revealed && !isCorrect && !isPicked
         ? BarrioColors.textSecondary.withValues(alpha: 0.6)
@@ -343,7 +337,7 @@ class _QuizOptionRow extends StatelessWidget {
                   style: GoogleFonts.ibmPlexMono(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: BarrioColors.tealWarm,
+                    color: BarrioColors.tealDeep,
                   ),
                 ),
                 const SizedBox(width: 10),

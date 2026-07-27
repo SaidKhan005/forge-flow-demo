@@ -3,15 +3,17 @@ import 'package:google_fonts/google_fonts.dart';
 
 /// Barrio-private colors for the internal shell.
 ///
-/// These extend the Forge & Flow palette with warmer, hospitality-driven
-/// tones for the Barrio shell experience.
+/// Light theme drawn from the Barrio Legado app icon: warm cream page,
+/// deep navy text, teal accents (the "BL" mark is deep navy with teal
+/// leaves on a cream ground). These extend the Forge & Flow palette with
+/// warmer, hospitality-driven tones for the Barrio shell experience.
 class BarrioColors {
   BarrioColors._();
 
-  // Shell backgrounds — deep layered dark navy
-  static const Color shellDeep    = Color(0xFF070D1A); // richest dark base
-  static const Color shellMid     = Color(0xFF0D1829); // card surface
-  static const Color shellSurface = Color(0xFF132034); // raised element
+  // Shell backgrounds — warm cream light theme (icon palette)
+  static const Color shellDeep    = Color(0xFFF7F3EA); // warm cream page base
+  static const Color shellMid     = Color(0xFFFFFFFF); // card surface (white)
+  static const Color shellSurface = Color(0xFFF1F5F0); // raised element, faint mint
 
   // Barrio Legado brand palette
   static const Color cream     = Color(0xFFFAF7F2); // warm cream (light mode only)
@@ -34,16 +36,18 @@ class BarrioColors {
   static const Color accentSteel   = Color(0xFF5A7BD8); // steel blue: bold by design
   static const Color accentFresh   = Color(0xFF52B788); // fresh green: food safety
 
-  // Brand teal
+  // Brand teal — tealWarm stays for fills/accents; tealDeep is the
+  // legible teal for TEXT or thin borders on the cream ground.
   static const Color tealWarm  = Color(0xFF40CFCF); // slightly brighter/more saturated
   static const Color tealGlow  = Color(0xFF2CBCBC);
   static const Color tealMuted = Color(0xFF1A9898);
   static const Color tealFaint = Color(0x1A40CFCF);
+  static const Color tealDeep  = Color(0xFF2E9B8F); // icon-leaf teal — teal text on cream
 
-  // Text hierarchy
-  static const Color textPrimary   = Color(0xFFF0F6F8);
-  static const Color textSecondary = Color(0xFFB0CDE0);
-  static const Color textMuted     = Color(0xFF6B8FAF);
+  // Text hierarchy — deep navy on cream (icon palette)
+  static const Color textPrimary   = Color(0xFF16243B); // deep navy
+  static const Color textSecondary = Color(0xFF44586A); // slate navy
+  static const Color textMuted     = Color(0xFF7B8A94); // muted slate
 
   // Accents
   static const Color comingSoonTag = Color(0xFF8B6F47);
@@ -54,9 +58,9 @@ class BarrioColors {
 // Premium ambient background — used by all Barrio destination screens
 // ---------------------------------------------------------------------------
 
-/// Wraps a screen body in a deep navy background with a soft colored
+/// Wraps a screen body in a warm cream background with a soft, low-alpha
 /// accent bloom. Use this on every Barrio destination screen so the
-/// premium feel is consistent.
+/// premium light feel is consistent.
 ///
 /// The bloom is atmospheric only — no interaction.
 class BarrioPremiumBackground extends StatelessWidget {
@@ -89,7 +93,8 @@ class BarrioPremiumBackground extends StatelessWidget {
                   center: bloomAlignment,
                   radius: 1.05,
                   colors: [
-                    accentColor.withValues(alpha: 0.18),
+                    // Soft, low-alpha wash on cream — calm, not saturated.
+                    accentColor.withValues(alpha: 0.10),
                     Colors.transparent,
                   ],
                 ),
@@ -328,7 +333,7 @@ class BarrioDestinationScaffold extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0x22FFFFFF)),
+        border: Border.all(color: const Color(0x2216243B)),
       ),
       child: Text(
         label,
