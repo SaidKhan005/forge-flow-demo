@@ -337,7 +337,7 @@ class _JtPremiumBackground extends StatelessWidget {
           ),
         ),
 
-        // Layer 2: Dark gradient scrim for text legibility
+        // Layer 2: Cream veil for text legibility (light shell color)
         Positioned.fill(
           child: IgnorePointer(
             child: DecoratedBox(

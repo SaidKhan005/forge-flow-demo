@@ -18,7 +18,7 @@ class LearningOption {
 
 final _whitespaceRegExp = RegExp(r'\s+');
 
-/// Premium dark glassmorphism learning card.
+/// Premium light glassmorphism learning card.
 ///
 /// Supports three modes based on [badgeLabel]:
 /// - GUIDE / CONCEPT = read-only explainer
@@ -101,10 +101,10 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
         child: Container(
           margin: carousel ? EdgeInsets.zero : const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
-            color: const Color(0x14FFFFFF), // premium glass fill
+            color: const Color(0xF2FFFFFF), // premium white glass fill
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: widget.badgeColor.withValues(alpha: 0.20),
+              color: widget.badgeColor.withValues(alpha: 0.35),
             ),
             boxShadow: [
               // Inner accent glow
@@ -113,9 +113,9 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
                 blurRadius: _isPressed ? 12 : 20,
                 spreadRadius: -4,
               ),
-              // Outer ambient shadow
+              // Outer soft lift (navy-tinted, light UI)
               BoxShadow(
-                color: const Color(0x44000000),
+                color: const Color(0x1416243B),
                 blurRadius: _isPressed ? 14 : 28,
                 spreadRadius: _isPressed ? -6 : -2,
               ),
@@ -300,8 +300,8 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
                     border = const Color(0xFFE74C3C).withValues(alpha: 0.55);
                     bg = const Color(0xFFE74C3C).withValues(alpha: 0.10);
                   } else {
-                    border = const Color(0x1AFFFFFF);
-                    bg = const Color(0x08FFFFFF);
+                    border = const Color(0x2216243B);
+                    bg = const Color(0x0A16243B);
                   }
 
                   return _StaggeredOption(
@@ -328,7 +328,9 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
                                   style: GoogleFonts.ibmPlexMono(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w700,
-                                    color: widget.badgeColor,
+                                    // Slate stays legible on the white card
+                                    // for any per-card badge accent.
+                                    color: BarrioColors.textSecondary,
                                   ),
                                 ),
                                 const SizedBox(width: 10),
@@ -425,23 +427,22 @@ class _PremiumBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Solid accent chip with a luminance-picked foreground so the label
+    // stays legible on the white card (the old pale-tint-on-dark badge
+    // relied on bright accent text against a dark surface).
+    final onColor =
+        ThemeData.estimateBrightnessForColor(color) == Brightness.dark
+            ? Colors.white
+            : const Color(0xFF10151F);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            color.withValues(alpha: 0.18),
-            color.withValues(alpha: 0.10),
-          ],
-        ),
+        color: color,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withValues(alpha: 0.30)),
         boxShadow: [
           BoxShadow(
-            color: color.withValues(alpha: 0.08),
-            blurRadius: 4,
+            color: color.withValues(alpha: 0.28),
+            blurRadius: 5,
             offset: const Offset(0, 1),
           ),
         ],
@@ -452,7 +453,7 @@ class _PremiumBadge extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w700,
           letterSpacing: 1.0,
-          color: color,
+          color: onColor,
         ),
       ),
     );
@@ -567,12 +568,12 @@ class LearningSectionRail extends StatelessWidget {
               decoration: BoxDecoration(
                 color: isActive
                     ? activeAccent.withValues(alpha: 0.15)
-                    : const Color(0x0FFFFFFF),
+                    : const Color(0x0A16243B),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: isActive
                       ? activeAccent.withValues(alpha: 0.50)
-                      : const Color(0x1AFFFFFF),
+                      : const Color(0x2216243B),
                 ),
                 boxShadow: isActive
                     ? [

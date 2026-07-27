@@ -39,7 +39,7 @@ class BarrioTermDefinitionSheet extends StatelessWidget {
       decoration: const BoxDecoration(
         color: BarrioColors.shellDeep,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        border: Border(top: BorderSide(color: Color(0x24FFFFFF))),
+        border: Border(top: BorderSide(color: Color(0x1F16243B))),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -106,7 +106,7 @@ class BarrioTermDefinitionSheet extends StatelessWidget {
         errorBuilder: (context, error, stackTrace) => Container(
           width: double.infinity,
           height: 100,
-          color: const Color(0x14FFFFFF),
+          color: const Color(0x0F16243B),
           child: Icon(
             Icons.image_not_supported_outlined,
             size: 26,
@@ -176,7 +176,7 @@ class _SheetHandle extends StatelessWidget {
         height: 4,
         margin: const EdgeInsets.only(top: 10, bottom: 10),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.22),
+          color: const Color(0x3316243B),
           borderRadius: BorderRadius.circular(2),
         ),
       ),

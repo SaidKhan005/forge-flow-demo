@@ -8,7 +8,7 @@
 // owns its own flip state, so the review screen resets a card to its
 // front simply by giving each appearance a fresh Key.
 //
-// Style: the manuals' premium dark-glass recipe (deep navy surface,
+// Style: the manuals' premium light-glass recipe (near-white surface,
 // accent border + soft glow) restated locally with `BarrioColors`
 // constants; the manual-owned rendering widgets are not imported.
 
@@ -120,8 +120,8 @@ class _BarrioFlashcardCardState extends State<BarrioFlashcardCard>
   }
 }
 
-/// Shared dark-glass card shell (the manuals' premium recipe restated
-/// with `BarrioColors`: near-opaque navy, accent border, soft glow).
+/// Shared light-glass card shell (the manuals' premium recipe restated
+/// with `BarrioColors`: near-opaque white, accent border, soft glow).
 class _FlashcardShell extends StatelessWidget {
   final Color accent;
   final Widget child;

@@ -90,7 +90,7 @@ class BarrioRowThumbnail extends StatelessWidget {
             child: Icon(
               Icons.image_outlined,
               size: size * 0.5,
-              color: Colors.white.withValues(alpha: 0.30),
+              color: BarrioColors.textMuted.withValues(alpha: 0.6),
             ),
           ),
         ),

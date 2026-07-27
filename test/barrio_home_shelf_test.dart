@@ -349,8 +349,9 @@ void main() {
         (tester) async {
       await pumpHome(tester);
       // The base backdrop layer is a LinearGradient carrying the
-      // darkest-at-top stop colour; its presence proves the new
-      // static backdrop replaced the animated scrim stack.
+      // lightest-at-top cream stop colour (light theme, app-icon
+      // palette); its presence proves the new static backdrop replaced
+      // the animated scrim stack.
       var foundBaseGradient = false;
       for (final box in tester.widgetList<DecoratedBox>(
           find.byType(DecoratedBox))) {
@@ -358,14 +359,14 @@ void main() {
         if (decoration is BoxDecoration &&
             decoration.gradient is LinearGradient) {
           final gradient = decoration.gradient as LinearGradient;
-          if (gradient.colors.contains(const Color(0xFF060B16))) {
+          if (gradient.colors.contains(const Color(0xFFFCF8EF))) {
             foundBaseGradient = true;
             break;
           }
         }
       }
       expect(foundBaseGradient, isTrue,
-          reason: 'the calm base gradient backdrop must be present');
+          reason: 'the calm cream base gradient backdrop must be present');
       expect(tester.takeException(), isNull);
     });
   });

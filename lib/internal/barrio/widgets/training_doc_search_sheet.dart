@@ -107,7 +107,7 @@ class _TrainingDocSearchSheetState extends State<TrainingDocSearchSheet> {
           decoration: const BoxDecoration(
             color: BarrioColors.shellDeep,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border(top: BorderSide(color: Color(0x24FFFFFF))),
+            border: Border(top: BorderSide(color: Color(0x1F16243B))),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -221,7 +221,7 @@ class _SheetHandle extends StatelessWidget {
         width: 36,
         height: 4,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.24),
+          color: const Color(0x3316243B),
           borderRadius: BorderRadius.circular(2),
         ),
       ),
@@ -302,7 +302,7 @@ class _ResultRow extends StatelessWidget {
           decoration: BoxDecoration(
             color: BarrioColors.shellMid.withValues(alpha: 0.92),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0x24FFFFFF)),
+            border: Border.all(color: const Color(0x1416243B)),
           ),
           child: imageAsset == null
               ? _content(showChapterIcon: true)

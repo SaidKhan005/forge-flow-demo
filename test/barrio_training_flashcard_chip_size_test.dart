@@ -63,16 +63,20 @@ void main() {
         reason: 'the chip carries an accent glow for prominence');
 
     // Larger, high-contrast content.
+    // Light theme: the foreground is luminance-picked. On the bright
+    // tealWarm accent (the doc's default) that resolves to near-black
+    // ink for a legible, high-contrast label.
+    const onBrightAccent = Color(0xFF10151F);
     final icon = tester.widget<Icon>(
       find.descendant(of: _kChip, matching: find.byIcon(Icons.style_rounded)),
     );
     expect(icon.size, 16, reason: 'the icon grew for prominence');
-    expect(icon.color, BarrioColors.shellDeep,
+    expect(icon.color, onBrightAccent,
         reason: 'dark icon reads clearly on the bright accent fill');
 
     final label = tester.widget<Text>(find.text('FLASHCARDS'));
     expect(label.style!.fontSize, 11, reason: 'the label text grew');
-    expect(label.style!.color, BarrioColors.shellDeep,
+    expect(label.style!.color, onBrightAccent,
         reason: 'dark label reads clearly on the bright accent fill');
 
     expect(tester.takeException(), isNull,

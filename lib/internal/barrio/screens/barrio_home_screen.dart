@@ -255,7 +255,7 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
         .toList();
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: BarrioColors.shellDeep,
       body: Stack(
         children: [
           const _BarrioHomeBackdrop(),
@@ -389,9 +389,9 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
 // ---------------------------------------------------------------------------
 // Backdrop: a calm, static two-layer background (2026-07-26 operator
 // request for a simpler, quieter background that still looks nice, in
-// place of the busy photo + breathing scrim + blooms + vignette). A dark
-// vertical gradient, darkest at the top for header legibility, easing to
-// a calm midnight blue down the scroll, with one soft teal glow behind
+// place of the busy photo + breathing scrim + blooms + vignette). A warm
+// cream vertical gradient, lightest at the top for header legibility,
+// easing to a faint mint down the scroll, with one soft teal glow behind
 // the brand anchor. Pointer-transparent and isolated in a RepaintBoundary
 // so the scrolling content never repaints it. Nothing here animates.
 // ---------------------------------------------------------------------------
@@ -405,8 +405,8 @@ class _BarrioHomeBackdrop extends StatelessWidget {
       child: RepaintBoundary(
         child: Stack(
           children: [
-            // Base vertical gradient: darkest at the top so the brand
-            // wordmark stays legible, easing to a calm midnight blue.
+            // Base vertical gradient: warm cream at the top so the brand
+            // wordmark stays legible, easing to a faint mint green.
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -414,9 +414,9 @@ class _BarrioHomeBackdrop extends StatelessWidget {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Color(0xFF060B16),
-                      Color(0xFF0B1424),
-                      Color(0xFF0A0F1C),
+                      Color(0xFFFCF8EF),
+                      Color(0xFFF3F6EE),
+                      Color(0xFFE9F3EC),
                     ],
                     stops: [0.0, 0.55, 1.0],
                   ),
@@ -424,15 +424,15 @@ class _BarrioHomeBackdrop extends StatelessWidget {
               ),
             ),
 
-            // One soft teal glow behind the brand anchor, kept low-alpha
-            // so it reads as quiet depth rather than noise.
+            // One soft teal glow behind the brand anchor, kept very
+            // low-alpha so it reads as quiet depth rather than noise.
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: RadialGradient(
                     center: Alignment(0.0, -0.5),
                     radius: 0.9,
-                    colors: [Color(0x2240CFCF), Colors.transparent],
+                    colors: [Color(0x142E9B8F), Colors.transparent],
                   ),
                 ),
               ),
@@ -565,10 +565,12 @@ class _BarrioHeaderState extends State<_BarrioHeader>
               color: BarrioColors.textPrimary,
               height: 1.0,
               shadows: const [
+                // Subtle lift on the cream ground (was a heavy dark
+                // drop-shadow tuned for the old navy backdrop).
                 Shadow(
-                  color: Color(0x60000000),
-                  blurRadius: 16,
-                  offset: Offset(0, 3),
+                  color: Color(0x14000000),
+                  blurRadius: 12,
+                  offset: Offset(0, 2),
                 ),
               ],
             ),
@@ -580,12 +582,14 @@ class _BarrioHeaderState extends State<_BarrioHeader>
               fontWeight: FontWeight.w300,
               fontStyle: FontStyle.italic,
               letterSpacing: _legadoSpacing.value,
-              color: BarrioColors.tealWarm,
+              // Deeper icon-leaf teal so the wordmark stays legible on
+              // cream (bright tealWarm is a fill/accent, not text).
+              color: BarrioColors.tealDeep,
               height: 1.0,
               shadows: const [
                 Shadow(
-                  color: Color(0x504FC3C3),
-                  blurRadius: 20,
+                  color: Color(0x142E9B8F),
+                  blurRadius: 18,
                   offset: Offset(0, 2),
                 ),
               ],
@@ -622,9 +626,9 @@ class _TextSizeButton extends StatelessWidget {
               padding:
                   const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0x14FFFFFF),
+                color: const Color(0x0D16243B),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0x28FFFFFF)),
+                border: Border.all(color: const Color(0x2216243B)),
               ),
               child: Text(
                 'Aa',
@@ -752,12 +756,12 @@ class _RolePreviewRow extends StatelessWidget {
                           ],
                         )
                       : null,
-                  color: isActive ? null : const Color(0x18FFFFFF),
+                  color: isActive ? null : const Color(0x1416243B),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
                     color: isActive
-                        ? BarrioColors.tealWarm.withValues(alpha: 0.6)
-                        : const Color(0x30FFFFFF),
+                        ? BarrioColors.tealDeep.withValues(alpha: 0.6)
+                        : const Color(0x2A16243B),
                     width: 1.0,
                   ),
                   boxShadow: isActive
@@ -778,7 +782,10 @@ class _RolePreviewRow extends StatelessWidget {
                     fontSize: 12,
                     fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
                     letterSpacing: 0.4,
-                    color: isActive ? Colors.white : BarrioColors.textSecondary,
+                    // Navy reads on the bright teal active fill; slate on cream.
+                    color: isActive
+                        ? BarrioColors.textPrimary
+                        : BarrioColors.textSecondary,
                   ),
                 ),
               ),

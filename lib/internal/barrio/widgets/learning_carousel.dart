@@ -380,7 +380,7 @@ class _CardScrollViewState extends State<_CardScrollView> {
               thumbVisibility: _overflows,
               thickness: 3,
               radius: const Radius.circular(1.5),
-              thumbColor: Colors.white.withValues(alpha: 0.25),
+              thumbColor: const Color(0x5916243B),
               child: SingleChildScrollView(
                 key: PageStorageKey<String>(
                     'learning_card_scroll_${widget.index}'),
@@ -407,8 +407,10 @@ class _CardScrollViewState extends State<_CardScrollView> {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Color(0x00101418),
-                          Color(0xCC101418),
+                          // Fade to the white card surface (light theme)
+                          // so the "more below" cue dissolves cleanly.
+                          Color(0x00FFFFFF),
+                          Color(0xF2FFFFFF),
                         ],
                       ),
                     ),
@@ -452,7 +454,7 @@ class _EdgeChevron extends StatelessWidget {
                   ? Icons.chevron_left_rounded
                   : Icons.chevron_right_rounded,
               size: 22,
-              color: Colors.white.withValues(alpha: 0.38),
+              color: const Color(0x7016243B),
             ),
           ),
         ),

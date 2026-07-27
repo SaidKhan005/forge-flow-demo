@@ -120,7 +120,7 @@ class _ModuleCompleteBannerState extends State<_ModuleCompleteBanner>
               spreadRadius: -4,
             ),
             const BoxShadow(
-              color: Color(0x66000000),
+              color: Color(0x1F16243B),
               blurRadius: 20,
               spreadRadius: -2,
             ),
@@ -259,9 +259,9 @@ class _SparklePainter extends CustomPainter {
   final double progress;
   final Color color;
 
-  // Gold and near-white for color variety
+  // Gold and deep navy for color variety on the light card surface
   static const _gold = Color(0xFFDFAA40);
-  static const _white = Color(0xFFF0F6F8);
+  static const _ink = Color(0xFF16243B);
 
   static final _rng = Random(42);
   static final _particles = List.generate(14, (i) {
@@ -298,7 +298,7 @@ class _SparklePainter extends CustomPainter {
       final opacity = (1.0 - staggeredProgress).clamp(0.0, 1.0);
       final particleColor = switch (p.colorVariant) {
         1 => _gold,
-        2 => _white,
+        2 => _ink,
         _ => color,
       };
 
