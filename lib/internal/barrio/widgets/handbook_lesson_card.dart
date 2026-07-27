@@ -663,8 +663,9 @@ class _UnitBody extends StatelessWidget {
   final Color accent;
 
   /// Verbatim chapter-end quiz answer phrases for this unit (operator
-  /// request 2026-07-26): each occurrence in the body gets a soft amber
-  /// highlighter wash so the answer is easy to scan before the quiz.
+  /// request 2026-07-26, restyled 2026-07-27): each occurrence in the body
+  /// renders as teal-colored, slightly bolder wording (no background wash)
+  /// so the answer is easy to scan before the quiz.
   /// Styling only; the body string is never altered (verbatim law). Empty
   /// for cards with no quiz evidence (the default), which render unchanged.
   final List<String> answerEvidence;
@@ -870,8 +871,8 @@ class _UnitBody extends StatelessWidget {
     );
     // Answer highlight ranges are the LOWEST precedence: any that overlap a
     // search highlight, term link, or numeric pop are dropped whole, so the
-    // amber wash never fights another span (verbatim substrings, so plain
-    // case-sensitive matching).
+    // teal answer wording never fights another span (verbatim substrings, so
+    // plain case-sensitive matching).
     final answerRanges = answerEvidence.isEmpty
         ? const <List<int>>[]
         : _answerEvidenceRanges(
@@ -984,13 +985,14 @@ class _UnitBody extends StatelessWidget {
       fontWeight: FontWeight.w700,
       color: accent,
     );
-    // Answer highlight (operator request 2026-07-26): a soft amber/gold
-    // highlighter wash behind the quiz answer phrase, plus a medium weight
-    // so it never relies on color alone (accessibility). The verbatim
-    // substring renders unchanged; only style is added.
+    // Answer highlight (operator request 2026-07-27): the quiz answer
+    // phrase renders as teal-COLORED, slightly bolder wording, NOT a
+    // background highlighter wash. tealDeep is the icon-leaf teal that
+    // stays legible on the light cream/white card. The verbatim substring
+    // renders unchanged; only style is added (no backgroundColor).
     final answerMark = style.copyWith(
-      fontWeight: FontWeight.w500,
-      backgroundColor: BarrioColors.gold.withValues(alpha: 0.30),
+      fontWeight: FontWeight.w600,
+      color: BarrioColors.tealDeep,
     );
     final spans = <InlineSpan>[];
     var cursor = 0;
