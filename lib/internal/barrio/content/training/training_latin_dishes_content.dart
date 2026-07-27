@@ -248,6 +248,8 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               '- MEXICAN: Finely minced raw fish or shrimp marinated in lime '
               'with cilantro, onions, tomatoes, and chiles, often featuring '
               'cucumber.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c0_u12',
@@ -267,6 +269,8 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'mahi-mahi, or tilapia marinated in lime juice and white '
               'vinegar with cilantro and bell peppers. Served with crackers '
               'or tortilla chips.',
+          runIndex: 2,
+          runLength: 2,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/latin_american_dishes/12.webp',
@@ -498,6 +502,8 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'often flaky and buttery and are typically baked. filled with a '
               'mixture of ground beef, onions, raisins, black olives, and '
               'hard-boiled eggs.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c1_u12',
@@ -519,6 +525,8 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'uses wheat flour, while southern Mexico uses corn masa. '
               'Fillings include mole, cheese, rajas, or sweet fillings like '
               'pineapple and cajeta.',
+          runIndex: 2,
+          runLength: 2,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/latin_american_dishes/24.webp',

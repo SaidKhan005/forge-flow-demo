@@ -503,6 +503,11 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
                   accent: accent,
                   sectionIndex: _activeChapter,
                   sectionCount: chapters.length,
+                  // Structure pass: the doc-level depth-framing badge word
+                  // (e.g. 'DEEPER DIVE') rides the hero eyebrow so the
+                  // reader sees the manual's framing in its header. Null
+                  // for every manual without one.
+                  depthBadge: widget.doc.depthBadge,
                   // Glossary manuals only: the flashcard chip rides the
                   // hero's eyebrow row (no new persistent chrome).
                   onFlashcardsTap:
@@ -699,6 +704,10 @@ class _TrainingHero extends StatelessWidget {
   final int sectionIndex;
   final int sectionCount;
 
+  /// Doc-level depth-framing badge word (e.g. 'DEEPER DIVE'). Null (the
+  /// default) renders no badge. Operator-approved wording only.
+  final String? depthBadge;
+
   /// Non-null only on the glossary manuals: renders the prominent
   /// "Review as flashcards" chip on the eyebrow row.
   final VoidCallback? onFlashcardsTap;
@@ -708,6 +717,7 @@ class _TrainingHero extends StatelessWidget {
     required this.accent,
     required this.sectionIndex,
     required this.sectionCount,
+    this.depthBadge,
     this.onFlashcardsTap,
   });
 
@@ -760,10 +770,28 @@ class _TrainingHero extends StatelessWidget {
                 ),
               ),
               const Spacer(),
+              if (depthBadge != null) ...[
+                _DepthBadge(accent: accent, label: depthBadge!),
+                if (onFlashcardsTap != null) const SizedBox(width: 8),
+              ],
               if (onFlashcardsTap != null)
                 _FlashcardsChip(accent: accent, onTap: onFlashcardsTap!),
             ],
           ),
+          // Part separator (structure pass): long manuals grouped into
+          // named parts show 'PART k OF n: Name' above the section title
+          // so the reader sees which part of the manual they are in.
+          // Only manuals with part grouping carry these fields, so the
+          // hero height stays steady within any one manual.
+          if (chapter.partTitle != null) ...[
+            const SizedBox(height: 5),
+            _PartLabel(
+              accent: accent,
+              partIndex: chapter.partIndex!,
+              partCount: chapter.partCount!,
+              partTitle: chapter.partTitle!,
+            ),
+          ],
           const SizedBox(height: 6),
           // Excluded from semantics: the header label above already
           // carries the full title and position (rec #12).
@@ -867,6 +895,91 @@ class _FlashcardsChip extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Doc-level depth-framing badge on the hero eyebrow (structure pass).
+/// A quiet bordered pill carrying an operator-approved word (e.g.
+/// 'DEEPER DIVE') so the reader sees the manual is optional-depth
+/// material, not core training. Data only invents nothing: the word
+/// comes from [BarrioTrainingDoc.depthBadge].
+class _DepthBadge extends StatelessWidget {
+  final Color accent;
+  final String label;
+
+  const _DepthBadge({required this.accent, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: '$label material',
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: accent.withValues(alpha: 0.45)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.auto_stories_rounded, size: 13, color: accent),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: GoogleFonts.ibmPlexMono(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.0,
+                  color: accent,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Part separator line on the hero (structure pass). Long manuals
+/// grouped into named parts show 'PART k OF n: Name' above the section
+/// title. The 'PART k OF n' prefix is the label and the part name is the
+/// value, joined by a colon (UX no-em-dash law). The full text rides one
+/// screen-reader node; the visible line ellipsizes on narrow screens
+/// while the label keeps the whole name.
+class _PartLabel extends StatelessWidget {
+  final Color accent;
+  final int partIndex;
+  final int partCount;
+  final String partTitle;
+
+  const _PartLabel({
+    required this.accent,
+    required this.partIndex,
+    required this.partCount,
+    required this.partTitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'Part $partIndex of $partCount: $partTitle',
+      child: ExcludeSemantics(
+        child: Text(
+          'PART $partIndex OF $partCount: $partTitle',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.ibmPlexMono(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.6,
+            color: accent.withValues(alpha: 0.80),
           ),
         ),
       ),

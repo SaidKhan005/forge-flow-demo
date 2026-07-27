@@ -36,6 +36,8 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'tequila." Over time, as the beverage gained popularity, the '
               'mezcal descriptor was dropped altogether, giving rise to the '
               'spirit we now know simply as tequila.',
+          runIndex: 1,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'training_tequila_c0_u1',
@@ -54,6 +56,8 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'remaining components derived from other sugars. This careful '
               'regulation ensures quality and authenticity, preserving the '
               'integrity of tequila as a unique Mexican spirit.',
+          runIndex: 2,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'training_tequila_c0_u2',
@@ -77,6 +81,8 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'rigorous testing and monitoring help ensure that every batch '
               'meets the high expectations associated with this storied '
               'spirit.',
+          runIndex: 3,
+          runLength: 3,
         ),
       ],
     ),
@@ -105,6 +111,8 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'giant pineapple. This labor-intensive method reflects not only '
               'skill but also a deep respect for the plant and the tradition '
               'surrounding tequila production.',
+          runIndex: 1,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'training_tequila_c1_u1',
@@ -131,6 +139,8 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'and impurities and elevates the ABV to around 55%. To achieve '
               'a drinkable strength, pure water is then added, commonly '
               'resulting in a final ABV of approximately 40%.',
+          runIndex: 2,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'training_tequila_c1_u2',
@@ -144,6 +154,8 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'extended periods. This aging process not only deepens the '
               'color but also contributes complex flavors, drawing out notes '
               'of vanilla, caramel, and spice.',
+          runIndex: 3,
+          runLength: 3,
         ),
       ],
     ),
@@ -285,6 +297,8 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'allowing the syrup to gracefully sink and create a stunning '
               'layered appearance that is as delightful to look at as it is '
               'to sip.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_tequila_c3_u1',
@@ -304,6 +318,8 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'delightful blend of reposado tequila and smoky mezcal, '
               'sweetened with agave nectar to create a truly distinctive and '
               'flavorful experience.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -341,6 +357,8 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'and Tepextate, which grow wild in mountainous regions and take '
               'decades to mature, bring forth extraordinary floral and herbal '
               'flavors that enhance the drinking experience.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_tequila_c4_u1',
@@ -358,6 +376,8 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'mass-produced spirits, many mezcals are crafted by artisanal '
               'producers known as mezcaleros, who employ generational '
               'techniques that honor the land and its bounty.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),

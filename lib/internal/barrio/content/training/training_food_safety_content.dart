@@ -111,6 +111,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'implement measures to protect food from contamination. These '
               'regulations are critical in ensuring that food businesses '
               'operate safely and responsibly.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_food_safety_c1_u1',
@@ -134,6 +136,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'with the owner, operator, and person in charge, who must '
               'foster a culture of safety and professionalism within their '
               'establishments.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -628,6 +632,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'vital.\n'
               '\n'
               'Viruses',
+          runIndex: 1,
+          runLength: 6,
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u2',
@@ -651,6 +657,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'harmful viruses in our food supply.\n'
               '\n'
               'Parasites',
+          runIndex: 2,
+          runLength: 6,
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u3',
@@ -678,6 +686,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'significantly reduce the likelihood of infection. By staying '
               'vigilant and informed, we can protect ourselves from the '
               'potential dangers posed by foodborne parasites.',
+          runIndex: 3,
+          runLength: 6,
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u4',
@@ -710,6 +720,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'carrots, and bell peppers are less prone to deep mold '
               'penetration, careful handling is essential: when removing '
               'moldy',
+          runIndex: 4,
+          runLength: 6,
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u5',
@@ -736,6 +748,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'ice, thus inhibiting microbial activity. Additionally, '
               'combining approaches - such as salting and drying fish - can '
               'further enhance preservation.',
+          runIndex: 5,
+          runLength: 6,
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u6',
@@ -752,6 +766,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'questionable items to prevent foodborne illnesses.\n'
               '\n'
               '"When in doubt, throw it out!"',
+          runIndex: 6,
+          runLength: 6,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/food_safety_manual/03.webp',
@@ -780,6 +796,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'safety regulations, while unintentional additives can stem '
               'from contamination during food preparation - often due to '
               'cleaning agents, pesticides, or environmental pollutants.',
+          runIndex: 1,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u8',
@@ -798,6 +816,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'steel, further reduces contamination risks. Acidic foods can '
               'dissolve lead-containing or galvanized dishes, leaching '
               'harmful metals into the food, causing metal poisoning.',
+          runIndex: 2,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u9',
@@ -818,6 +838,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'practices, and ensuring that flammable materials are kept away '
               'from heat sources to minimize risks and promote a safe working '
               'environment.',
+          runIndex: 3,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u10',
@@ -832,6 +854,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'the plate. These hazards can be introduced at any stage, '
               'whether from the origin of the product, raw materials, '
               'packaging, or during processing.',
+          runIndex: 1,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u11',
@@ -855,6 +879,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'such as hats or hairnets, while preparing food helps prevent '
               'hair from falling into dishes, while covering food items '
               'protects them from external contaminants.',
+          runIndex: 2,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u12',
@@ -879,6 +905,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'safety protocols. By understanding the sources and types of '
               'physical hazards, we can more effectively protect the health '
               'of our guests and ensure a safe dining experience.',
+          runIndex: 3,
+          runLength: 3,
         ),
       ],
     ),
@@ -933,6 +961,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'resulting in dizziness or loss of consciousness. Because '
               'anaphylaxis can progress rapidly and become fatal if left '
               'untreated, immediate medical attention is essential.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u2',
@@ -945,6 +975,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'those at risk. Often the friends and family of someone with a '
               'risk of anaphylaxis will know where the person\'s auto-injector '
               'is and are informed on how to use it.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u3',
@@ -977,6 +1009,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'as those from boiling lobster, or residue on utensils and '
               'serving dishes can trigger allergic responses in sensitive '
               'individuals.',
+          runIndex: 1,
+          runLength: 10,
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u4',
@@ -1002,6 +1036,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'can trigger reactions even without direct consumption. Some '
               'common culprits you may see include anchovies, salmon, tuna, '
               'haddock, halibut, and cod, among others.',
+          runIndex: 2,
+          runLength: 10,
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u5',
@@ -1022,6 +1058,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'goods that contain egg.\n'
               '\n'
               'Milk',
+          runIndex: 3,
+          runLength: 10,
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u6',
@@ -1046,6 +1084,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'digesting the milk sugar lactose whereas a milk allergy '
               'involves a potentially severe immune reaction to milk '
               'proteins, which can be life-threatening.',
+          runIndex: 4,
+          runLength: 10,
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u7',
@@ -1072,6 +1112,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'may have with them.\n'
               '\n'
               'Peanut',
+          runIndex: 5,
+          runLength: 10,
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u8',
@@ -1098,6 +1140,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'many international cuisines, awareness and management of this '
               'allergy are vital for those affected, ensuring safe dining '
               'experiences.',
+          runIndex: 6,
+          runLength: 10,
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u9',
@@ -1118,6 +1162,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'several hours later. The most severe form of an allergic '
               'response is anaphylaxis highlighting the importance of the '
               'management of tree nut allergies.',
+          runIndex: 7,
+          runLength: 10,
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u10',
@@ -1136,6 +1182,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'allergic reactions can occur swiftly, often within minutes of '
               'exposure to sesame, but in some cases, they may arise several '
               'hours later with the most',
+          runIndex: 8,
+          runLength: 10,
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u11',
@@ -1168,6 +1216,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'swiftly, often within minutes, but can occasionally manifest '
               'several hours post-exposure, with anaphylaxis representing the '
               'most severe response to this allergen.',
+          runIndex: 9,
+          runLength: 10,
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u12',
@@ -1192,6 +1242,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'individuals may experience severe reactions if they engage in '
               'physical activity shortly after consuming wheat products, '
               'although delaying exercise can mitigate these risks.',
+          runIndex: 10,
+          runLength: 10,
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u13',
@@ -1282,6 +1334,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               '- Make sure you understand the allergy. Write down the guest\'s '
               'allergy to record the conversation. If you have questions, ask '
               'the guest.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_food_safety_c8_u1',
@@ -1305,6 +1359,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'cleaned and sanitized before use.\n'
               '\n'
               'Call 911 at the first sign of a reaction.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_food_safety_c8_u2',
@@ -1321,6 +1377,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'Food Safety, swiftly locating the EpiPen is essential, and if '
               'the person is dining with companions, enlist their help in '
               'finding it quickly.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_food_safety_c8_u3',
@@ -1348,6 +1406,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'preserve any food or packaging that may have triggered the '
               'reaction for further investigation, ensuring that all aspects '
               'of the incident are addressed comprehensively.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -1382,6 +1442,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'Perishable items should never be left out of refrigeration for '
               'longer than two hours; after that, the risk of bacterial '
               'growth increases significantly.',
+          runIndex: 1,
+          runLength: 2,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c9_u0.webp',
@@ -1403,6 +1465,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'safety is paramount, understanding and diligently enforcing '
               'temperature standards is a non-negotiable part of every '
               'successful kitchen operation.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_food_safety_c9_u2',
@@ -1506,6 +1570,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'frequently, the heat is rapidly drawn out. For substantial '
               'items like roasts or turkeys, cutting them into smaller, '
               'thinner pieces can significantly speed up the cooling process.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_food_safety_c11_u1',
@@ -1525,6 +1591,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'F to 70 degrees F within two hours before safely '
               'refrigerating, so monitoring the temperature throughout is '
               'crucial to maintaining food safety and quality.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_food_safety_c11_u2',
@@ -1716,6 +1784,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'Keep the probe tip away from the side walls and do not allow '
               'it to rest against the bottom of the vessel. Keep stirring the '
               'probe.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_food_safety_c13_u1',
@@ -1728,6 +1798,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'instant-read thermometer, check that the readings are within '
               'the manufacturer\'s accuracy specifications. If it is within '
               'the specified tolerance, do not adjust.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -1789,6 +1861,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'Second Shelf: 135 degrees F (57 degrees C). This category '
               'includes foods that will be hot-held that are not included in '
               'other categories.',
+          runIndex: 1,
+          runLength: 3,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c14_u1.webp',
@@ -1823,6 +1897,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'the spoiling process; thus, knowing when to throw out food, '
               'despite the feeling of waste, is crucial for ensuring the '
               'safety and health of you and your guests.',
+          runIndex: 2,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'training_food_safety_c14_u3',
@@ -1849,6 +1925,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               '\n'
               'Up to 3 weeks: Opened summer sausage packages; hard sausage '
               '(such as pepperoni)',
+          runIndex: 3,
+          runLength: 3,
         ),
       ],
     ),

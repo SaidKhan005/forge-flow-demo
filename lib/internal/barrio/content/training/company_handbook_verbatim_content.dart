@@ -41,6 +41,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'prepared with bright, colorful ingredients that sing with '
               'freshness and flavor, reflecting the culinary traditions of '
               'Latin America.',
+          runIndex: 1,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'company_handbook_c0_u1',
@@ -55,6 +57,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'thoughtfully curated environment is designed to transport '
               'guests into a vacation-like atmosphere embodies the spirit of '
               'the dishes served.',
+          runIndex: 2,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'company_handbook_c0_u2',
@@ -65,6 +69,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'friends or marking a momentous occasion, our mission is to '
               'surround you with a warm and inviting ambiance, ensuring that '
               'every meal becomes a cherished celebration.',
+          runIndex: 3,
+          runLength: 3,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/01.webp',
@@ -108,6 +114,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'those who had struggled to complete high school. This shift in '
               'purpose highlighted the building\'s enduring legacy in the '
               'community.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c1_u1',
@@ -131,6 +139,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'Today, 95 Water Street remains a highly distinguishable '
               'landmark, one of the few classical buildings still standing in '
               'the heart of the city.',
+          runIndex: 2,
+          runLength: 2,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/02.webp',
@@ -163,6 +173,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'doorstep. It’s no surprise that EnRoute magazine named '
               'Raymonds Canada’s Best New Restaurant just a year after its '
               'inception, setting the stage for its rapid rise to prominence.',
+          runIndex: 1,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'company_handbook_c2_u1',
@@ -189,6 +201,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'accolades kept coming, including the title of #1 Restaurant in '
               'Canada from Vacay.ca in both 2014 and 2015, and the '
               'recognition of Celeste Mah as Canada’s Best Pastry Chef in',
+          runIndex: 2,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'company_handbook_c2_u2',
@@ -210,6 +224,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'stood as a must-visit destination, inviting guests to indulge '
               'in a truly exceptional dining experience right in the heart of '
               'downtown St. John’s.',
+          runIndex: 3,
+          runLength: 3,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/03.webp',
@@ -253,6 +269,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'These ancient cultures laid the groundwork for the vibrant '
               'societies we see today, leaving behind an indelible legacy '
               'that continues to shape the region’s identity.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c3_u1',
@@ -278,6 +296,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'breathtaking landscapes, or the rich history, there\'s always '
               'something new to discover and celebrate in this remarkable '
               'part of the world.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c3_u2',
@@ -603,6 +623,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'onboarding process, and we encourage employees to discuss '
               'potential secondary employment with their managers to ensure '
               'there are no conflicts of interest.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c7_u6',
@@ -620,6 +642,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'to these guidelines, we can work together to foster a '
               'professional environment. We appreciate your cooperation and '
               'commitment to ethical practices.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c7_u7',
@@ -847,6 +871,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'expected to fulfill their shifts and will receive premium pay '
               'at a rate of 2x their regular hourly wage for the hours they '
               'complete.',
+          runIndex: 1,
+          runLength: 2,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/08.webp',
@@ -876,6 +902,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'public holiday than they would typically be scheduled for, '
               'employees will receive their regular pay for the actual hours '
               'worked, in addition to a regular day\'s pay.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c8_u10',
@@ -1218,6 +1246,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'recommend that you refrain from bringing in or storing '
               'documents containing personal information, as this is another '
               'way to protect your privacy and security.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c10_u6',
@@ -1233,6 +1263,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'everyone that any items not claimed after one month will be '
               'donated, ensuring that they find a new home rather than being '
               'lost indefinitely.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c10_u7',
@@ -1345,6 +1377,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '\n'
               'Employees are expected to avoid any of the following '
               'infractions:',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c11_u1',
@@ -1383,6 +1417,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'face in meeting these expectations. Our management team is '
               'here to support you in your role and help you navigate any '
               'issues that may arise.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c11_u2',
@@ -1703,6 +1739,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'share. Regardless of an employee’s belief that their comments '
               'are private, the reality is that the public nature of social '
               'media can lead to unforeseen consequences.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c13_u3',
@@ -1719,6 +1757,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'activities can reflect upon the organization as a whole, and '
               'we trust that they will act accordingly to foster a positive '
               'and respectful online environment.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c13_u4',
@@ -1847,6 +1887,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'share their perspective. This interaction not only clarifies '
               'expectations moving forward but also ensures that the employee '
               'understands the necessity of adhering to company standards.',
+          runIndex: 1,
+          runLength: 2,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c14_u2.webp',
@@ -1884,6 +1926,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'conduct over time. Management retains the discretion to adjust '
               'the disciplinary process as deemed appropriate based on the '
               'context and severity of each infraction.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c14_u4',
@@ -1914,6 +1958,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'pay. Employees who reject reasonable alternative employment '
               'offers or have engaged in willful misconduct or neglect of '
               'duty may not be eligible for these benefits.',
+          runIndex: 1,
+          runLength: 2,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c14_u4.webp',
@@ -1937,6 +1983,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'feedback is invaluable in our continuous efforts to improve '
               'the workplace environment and uphold the highest standards of '
               'hospitality service.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c14_u6',
@@ -1993,6 +2041,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'accidentfree workplace, a target that can be accomplished '
               'through dedicated efforts in continuous safety and loss '
               'control initiatives.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c15_u1',
@@ -2021,6 +2071,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'work, employees contribute to the well-being of themselves and '
               'their peers, reinforcing Barrio Legado\'s commitment to a '
               'culture of safety and respect in the workplace.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c15_u2',
@@ -2084,6 +2136,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'Additionally, joining the OHS Committee or serving as a WHS '
               'Representative are also great ways to contribute positively to '
               'the safety culture of Barrio Legado.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c15_u4',
@@ -2094,6 +2148,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'hazardous to their own health and safety, or to that of others '
               'in the workplace. It\'s important to exercise this right '
               'responsibly and not to misuse it without valid justification.',
+          runIndex: 2,
+          runLength: 2,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/09.webp',
@@ -2158,6 +2214,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'unresolved work refusal to OHS Division for investigation and '
               'resolution. When the report is made orally, it must be '
               'followed up in writing within five',
+          runIndex: 1,
+          runLength: 3,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c16_u1.webp',
@@ -2192,6 +2250,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'as if the employee had continued to do work. Reassignment of '
               'work in this situation is not considered to be discriminatory '
               'action.',
+          runIndex: 2,
+          runLength: 3,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/10.webp',
@@ -2211,6 +2271,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'disciplinary action is taken against workers, that action or '
               'dismissal will be considered discriminatory, unless there is '
               'evidence to show otherwise.',
+          runIndex: 3,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'company_handbook_c16_u4',
@@ -2228,6 +2290,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'with at least half of these members representing the workers, '
               'thereby ensuring that the voices of those directly affected by '
               'workplace conditions are heard and considered.',
+          runIndex: 1,
+          runLength: 2,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c16_u4.webp',
@@ -2265,6 +2329,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'or designated officers, the OHS Committee actively contributes '
               'to a safer working environment, reinforcing the commitment to '
               'uphold the health, safety, and welfare of all employees.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c16_u6',
@@ -2405,6 +2471,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '- Make some time for self-care.\n'
               '\n'
               'Source: www.theburntchefproject.com',
+          runIndex: 1,
+          runLength: 2,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/11.webp',
@@ -2425,6 +2493,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'We understand that when we prioritize mental well-being it can '
               'lead to increased productivity, improved employee retention, '
               'and a more positive workplace culture.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c16_u12',
@@ -2484,6 +2554,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'evidence. Our commitment to resolving these issues reflects '
               'our dedication to fostering a safe and respectful workplace '
               'for all.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c16_u14',
@@ -2502,6 +2574,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'investigation’s progress or outcome. Rest assured, your voice '
               'matters, and we are here to listen and take appropriate action '
               'to ensure a safe and supportive work environment for everyone.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c16_u15',
@@ -2597,6 +2671,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '\n'
               '1. Turn off all equipment, make effort to secure valuable '
               'and/or confidential information if possible, however,',
+          runIndex: 1,
+          runLength: 2,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c16_u19.webp',
@@ -2639,6 +2715,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '\n'
               '10. Keep all hallways, stairways, and passageways clear and '
               'all doors closed.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c16_u21',
@@ -2768,6 +2846,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'understanding their significance. This lack of awareness can '
               'cause these essential practices to become mundane, leading to '
               'neglect and, ultimately, potential health risks for guests.',
+          runIndex: 1,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'company_handbook_c16_u29',
@@ -2789,6 +2869,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'be vigilant in preventing life-threatening allergic reactions. '
               'Ignorance of food safety measures, especially regarding '
               'allergens, is not an acceptable excuse for any establishment.',
+          runIndex: 2,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'company_handbook_c16_u30',
@@ -2807,6 +2889,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'vegetables, and by storing raw meats below ready-to-eat foods '
               'in the refrigerator, we can further safeguard our guests\' '
               'health and well-being.',
+          runIndex: 3,
+          runLength: 3,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/12.webp',
@@ -2988,6 +3072,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'cannot be given. The employee will be entitled to up to 28 '
               'weeks of unpaid leave to be taken within 52 weeks to provide '
               'care or support to a family member.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c18_u5',
@@ -3004,6 +3090,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'like a close relative. Upon returning to work, the employee '
               'will be placed in the same or a similar position with the same '
               'duties, benefits, and wages they had before their leave.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c18_u6',
@@ -3022,6 +3110,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'entitled to up to 37 weeks of unpaid leave to provide care or '
               'support for a critically ill child or up to 17 weeks of unpaid '
               'leave to provide care or support for a critically ill adult.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c18_u7',
@@ -3038,6 +3128,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'returning to work, the employee will be placed in the same or '
               'a similar position with the same duties, benefits, and wages '
               'they had before their leave.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c18_u8',
@@ -3102,6 +3194,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'exploits, or limits ab individual access to financial '
               'resources The deprivation of food, clothing. Medical '
               'attention, shelter, transportation, or necessities of life',
+          runIndex: 1,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'company_handbook_c18_u11',
@@ -3123,6 +3217,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'including services or assistance with respect to his or her '
               'participation in or the enforcement of a legal proceeding '
               'relating to or as a result of family violence.',
+          runIndex: 2,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'company_handbook_c18_u12',
@@ -3145,6 +3241,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'returning to work, the employee will be placed in the same or '
               'a similar position with the same duties, benefits, and wages '
               'they had before their leave.',
+          runIndex: 3,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'company_handbook_c18_u13',
@@ -3181,6 +3279,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'individual for a reason related to a designated communicable '
               'disease that concerns the individual including a school or '
               'child care service closure',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c18_u14',
@@ -3209,6 +3309,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'employee or the employee’s spouse; sibling-in-law or '
               'step-sibling-in-law of the employee; a son-in-law or '
               'daughter-in-law of the employee or employee’s spouse.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c18_u15',
@@ -3293,6 +3395,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'or as a pattern of behavior, encompassing bullying, sexual '
               'harassment, and discrimination based on protected '
               'characteristics.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c19_u4',
@@ -3320,6 +3424,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'explicit, sexist, racist, or other offensive or derogatory '
               'material. Patronizing or condescending behaviour. Vandalism of '
               'personal property. Leering or other offensive gesture.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c19_u5',
@@ -3928,6 +4034,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'describe measures to be taken to minimize or prevent adverse '
               'effects resulting from exposure to a hazardous product or '
               'resulting from improper handling or storage',
+          runIndex: 1,
+          runLength: 2,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c22_u3.webp',
@@ -3955,6 +4063,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'GHS, physical state, or route of exposure. This information '
               'must not contradict or detract from the standardized '
               'information.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'company_handbook_c22_u5',
