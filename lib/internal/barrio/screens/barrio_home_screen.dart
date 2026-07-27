@@ -14,7 +14,6 @@ import '../search/barrio_training_search.dart';
 import '../services/barrio_bookmarks_service.dart';
 import '../services/barrio_reading_progress_service.dart';
 import '../services/barrio_refresher_scheduler.dart';
-import '../widgets/barrio_ambient_leaves.dart';
 import '../widgets/barrio_destination_scaffold.dart';
 import '../widgets/barrio_streak_tracker.dart';
 import '../widgets/barrio_text_size_sheet.dart';
@@ -26,17 +25,18 @@ import 'el_podio_screen.dart';
 ///
 /// One-scroll round-bubble composition (2026-07-11 operator decision,
 /// revising the Editorial Shelf of Barrio Home Redesign V1, plan:
-/// docs/phases/barrio_home_redesign_v1/barrio_home_redesign_v1_plan.md):
-/// full-bleed photo background with gradient scrim + colour blooms +
-/// vignette sits fixed behind a single vertical scroll of brand header,
-/// the Forge & Flow center bubble, and four category sections of round
-/// glass bubbles (recipes mirrored from the parked orbit hub, which
-/// stays on disk byte-identical; reversal doctrine: hide-only, never
-/// delete). The operator decision explicitly restores the premium
-/// ambient effects the shelf removed: the falling leaves, the rotating
-/// dual-color center arc, and the scrim colour-breathing loop, which
-/// overrides the redesign plan's "no looping/ambient animation" rule.
-/// `MediaQuery.disableAnimations` keeps everything static.
+/// docs/phases/barrio_home_redesign_v1/barrio_home_redesign_v1_plan.md).
+/// A calm, static backdrop (a dark vertical gradient plus one soft teal
+/// glow, 2026-07-26 operator request for a simpler, quieter background
+/// in place of the busy photo + breathing scrim + blooms + vignette +
+/// falling leaves) sits fixed behind a single vertical scroll of brand
+/// header, the Forge & Flow center bubble, and four category sections of
+/// round glass bubbles (recipes mirrored from the parked orbit hub,
+/// which stays on disk byte-identical; reversal doctrine: hide-only,
+/// never delete). The only looping motion left on home is the center
+/// bubble's own rotating dual-color arc + glow pulse, gated by the
+/// [TickerMode] below; `MediaQuery.disableAnimations` freezes it,
+/// holding the resting frame.
 class BarrioHomeScreen extends StatefulWidget {
   const BarrioHomeScreen({super.key});
 
@@ -45,7 +45,7 @@ class BarrioHomeScreen extends StatefulWidget {
 }
 
 class _BarrioHomeScreenState extends State<BarrioHomeScreen>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with WidgetsBindingObserver {
   // Phase 9.3: when an auth session is live, the preview role is
   // derived from `BarrioPreviewRole.fromAuthRoles(session.roles)`.
   // This local override is used in two cases:
@@ -66,7 +66,8 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
   // manual), the covered home must not keep running its looping
   // effects. `ModalRoute.of` in `didChangeDependencies` registers a
   // dependency on the route's status, so this flips on push/pop above
-  // and re-gates both the TickerMode subtree and the scrim loop.
+  // and re-gates the TickerMode subtree (which pauses the center
+  // bubble's arc + glow pulse).
   bool _routeIsCurrent = true;
 
   // Wave B (training search): trimmed, debounced query from the glass
@@ -99,20 +100,6 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
   // fresh-install state (nothing finished, never due).
   List<String> _refresherDue = const <String>[];
 
-  // Colour-temperature scrim breathing: 12s loop shifting the bottom
-  // gradient between warm golden (#1A0A00) and cool midnight (#0A0A1A).
-  // Restored from the pre-shelf home (c712461b) per the operator's
-  // 2026-07-11 home-revision decision.
-  late final AnimationController _scrimCtrl = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 12),
-  );
-
-  late final Animation<Color?> _scrimColour = ColorTween(
-    begin: const Color(0xCC1A0A00), // warm golden
-    end: const Color(0xCC0A0A1A), // cool midnight
-  ).animate(CurvedAnimation(parent: _scrimCtrl, curve: Curves.easeInOut));
-
   @override
   void initState() {
     super.initState();
@@ -125,8 +112,8 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
     super.didChangeDependencies();
     if (!_motionDecided) {
       // One-shot accessibility decision: with disableAnimations the
-      // loops never start, so the scrim holds its resting warm-golden
-      // bottom stop.
+      // TickerMode below stays disabled, so the center bubble's arc and
+      // glow pulse hold their resting frame.
       _motionDecided = true;
       _reduceMotion = MediaQuery.of(context).disableAnimations;
     }
@@ -142,7 +129,6 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
       // so Continue Reading and the progress rows reflect it.
       _reloadReadingProgress();
     }
-    _syncScrimMotion();
   }
 
   /// Loads the local reading memory, saved cards, and streak snapshot
@@ -187,32 +173,17 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
     final shouldAnimate = state == AppLifecycleState.resumed;
     if (shouldAnimate == _animationsEnabled) return;
 
+    // Foreground/background toggles the TickerMode gate below, which
+    // pauses or resumes the center bubble's arc + glow pulse.
     _animationsEnabled = shouldAnimate;
-    _syncScrimMotion();
 
     if (!mounted) return;
     setState(() {});
   }
 
-  /// Single decision point for the 12s scrim colour-breathing loop:
-  /// it runs only while the app is foregrounded, home is the top-most
-  /// (current) route, and reduce-motion is off. The scrim controller
-  /// is vsync'd on this State ABOVE the TickerMode that gates the
-  /// leaves + shelf subtree, so TickerMode does not mute it; it has to
-  /// be started/stopped explicitly here.
-  void _syncScrimMotion() {
-    final shouldRun = _animationsEnabled && _routeIsCurrent && !_reduceMotion;
-    if (shouldRun && !_scrimCtrl.isAnimating) {
-      _scrimCtrl.repeat(reverse: true);
-    } else if (!shouldRun && _scrimCtrl.isAnimating) {
-      _scrimCtrl.stop(canceled: false);
-    }
-  }
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _scrimCtrl.dispose();
     super.dispose();
   }
 
@@ -296,20 +267,16 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          _BarrioHomeBackdrop(scrimColour: _scrimColour),
-          // Ambient falling leaves overlay the scrolling content
-          // (IgnorePointer inside the widget keeps taps passing
-          // through), restored from the pre-shelf composition
-          // (c712461b). TickerMode pauses all looping motion while the
-          // app is backgrounded OR while another screen is pushed on
-          // top of home, and keeps it frozen entirely under
+          const _BarrioHomeBackdrop(),
+          // TickerMode gates the center logo bubble's own looping motion
+          // (rotating arc + glow pulse): it pauses while the app is
+          // backgrounded OR while another screen is pushed on top of
+          // home, and stays frozen entirely under
           // MediaQuery.disableAnimations.
           SafeArea(
             child: TickerMode(
               enabled: _animationsEnabled && _routeIsCurrent && !_reduceMotion,
-              child: BarrioAmbientLeaves(
-                child: _buildShelf(homeDestinations),
-              ),
+              child: _buildShelf(homeDestinations),
             ),
           ),
         ],
@@ -440,147 +407,59 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
 }
 
 // ---------------------------------------------------------------------------
-// Backdrop: full-bleed photo, then the colour-breathing gradient scrim,
-// then colour blooms and vignette. All layers are pointer-transparent.
-// The scrim's bottom stop breathes warm-to-cool on the 12s loop
-// (restored from c712461b); the blooms and vignette stay static.
+// Backdrop: a calm, static two-layer background (2026-07-26 operator
+// request for a simpler, quieter background that still looks nice, in
+// place of the busy photo + breathing scrim + blooms + vignette). A dark
+// vertical gradient, darkest at the top for header legibility, easing to
+// a calm midnight blue down the scroll, with one soft teal glow behind
+// the brand anchor. Pointer-transparent and isolated in a RepaintBoundary
+// so the scrolling content never repaints it. Nothing here animates.
 // ---------------------------------------------------------------------------
 
 class _BarrioHomeBackdrop extends StatelessWidget {
-  final Animation<Color?> scrimColour;
-
-  const _BarrioHomeBackdrop({required this.scrimColour});
-
-  static const List<Widget> _staticOverlayLayers = [
-    // 3 — Teal bloom — top-centre brand anchor
-    Positioned.fill(
-      child: RepaintBoundary(
-        child: IgnorePointer(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment(0.0, -0.55),
-                radius: 0.85,
-                colors: [Color(0x4040CFCF), Colors.transparent],
-              ),
-            ),
-          ),
-        ),
-      ),
-    ),
-
-    // 4 — Gold warmth bloom — bottom-right hospitality accent
-    Positioned.fill(
-      child: RepaintBoundary(
-        child: IgnorePointer(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment(1.0, 1.1),
-                radius: 0.75,
-                colors: [Color(0x2ADFAA40), Colors.transparent],
-              ),
-            ),
-          ),
-        ),
-      ),
-    ),
-
-    // 5 — Edge vignette — cinematic corner darkness
-    Positioned.fill(
-      child: RepaintBoundary(
-        child: IgnorePointer(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment.center,
-                radius: 1.2,
-                colors: [Colors.transparent, Color(0x88000000)],
-                stops: [0.55, 1.0],
-              ),
-            ),
-          ),
-        ),
-      ),
-    ),
-  ];
+  const _BarrioHomeBackdrop();
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // 1 — Full-bleed photo
-        const Positioned.fill(
-          child: RepaintBoundary(
-            child: _ViewportAssetFill(
-              assetPath: 'assets/internal/barrio/home_bg.webp',
-            ),
-          ),
-        ),
-
-        // 2: editorial gradient scrim with colour-temperature breathing.
-        //    Dark at top (header legibility), transparent in the bubble
-        //    area (photo breathes), animated warm-to-cool at the bottom.
-        Positioned.fill(
-          child: RepaintBoundary(
-            child: IgnorePointer(
-              child: AnimatedBuilder(
-                animation: scrimColour,
-                builder: (context, _) {
-                  return DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          const Color(0xF0070D1A), // 94%: header zone
-                          const Color(0xBB070D1A), // 73%: below header
-                          const Color(0x44070D1A), // 27%: photo shows
-                          const Color(0x66070D1A), // 40%: below bubbles
-                          scrimColour.value!, // animated warm-to-cool
-                        ],
-                        stops: const [0.0, 0.20, 0.52, 0.75, 1.0],
-                      ),
-                    ),
-                  );
-                },
+    return const IgnorePointer(
+      child: RepaintBoundary(
+        child: Stack(
+          children: [
+            // Base vertical gradient: darkest at the top so the brand
+            // wordmark stays legible, easing to a calm midnight blue.
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFF060B16),
+                      Color(0xFF0B1424),
+                      Color(0xFF0A0F1C),
+                    ],
+                    stops: [0.0, 0.55, 1.0],
+                  ),
+                ),
               ),
             ),
-          ),
+
+            // One soft teal glow behind the brand anchor, kept low-alpha
+            // so it reads as quiet depth rather than noise.
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: Alignment(0.0, -0.5),
+                    radius: 0.9,
+                    colors: [Color(0x2240CFCF), Colors.transparent],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
-
-        ..._staticOverlayLayers,
-      ],
-    );
-  }
-}
-
-class _ViewportAssetFill extends StatelessWidget {
-  final String assetPath;
-
-  const _ViewportAssetFill({required this.assetPath});
-
-  @override
-  Widget build(BuildContext context) {
-    final dpr = MediaQuery.devicePixelRatioOf(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final cacheWidth = constraints.maxWidth.isFinite
-            ? (constraints.maxWidth * dpr).round()
-            : null;
-        final cacheHeight = constraints.maxHeight.isFinite
-            ? (constraints.maxHeight * dpr).round()
-            : null;
-
-        return Image.asset(
-          assetPath,
-          fit: BoxFit.cover,
-          cacheWidth: cacheWidth != null && cacheWidth > 0 ? cacheWidth : null,
-          cacheHeight: cacheHeight != null && cacheHeight > 0
-              ? cacheHeight
-              : null,
-        );
-      },
+      ),
     );
   }
 }

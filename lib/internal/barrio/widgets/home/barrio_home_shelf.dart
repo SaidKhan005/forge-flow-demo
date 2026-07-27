@@ -93,15 +93,16 @@ const double _kSectionRowHeight = 150.0;
 
 /// Quiet metadata zone under each bubble ("the app remembers you",
 /// 2026-07-22): reading time, honest read progress when at least one
-/// card has been read, and (flashcards, 2026-07-23) the quiet REVIEW
-/// pill on the three glossary manuals. Sits below the 150px bubble
-/// zone so the glow halos keep their full breathing room.
-const double _kBubbleMetaHeight = 68.0;
+/// card has been read, and (flashcards, 2026-07-23) the prominent
+/// Flashcards pill on the three glossary manuals (made prominent
+/// 2026-07-26, so the zone carries a taller pill). Sits below the 150px
+/// bubble zone so the glow halos keep their full breathing room.
+const double _kBubbleMetaHeight = 78.0;
 
 /// Text-scale-aware meta-zone height (accessibility pass, rec #12):
 /// the zone holds up to three text lines (about 38px of text at 1.0x),
 /// so it grows by the scaled delta of that allocation. Exactly
-/// [_kBubbleMetaHeight] at 1.0x; about 108 at 2.0x.
+/// [_kBubbleMetaHeight] at 1.0x; about 116 at 2.0x.
 double _scaledBubbleMetaHeight(TextScaler textScaler) {
   const textAllocation = 38.0;
   return _kBubbleMetaHeight + (textScaler.scale(textAllocation) - textAllocation);
@@ -281,10 +282,7 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
         SliverToBoxAdapter(
           child: _reveal(
             slot,
-            _SectionHeader(
-              section: section,
-              trailing: _combinedReviewPill(section, dests),
-            ),
+            _SectionHeader(section: section),
           ),
         ),
       );
@@ -292,37 +290,6 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
       slot++;
     }
     return slivers;
-  }
-
-  /// The combined Dishes + Ingredients review pill on the Food & Drink
-  /// section header. Appears ONLY when BOTH manuals pass the same B18
-  /// visibility resolution as their bubbles; any hidden half hides the
-  /// combined deck too.
-  Widget? _combinedReviewPill(
-    _ShelfSection section,
-    List<BarrioDestination> sectionDests,
-  ) {
-    if (section.category != BarrioCategory.foodAndDrink) return null;
-    for (final id in kBarrioCombinedFlashcardManualIds) {
-      BarrioDestination? dest;
-      for (final d in sectionDests) {
-        if (d.id == id) {
-          dest = d;
-          break;
-        }
-      }
-      if (dest == null || !_isDestVisible(dest)) return null;
-    }
-    return _ReviewPill(
-      key: const Key('barrio_review_pill_combined'),
-      label: 'REVIEW BOTH',
-      semanticsLabel: 'Review Dishes and Ingredients flashcards together',
-      accent: section.accent,
-      onTap: () => _openReviewDeck(
-        barrioCombinedDishesIngredientsDeck(),
-        section.accent,
-      ),
-    );
   }
 
   /// Flashcard review entry (2026-07-23): pushes the review screen
@@ -672,10 +639,11 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
   /// Quiet under-bubble metadata for manuals: the reading-time estimate
   /// always, plus 'N of M cards read' + a thin progress bar ONLY once
   /// at least one card has been read (Metric Honesty: untouched manuals
-  /// show no progress row at all; no phantom zeroes), plus the REVIEW
-  /// flashcard pill on the three glossary manuals (2026-07-23), gated
-  /// through the same B18 visibility resolution as the bubble itself.
-  /// Non-manual destinations render nothing here.
+  /// show no progress row at all; no phantom zeroes), plus the prominent
+  /// Flashcards pill on the three glossary manuals (2026-07-23, made
+  /// prominent 2026-07-26), gated through the same B18 visibility
+  /// resolution as the bubble itself. Non-manual destinations render
+  /// nothing here.
   Widget _bubbleMeta(BarrioDestination dest) {
     final doc = kBarrioTrainingDocs[dest.id];
     if (doc == null) return const SizedBox.shrink();
@@ -698,20 +666,22 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
     );
   }
 
-  /// The per-manual REVIEW pill, or null for every destination that is
-  /// not one of the three flashcard glossaries or does not pass the
+  /// The per-manual Flashcards pill, or null for every destination that
+  /// is not one of the three flashcard glossaries or does not pass the
   /// resolver-first / preview-role-fallback visibility check (a hidden
-  /// manual gets no review entry).
+  /// manual gets no flashcard entry). This is the prominent flashcard
+  /// entry the operator wants to stand out (2026-07-26): it keeps the
+  /// stable `barrio_review_pill_<id>` key.
   Widget? _manualReviewPill(BarrioDestination dest) {
     if (!kBarrioFlashcardManualIds.contains(dest.id)) return null;
     if (!_isDestVisible(dest)) return null;
     final deck = barrioFlashcardDeckForManual(dest.id, title: dest.label);
     if (deck == null) return null;
     final accent = barrioHomeAccentFor(dest.id);
-    return _ReviewPill(
+    return _FlashcardPill(
       key: Key('barrio_review_pill_${dest.id}'),
-      label: 'REVIEW',
-      semanticsLabel: 'Review ${dest.label} flashcards',
+      label: 'Flashcards',
+      semanticsLabel: 'Open ${dest.label} flashcards',
       accent: accent,
       onTap: () => _openReviewDeck(deck, accent),
     );
@@ -727,14 +697,14 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
 }
 
 /// Section header: accent tick + Playfair title. ~32px above, ~12px
-/// below. (The topic count was removed 2026-07-11 by operator request.)
-/// [trailing] is the quiet combined-deck review pill on Food & Drink
-/// (2026-07-23); null renders the header exactly as before.
+/// below. (The topic count was removed 2026-07-11 by operator request;
+/// the combined REVIEW BOTH deck pill that used to ride the Food & Drink
+/// header was removed 2026-07-26 by operator request: the per-manual
+/// Flashcards pills under the bubbles are the flashcard entry now.)
 class _SectionHeader extends StatelessWidget {
   final _ShelfSection section;
-  final Widget? trailing;
 
-  const _SectionHeader({required this.section, this.trailing});
+  const _SectionHeader({required this.section});
 
   @override
   Widget build(BuildContext context) {
@@ -766,10 +736,6 @@ class _SectionHeader extends StatelessWidget {
               ),
             ),
           ),
-          if (trailing != null) ...[
-            const SizedBox(width: 8),
-            trailing!,
-          ],
         ],
       ),
     );
@@ -1259,8 +1225,8 @@ class _SavedExpander extends StatelessWidget {
 
 /// Quiet under-bubble metadata: 'about N min' always; the read line +
 /// thin bar only when [readCount] is at least 1 (no phantom zeroes);
-/// the flashcard [review] pill only on the glossary manuals that pass
-/// visibility (null renders nothing extra).
+/// the [review] pill (the prominent Flashcards entry) only on the
+/// glossary manuals that pass visibility (null renders nothing extra).
 class _BubbleMeta extends StatelessWidget {
   final int minutes;
   final int readCount;
@@ -1327,20 +1293,26 @@ class _BubbleMeta extends StatelessWidget {
   }
 }
 
-/// Quiet flashcard review pill (2026-07-23): small mono label in the
-/// destination accent, used under the glossary bubbles and (as REVIEW
-/// BOTH) on the Food & Drink section header.
-class _ReviewPill extends StatelessWidget {
+/// Prominent flashcard pill (2026-07-23; made prominent 2026-07-26 by
+/// operator request: "flash cards button bigger and more prominent
+/// where it exists"). Sits under each glossary bubble as the flashcard
+/// entry. Unlike the old quiet outline chip, it uses a solid fill in
+/// the manual's accent so it stands out, with a luminance-picked
+/// foreground (near-black text on bright accents like gold, white on
+/// the darker teals/blues) so contrast stays WCAG-friendly on every
+/// manual. Keeps the [Icons.style_rounded] flashcard idiom shared with
+/// the in-manual "Flashcards" chip.
+class _FlashcardPill extends StatelessWidget {
   final String label;
   final Color accent;
   final VoidCallback onTap;
 
   /// Screen-reader label (rec #12): plain-English action naming the
-  /// deck, e.g. 'Review Latin Dishes flashcards'. Null falls back to
-  /// the visible mono label.
+  /// deck, e.g. 'Open Latin Dishes flashcards'. Null falls back to the
+  /// visible label.
   final String? semanticsLabel;
 
-  const _ReviewPill({
+  const _FlashcardPill({
     super.key,
     required this.label,
     required this.accent,
@@ -1350,46 +1322,57 @@ class _ReviewPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final onAccent =
+        ThemeData.estimateBrightnessForColor(accent) == Brightness.dark
+            ? Colors.white
+            : const Color(0xFF10151F);
     return Semantics(
       button: true,
       label: semanticsLabel ?? label,
       child: GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: ExcludeSemantics(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-        decoration: BoxDecoration(
-          color: accent.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(11),
-          border: Border.all(color: accent.withValues(alpha: 0.45)),
-        ),
-        // Accessibility (rec #12): under the bubbles the pill sits in
-        // a fixed-width meta zone, so at large text scales the row
-        // scales down to fit instead of overflowing (the hub's 'Coming
-        // Soon' fix). The full action stays in the semantics label.
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.style_rounded, size: 11, color: accent),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                maxLines: 1,
-                style: GoogleFonts.ibmPlexMono(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.1,
-                  color: accent,
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: ExcludeSemantics(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: accent,
+              borderRadius: BorderRadius.circular(13),
+              boxShadow: [
+                BoxShadow(
+                  color: accent.withValues(alpha: 0.42),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
                 ),
+              ],
+            ),
+            // Accessibility (rec #12): under the bubbles the pill sits
+            // in a fixed-width meta zone, so at large text scales the
+            // row scales down to fit instead of overflowing (the hub's
+            // 'Coming Soon' fix). The full action stays in the semantics
+            // label.
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.style_rounded, size: 14, color: onAccent),
+                  const SizedBox(width: 5),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    style: GoogleFonts.ibmPlexMono(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.3,
+                      color: onAccent,
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
-      ),
-      ),
       ),
     );
   }
