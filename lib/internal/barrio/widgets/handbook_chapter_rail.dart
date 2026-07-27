@@ -28,7 +28,17 @@ const _chapterIcons = <int, IconData>{
 /// is anchored so the 1.0x heights are exactly the pre-pass constants
 /// (72, or 86 with the minutes line): fixed chrome (padding, icon row,
 /// gaps, centering slack) plus the scaled text-line allocations.
-class HandbookChapterRail extends StatelessWidget {
+///
+/// Swipe-follow pass (2026-07-26 operator request "as we scroll through
+/// cards horizontally the chapters at the top also move along"): when
+/// the active chapter changes (deck swipe, tap-zone turn, rail tap, or
+/// resume restore) the rail animate-scrolls so the active tile is
+/// brought into view (centered as far as the scroll extent allows).
+/// The rail is now stateful so it can own that scroll behavior; it is
+/// backed by a non-lazy [SingleChildScrollView] so every tile stays
+/// laid out and therefore has a live [BuildContext] for
+/// [Scrollable.ensureVisible] to target even while off-screen.
+class HandbookChapterRail extends StatefulWidget {
   final List<HandbookChapter> chapters;
   final int activeIndex;
   final Set<String> completedChapterIds;
@@ -51,6 +61,11 @@ class HandbookChapterRail extends StatelessWidget {
     this.chapterMinutes,
   });
 
+  @override
+  State<HandbookChapterRail> createState() => _HandbookChapterRailState();
+}
+
+class _HandbookChapterRailState extends State<HandbookChapterRail> {
   /// Non-text chrome inside a tile plus centering slack: at 1.0x this
   /// yields the pre-pass 72 (no minutes) / 86 (minutes) heights.
   static const double _kFixedChrome = 55.0;
@@ -62,35 +77,106 @@ class HandbookChapterRail extends StatelessWidget {
   /// (86 - 72 at 1.0x).
   static const double _kMinutesAllocation = 14.0;
 
+  /// Glide used when the active tile is scrolled into view. Reduce-motion
+  /// swaps this for an instant jump (see [_revealActiveTile]).
+  static const Duration _kScrollDuration = Duration(milliseconds: 280);
+
+  /// One key per tile: the target for [Scrollable.ensureVisible]. Kept
+  /// stable across rebuilds (grown/shrunk in place) so tile element
+  /// identity survives.
+  final List<GlobalKey> _tileKeys = <GlobalKey>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _syncTileKeys();
+    // First layout may already open on a resumed/deep-linked chapter
+    // whose tile is off-screen: bring it into view without animation.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _revealActiveTile(animate: false);
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant HandbookChapterRail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncTileKeys();
+    if (oldWidget.activeIndex != widget.activeIndex) {
+      // The visible card moved into a different chapter: follow it so
+      // the active tile never stays stranded off-screen.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _revealActiveTile(animate: true);
+      });
+    }
+  }
+
+  /// Grows/shrinks [_tileKeys] to match the chapter count, preserving
+  /// existing keys so unchanged tiles keep their element identity.
+  void _syncTileKeys() {
+    final count = widget.chapters.length;
+    if (_tileKeys.length == count) return;
+    if (_tileKeys.length < count) {
+      _tileKeys.addAll(
+        List.generate(count - _tileKeys.length, (_) => GlobalKey()),
+      );
+    } else {
+      _tileKeys.removeRange(count, _tileKeys.length);
+    }
+  }
+
+  /// Scrolls the rail so the active tile sits centered (clamped to the
+  /// scroll extent, so the first/last tiles rest against their edge).
+  /// Respects reduce-motion: [MediaQuery.disableAnimations] makes the
+  /// move an instant jump rather than an animated glide.
+  void _revealActiveTile({required bool animate}) {
+    if (!mounted) return;
+    final index = widget.activeIndex;
+    if (index < 0 || index >= _tileKeys.length) return;
+    final tileContext = _tileKeys[index].currentContext;
+    if (tileContext == null) return;
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    Scrollable.ensureVisible(
+      tileContext,
+      alignment: 0.5,
+      duration: (animate && !reduceMotion) ? _kScrollDuration : Duration.zero,
+      curve: Curves.easeOut,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final minutes = chapterMinutes;
+    final minutes = widget.chapterMinutes;
     final textScaler = MediaQuery.textScalerOf(context);
     final height = _kFixedChrome +
         textScaler.scale(_kTitleAllocation) +
         (minutes == null ? 0 : textScaler.scale(_kMinutesAllocation));
     return SizedBox(
       height: height,
-      child: ListView.separated(
+      child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        itemCount: chapters.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
-        itemBuilder: (context, index) {
-          final chapter = chapters[index];
-          return _ChapterRailTile(
-            chapter: chapter,
-            index: index,
-            chapterCount: chapters.length,
-            isActive: index == activeIndex,
-            isCompleted: completedChapterIds.contains(chapter.id),
-            activeAccent: activeAccent,
-            minutes: minutes != null && index < minutes.length
-                ? minutes[index]
-                : null,
-            onTap: () => onChapterTap(index),
-          );
-        },
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var index = 0; index < widget.chapters.length; index++) ...[
+              if (index > 0) const SizedBox(width: 10),
+              _ChapterRailTile(
+                key: _tileKeys[index],
+                chapter: widget.chapters[index],
+                index: index,
+                chapterCount: widget.chapters.length,
+                isActive: index == widget.activeIndex,
+                isCompleted: widget.completedChapterIds
+                    .contains(widget.chapters[index].id),
+                activeAccent: widget.activeAccent,
+                minutes: minutes != null && index < minutes.length
+                    ? minutes[index]
+                    : null,
+                onTap: () => widget.onChapterTap(index),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -114,6 +200,7 @@ class _ChapterRailTile extends StatelessWidget {
   final VoidCallback onTap;
 
   const _ChapterRailTile({
+    super.key,
     required this.chapter,
     required this.index,
     required this.chapterCount,

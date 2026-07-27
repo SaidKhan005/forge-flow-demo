@@ -696,7 +696,7 @@ class _TrainingHero extends StatelessWidget {
   final int sectionIndex;
   final int sectionCount;
 
-  /// Non-null only on the glossary manuals: renders the compact
+  /// Non-null only on the glossary manuals: renders the prominent
   /// "Review as flashcards" chip on the eyebrow row.
   final VoidCallback? onFlashcardsTap;
 
@@ -801,10 +801,16 @@ class _TrainingHero extends StatelessWidget {
   }
 }
 
-/// Compact "Review as flashcards" chip on the hero eyebrow row
-/// (glossary manuals only). Same quiet pill idiom (and brevity) as the
-/// home shelf's REVIEW pills, in the hero's own mono/accent styling;
-/// the full "Review as flashcards" name rides the semantics label.
+/// Prominent "Review as flashcards" chip on the hero eyebrow row
+/// (glossary manuals only). Bumped up from the old quiet outline pill
+/// (2026-07-26 operator request "flash cards button bigger and more
+/// prominent in places where it exists"): a solid accent fill with a
+/// soft accent glow, dark high-contrast text, and a larger tap target,
+/// so the picture-first review mode clearly invites a tap. The visible
+/// word stays 'FLASHCARDS'; the full "Review as flashcards" name rides
+/// the semantics label. Kept overflow-safe: the eyebrow's section
+/// counter is Flexible and ellipsizes, so the wider chip never wraps or
+/// overflows the hero row.
 class _FlashcardsChip extends StatelessWidget {
   final Color accent;
   final VoidCallback onTap;
@@ -821,24 +827,34 @@ class _FlashcardsChip extends StatelessWidget {
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
           decoration: BoxDecoration(
-            color: accent.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(11),
-            border: Border.all(color: accent.withValues(alpha: 0.45)),
+            color: accent,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: accent.withValues(alpha: 0.35),
+                blurRadius: 12,
+                spreadRadius: 0,
+              ),
+            ],
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.style_rounded, size: 11, color: accent),
-              const SizedBox(width: 4),
+              const Icon(
+                Icons.style_rounded,
+                size: 16,
+                color: BarrioColors.shellDeep,
+              ),
+              const SizedBox(width: 6),
               Text(
                 'FLASHCARDS',
                 style: GoogleFonts.ibmPlexMono(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.1,
-                  color: accent,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.0,
+                  color: BarrioColors.shellDeep,
                 ),
               ),
             ],
