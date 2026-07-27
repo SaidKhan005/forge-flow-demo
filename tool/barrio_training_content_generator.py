@@ -15,10 +15,25 @@ words: each becomes a HandbookUnitImage on its unit with `afterParagraph` =
 the 0-based index of the blank-line-separated paragraph of the emitted unit
 body after which the image sits (-1 = before the first paragraph).
 """
-import re, os, textwrap
+import json, re, os, textwrap
 
 KG = 'docs/Knowledge_graph_docs'
 OUT = 'lib/internal/barrio/content/training'
+
+# Hand-authored pictograms/diagrams, keyed by the FINAL (post-split) unit
+# id (`<doc_id>_c<chapter>_u<unit>`). These are not embedded in any source
+# PDF/PPTX, so they ride a manifest instead of the image extractor. Each
+# value is a list of {assetPath, caption, afterParagraph}; the generator
+# appends them to that unit's images exactly like extracted photos, so the
+# body text stays byte-identical (verbatim check still passes). See
+# docs plan / CLAUDE.md operator sign-off 2026-07-26.
+_DIAGRAM_MANIFEST_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    'barrio_training_diagrams_manifest.json')
+DIAGRAM_IMAGES = {}
+if os.path.exists(_DIAGRAM_MANIFEST_PATH):
+    with open(_DIAGRAM_MANIFEST_PATH, encoding='utf-8') as _mf:
+        DIAGRAM_IMAGES = json.load(_mf)
 
 DOCS = [
     dict(md='Barrio Building A Strong Foundation.md', id='training_strong_foundation',
@@ -375,6 +390,13 @@ def emit(doc, chapters):
                 u_images = []
             if isinstance(u_body, list):
                 u_body, u_images = body_and_images(u_body)
+            # Append any hand-authored diagrams for this exact card.
+            unit_id = f"{doc['id']}_c{ci}_u{ui}"
+            if unit_id in DIAGRAM_IMAGES:
+                u_images = list(u_images) + [
+                    (e['assetPath'], e.get('caption'), e['afterParagraph'])
+                    for e in DIAGRAM_IMAGES[unit_id]
+                ]
             badge = {'prose': 'READ', 'glossary': 'TERM', 'slides': 'SLIDE'}[doc['kind']]
             a('        HandbookUnit(')
             a(f"          id: '{doc['id']}_c{ci}_u{ui}',")
