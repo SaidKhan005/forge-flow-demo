@@ -435,6 +435,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '\n'
               '- Transparency: Open communication with integrity and '
               'authenticity that strengthen trust.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c6_u0.webp',
+              caption: 'Diagram: Core Values',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -559,6 +566,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'we kindly request that you provide us with one week notice to '
               'ensure a smooth transition and allow us to fill your role '
               'effectively.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c7_u4.webp',
+              caption: 'Diagram: PROBATIONARY PERIOD',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c7_u5',
@@ -662,6 +676,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'their hours worked against their timesheets and pay. If you '
               'notice any discrepancies or have questions regarding your '
               'hours, please do not hesitate to reach out to your manager.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c8_u0.webp',
+              caption: 'Diagram: CLOCKING IN/OUT',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c8_u1',
@@ -715,6 +736,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'request process or if you need assistance with any specific '
               'situation, please do not hesitate to reach out to your '
               'Manager.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c8_u3.webp',
+              caption: 'Diagram: TIME OFF REQUESTS AND VACATION TIME',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c8_u4',
@@ -752,6 +780,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'arrangements. For this situation, we appreciate your '
               'cooperation in communicating directly rather than leaving a '
               'voicemail, email, or text message.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c8_u5.webp',
+              caption: 'Diagram: CALLING IN SICK',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c8_u6',
@@ -817,6 +852,11 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/08.webp',
               afterParagraph: 0,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c8_u8.webp',
+              caption: 'Diagram: STATUTORY HOLIDAYS',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -881,6 +921,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
           title: 'PAY PERIOD',
           body: 'All employees will receive their pay via direct deposit every '
               'Thursday.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c9_u0.webp',
+              caption: 'Diagram: PAY PERIOD',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c9_u1',
@@ -905,6 +952,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'that if employees choose to switch shifts, overtime pay will '
               'not be applicable for any hours worked in excess of 40 as a '
               'result of these changes.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c9_u2.webp',
+              caption: 'Diagram: OVERTIME',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c9_u3',
@@ -919,6 +973,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'wage overtime rate, whichever is appropriate. If an employee '
               'is scheduled for 2 hours, an employee must be paid for 2 '
               'hours, in accordance with the Labour Standards Act.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c9_u3.webp',
+              caption: 'Diagram: MINIMUM HOURS WORKED',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c9_u4',
@@ -932,6 +993,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'in addition to the breaks required during the workday. Due to '
               'the nature of the business, employees may be required to work '
               'more than 8 hours in a day but never in excess of 12 hours.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c9_u4.webp',
+              caption: 'Diagram: EXCESS HOURS OF WORK',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c9_u5',
@@ -946,6 +1014,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'clock out and ensure your uniform is covered. Staff are not '
               'permitted to order food within the first 3 hours of their '
               'shift and staff must be on break to consume a meal.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c9_u5.webp',
+              caption: 'Diagram: BREAKS',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c9_u6',
@@ -956,6 +1031,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '50% to be consumed during their break period. Staff joining us '
               'on their day off will receive 20% off food for themselves and '
               'a guest.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c9_u6.webp',
+              caption: 'Diagram: STAFF DISCOUNTS',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c9_u7',
@@ -975,6 +1057,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'based on the number of hours they worked. Server Tipout = 4% '
               'Net Sales To The House and 2% Net Sales To The Bar Bartender '
               'Tipout = 4% Net Sales To The House',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c9_u7.webp',
+              caption: 'Diagram: TIPS, GRATUITY, AND TIPOUT',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -1020,6 +1109,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'building. We also request that you dispose of cigarette butts '
               'responsibly, avoiding littering near our premises, entrances, '
               'or in the parking lot.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c10_u1.webp',
+              caption: 'Diagram: SMOKING',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c10_u2',
@@ -1048,6 +1144,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'disciplinary action, as it is crucial for us to uphold the '
               'standards we set for both ourselves and the experience we '
               'offer to our valued guests.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c10_u2.webp',
+              caption: 'Diagram: CELL PHONES',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c10_u3',
@@ -1072,6 +1175,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'distractions such as audio devices, we can create a safer '
               'environment where all staff members can respond promptly to '
               'critical situations.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c10_u3.webp',
+              caption: 'Diagram: EARPHONES/HEADPHONES',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c10_u4',
@@ -1134,6 +1244,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'before being taken from the bar or kitchen. Please note that '
               'food and drinks will only be prepared once an item has been '
               'recorded and the corresponding chit has been printed.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c10_u7.webp',
+              caption: 'Diagram: RINGING IN PRODUCT',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c10_u8',
@@ -1165,6 +1282,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'AM to 3 AM Thursday through Sunday. Furthermore, in compliance '
               'with legal guidelines, we prohibit the sale or “lending” of '
               'alcoholic beverages for off-premises consumption after hours.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c10_u8.webp',
+              caption: 'Diagram: ALCOHOL SERVICE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c10_u9',
@@ -1455,6 +1579,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'apron, non-slip fully-enclosed shoes. Dishwasher - Barrio '
               'Legado issued dishwasher shirt, jeans or chef pants, Barrio '
               'Legado issued apron, non-slip fully-enclosed shoes.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c12_u1.webp',
+              caption: 'Diagram: UNIFORM/DRESS CODE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c12_u2',
@@ -1716,6 +1847,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'share their perspective. This interaction not only clarifies '
               'expectations moving forward but also ensures that the employee '
               'understands the necessity of adhering to company standards.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c14_u2.webp',
+              caption: 'Diagram: DISCIPLINARY PROCEDURE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c14_u3',
@@ -1776,6 +1914,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'pay. Employees who reject reasonable alternative employment '
               'offers or have engaged in willful misconduct or neglect of '
               'duty may not be eligible for these benefits.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c14_u4.webp',
+              caption: 'Diagram: TERMINATION',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c14_u5',
@@ -1977,6 +2122,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '\n'
               '- Refuse: You have the right to refuse work that you believe '
               'to be dangerous to yourself and others.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c16_u0.webp',
+              caption: 'Diagram: Basic Rights of Workers in Canada',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c16_u1',
@@ -2006,6 +2158,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'unresolved work refusal to OHS Division for investigation and '
               'resolution. When the report is made orally, it must be '
               'followed up in writing within five',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c16_u1.webp',
+              caption: 'Diagram: RIGHT TO REFUSE UNSAFE WORK',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c16_u2',
@@ -2069,6 +2228,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'with at least half of these members representing the workers, '
               'thereby ensuring that the voices of those directly affected by '
               'workplace conditions are heard and considered.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c16_u4.webp',
+              caption: 'Diagram: OCCUPATIONAL HEALTH AND SAFETY COMMITTEE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c16_u5',
@@ -2123,6 +2289,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'can physically complete the form and provide to the manager or '
               'supervisor to submit. Once all forms are submitted, an Intake '
               'Adjudicator will review the claim.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c16_u6.webp',
+              caption: 'Diagram: REPORTING AN INJURY AT WORK',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c16_u7',
@@ -2424,6 +2597,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '\n'
               '1. Turn off all equipment, make effort to secure valuable '
               'and/or confidential information if possible, however,',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c16_u19.webp',
+              caption: 'Diagram: IN CASE OF FIRE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c16_u20',
@@ -2509,6 +2689,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '\n'
               '4. SWEEP the nozzle from side to side until the fire is '
               'completely out',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c16_u24.webp',
+              caption: 'Diagram: PORTABLE FIRE EXTINGUISHERS',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c16_u25',
@@ -2625,6 +2812,11 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/12.webp',
               afterParagraph: 0,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c16_u30.webp',
+              caption: 'Diagram: FOOD SAFETY (cont.)',
+              afterParagraph: -1,
+            ),
           ],
         ),
       ],
@@ -2657,6 +2849,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '8. Torn clothes should be repaired or replaced.\n'
               '\n'
               '9. Close toe shoes.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c17_u0.webp',
+              caption: 'Diagram: Good Practices',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c17_u1',
@@ -2680,6 +2879,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '8. Torn clothes.\n'
               '\n'
               '9. Open toe shoes.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c17_u1.webp',
+              caption: 'Diagram: Poor Practices',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -2757,6 +2963,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'consists of one paid day leave and two unpaid days leave. If '
               'an employee is employed for less than 30 days, the employee is '
               'entitled to two days off of unpaid leave.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c18_u3.webp',
+              caption: 'Diagram: BEREAVEMENT LEAVE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c18_u4',
@@ -3182,6 +3395,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '\n'
               'incident. If you require assistance completing the form, '
               'please seek the assistance of your manager.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c19_u8.webp',
+              caption: 'Diagram: COMPLAINT PROCEDURE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c19_u9',
@@ -3708,6 +3928,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'describe measures to be taken to minimize or prevent adverse '
               'effects resulting from exposure to a hazardous product or '
               'resulting from improper handling or storage',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c22_u3.webp',
+              caption: 'Diagram: SUPPLIER LABEL REQUIREMENTS',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c22_u4',
@@ -3817,6 +4044,11 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/16.webp',
               afterParagraph: 0,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c22_u8.webp',
+              caption: 'Diagram: SIGNAL WORD',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -4049,6 +4281,11 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/17.webp',
               afterParagraph: 0,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c23_u5.webp',
+              caption: 'Diagram: Pictograms',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -4117,6 +4354,13 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'contaminated directly. For this reason, workers should not '
               'drink, eat, or smoke in areas where they may be exposed to '
               'chemicals.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c23_u7.webp',
+              caption: 'Diagram: HOW CHEMICALS ENTER THE BODY',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c23_u8',

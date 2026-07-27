@@ -179,10 +179,16 @@ flutter:
     # Training content pictures (asset dirs are not recursive; one entry
     # per doc_id folder written by tool/barrio_training_image_extractor.py).
     - assets/internal/barrio/training/barrio_company_handbook/
+    # Hand-authored pictograms/diagrams (operator-approved 2026-07-26),
+    # wired via tool/barrio_training_diagrams_manifest.json. Kept in a
+    # separate folder so the photo extractor's per-doc clear never wipes
+    # them.
+    - assets/internal/barrio/training/barrio_company_handbook_diagrams/
     - assets/internal/barrio/training/barrio_interview_playbook/
     - assets/internal/barrio/training/barrio_legado_menu_concept_slides/
     - assets/internal/barrio/training/coffee_training/
     - assets/internal/barrio/training/food_safety_manual/
+    - assets/internal/barrio/training/food_safety_manual_diagrams/
     - assets/internal/barrio/training/labour_cost_understanding_the_levers/
     - assets/internal/barrio/training/latin_american_dishes/
     - assets/internal/barrio/training/latin_american_ingredients/

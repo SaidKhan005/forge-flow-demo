@@ -1382,6 +1382,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'Perishable items should never be left out of refrigeration for '
               'longer than two hours; after that, the risk of bacterial '
               'growth increases significantly.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c9_u0.webp',
+              caption: 'Diagram: Temperature Danger Zone',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c9_u1',
@@ -1467,6 +1474,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               '0 degrees C - 4 degrees C | Refrigeration temperature.\n'
               '\n'
               '0 degrees C - -18 degrees C | Freezing temperature.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c10_u0.webp',
+              caption: 'Diagram: Temperature Danger Zone Reference',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -1535,6 +1549,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'safety.\n'
               '\n'
               '- Keep all cooled foods in the refrigerator or freezer.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c11_u2.webp',
+              caption: 'Diagram: Two Step Cooling Method',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c11_u3',
@@ -1560,6 +1581,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'any food that has been left at room temperature for more than '
               'two hours. By adhering to these guidelines, you can enjoy your '
               'leftovers safely and deliciously.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c11_u3.webp',
+              caption: 'Diagram: Safe Reheating Practices',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c11_u4',
@@ -1651,6 +1679,11 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               assetPath: 'assets/internal/barrio/training/food_safety_manual/07.webp',
               afterParagraph: 3,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c12_u1.webp',
+              caption: 'Diagram: Four Steps For Creating An Ice Bath',
+              afterParagraph: -1,
+            ),
           ],
         ),
       ],
@@ -1723,6 +1756,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'the delivery date for easy tracking. Following these '
               'guidelines will help ensure your dry goods remain safe, fresh, '
               'and enjoyable for as long as possible.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c14_u0.webp',
+              caption: 'Diagram: Dry Storage',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c14_u1',
@@ -1749,6 +1789,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'Second Shelf: 135 degrees F (57 degrees C). This category '
               'includes foods that will be hot-held that are not included in '
               'other categories.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c14_u1.webp',
+              caption: 'Diagram: Refrigerator Storage',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c14_u2',
@@ -1828,6 +1875,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'are placed at the front, FIFO not only enhances the culinary '
               'experience but also safeguards public health by reducing the '
               'risk of foodborne illnesses.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c15_u0.webp',
+              caption: 'Diagram: FIFO',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c15_u1',
@@ -1998,6 +2052,11 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/food_safety_manual/11.webp',
               afterParagraph: 4,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c17_u1.webp',
+              caption: 'Diagram: Five Step Process For Cleaning And Sanitation',
+              afterParagraph: -1,
             ),
           ],
         ),
