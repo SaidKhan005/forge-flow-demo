@@ -3,11 +3,12 @@
 // shelf bodyOverride slot, route-map threading, and the
 // TrainingDocScreen deep link).
 //
-// All at a 390x844 phone viewport. The home screen runs looping
-// ambient motion (falling leaves, scrim breathing, center-bubble arc):
-// NEVER pumpAndSettle in this suite; pump explicit durations only.
-// Debounce is ~200ms, so every enterText is followed by a >=250ms pump
-// (no pending timers leak past a test).
+// All at a 390x844 phone viewport. The home screen is calm now (the
+// center bubble's glow pulse + arcs were removed 2026-07-27, along with
+// the earlier falling leaves + breathing scrim), so only the one-shot
+// entrance animates: this suite still pumps explicit durations, never
+// pumpAndSettle. Debounce is ~200ms, so every enterText is followed by
+// a >=250ms pump (no pending timers leak past a test).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
