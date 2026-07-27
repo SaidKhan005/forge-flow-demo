@@ -200,7 +200,13 @@ void main() {
     });
   });
 
-  group('home chip', () {
+  // The streak chip was removed from the home header (operator request,
+  // 2026-07-26: 'get rid of the streak icon at the top'). Streak
+  // tracking itself is unchanged: the service and activity-wiring
+  // groups above still pass with the same persisted keys. These tests
+  // pin the home header so the chip stays gone regardless of the
+  // persisted count.
+  group('home header (streak chip removed)', () {
     Future<void> pumpHome(WidgetTester tester) async {
       tester.view.physicalSize = phoneSize;
       tester.view.devicePixelRatio = 1.0;
@@ -210,7 +216,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
-    testWidgets('renders the real persisted count', (tester) async {
+    testWidgets('shows no streak chip even with a real persisted count',
+        (tester) async {
       final today = DateTime.now();
       SharedPreferences.setMockInitialValues({
         BarrioStreakService.keyLastActivity: _keyOf(today),
@@ -218,19 +225,13 @@ void main() {
       });
       await pumpHome(tester);
 
-      expect(find.byType(BarrioStreakChip), findsOneWidget);
-      expect(
-        find.descendant(
-            of: find.byType(BarrioStreakChip), matching: find.text('3')),
-        findsOneWidget,
-        reason: 'the chip shows the real persisted streak count',
-      );
-      expect(find.text('day off covered'), findsNothing,
-          reason: 'no covered-day label on a clean run');
+      expect(find.byType(BarrioStreakChip), findsNothing,
+          reason: 'the streak chip was removed from the home header');
+      expect(find.text('day off covered'), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('labels a pass-covered day honestly', (tester) async {
+    testWidgets('shows no streak chip on a pass-covered day', (tester) async {
       final today = DateTime.now();
       SharedPreferences.setMockInitialValues({
         BarrioStreakService.keyLastActivity: _keyOf(today),
@@ -239,13 +240,12 @@ void main() {
       });
       await pumpHome(tester);
 
-      expect(find.text('day off covered'), findsOneWidget,
-          reason: 'a streak surviving on a pass must say so');
+      expect(find.byType(BarrioStreakChip), findsNothing);
+      expect(find.text('day off covered'), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('renders nothing at count 0 (no phantom zero streak)',
-        (tester) async {
+    testWidgets('shows no streak chip at count 0', (tester) async {
       SharedPreferences.setMockInitialValues({});
       await pumpHome(tester);
 

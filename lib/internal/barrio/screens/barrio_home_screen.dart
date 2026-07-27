@@ -15,7 +15,6 @@ import '../services/barrio_bookmarks_service.dart';
 import '../services/barrio_reading_progress_service.dart';
 import '../services/barrio_refresher_scheduler.dart';
 import '../widgets/barrio_destination_scaffold.dart';
-import '../widgets/barrio_streak_tracker.dart';
 import '../widgets/barrio_text_size_sheet.dart';
 import '../widgets/home/barrio_home_search.dart';
 import '../widgets/home/barrio_home_shelf.dart';
@@ -88,11 +87,6 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
   // section. Reloaded on the same cadence as the reading memory.
   List<BarrioBookmark> _bookmarks = const <BarrioBookmark>[];
 
-  // Honest streak (rec #10, 2026-07-23): drives the quiet chip under
-  // the brand header. Null or count 0 renders no chip (no phantom
-  // zero-day streak).
-  StreakInfo? _streakInfo;
-
   // Spaced refresher (rec #11): the refresh-due manuals, longest
   // overdue first, derived from real recorded timestamps with
   // DateTime.now() read exactly once per reload (no timers, no
@@ -131,10 +125,10 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
     }
   }
 
-  /// Loads the local reading memory, saved cards, and streak snapshot
-  /// off the preferences store. Fire and forget: every service
-  /// degrades to an empty snapshot when the store is unavailable, and
-  /// the mounted guards cover late arrival.
+  /// Loads the local reading memory and saved cards off the
+  /// preferences store. Fire and forget: every service degrades to an
+  /// empty snapshot when the store is unavailable, and the mounted
+  /// guards cover late arrival.
   void _reloadReadingProgress() {
     BarrioReadingProgressService.loadSnapshot(kBarrioTrainingDocs.keys)
         .then((snapshot) {
@@ -142,9 +136,6 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
     });
     BarrioBookmarksService.getAll().then((bookmarks) {
       if (mounted) setState(() => _bookmarks = bookmarks);
-    });
-    BarrioStreakService.getStreak().then((info) {
-      if (mounted) setState(() => _streakInfo = info);
     });
     BarrioReadingProgressService.loadRefresherStates(kBarrioTrainingDocs.keys)
         .then((states) {
@@ -366,10 +357,8 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
     );
   }
 
-  /// The widgets above the shelf body: brand header, the honest streak
-  /// chip (rec #10; renders nothing at count 0, so fresh installs see
-  /// no change), the glass training search, and the flag-gated El
-  /// Podio pill.
+  /// The widgets above the shelf body: brand header, the glass training
+  /// search, and the flag-gated El Podio pill.
   List<Widget> _shelfLeading(BuildContext innerCtx, BarrioPreviewRole role) {
     return [
       RepaintBoundary(
@@ -379,15 +368,6 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
           onTextSizeTap: _openTextSizeSheet,
         ),
       ),
-      if (_streakInfo != null && _streakInfo!.count > 0)
-        RepaintBoundary(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: Center(
-              child: BarrioStreakChip(info: _streakInfo),
-            ),
-          ),
-        ),
       // Wave B: glass training search under the brand header,
       // above the Forge & Flow center bubble.
       RepaintBoundary(
