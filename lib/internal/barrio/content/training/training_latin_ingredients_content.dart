@@ -549,7 +549,7 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c2_u5.webp',
-              caption: 'Photo: Artemisa Martinez, CC0, via Wikimedia Commons',
+              caption: 'Photo: Shixart1985, CC BY 2.0, via Wikimedia Commons',
               afterParagraph: -1,
             ),
           ],
@@ -585,9 +585,9 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'managing diabetes, high cholesterol, and obesity.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/31.webp',
-              caption: 'Photo: Andrea Mayerly Niño Hernández, CC BY-SA 4.0, via Wikimedia Commons',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c2_u7.webp',
+              caption: 'Photo: Pilyorlo, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -722,9 +722,9 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'refreshing balance without melting or becoming gooey.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/39.webp',
-              caption: 'Photo: GraceMarcellaNorman, CC BY 2.0, via Flickr',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c3_u3.webp',
+              caption: 'Photo: Geoff, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),

@@ -503,13 +503,22 @@ def emit(doc, chapters, part_of=None):
                 u_images = []
             if isinstance(u_body, list):
                 u_body, u_images = body_and_images(u_body)
-            # Append any hand-authored diagrams for this exact card.
+            # Inject hand-authored diagrams for this exact card. Default is to
+            # APPEND the manifest image(s) after the unit's extracted images.
+            # If ANY manifest entry for this unit sets "replace": true, the
+            # manifest image(s) REPLACE the extracted image(s) entirely (the
+            # extractor's photos for this unit are dropped) — used to swap out
+            # an inaccurate/off-brand extracted photo with an accurate one.
             unit_id = f"{doc['id']}_c{ci}_u{ui}"
             if unit_id in DIAGRAM_IMAGES:
-                u_images = list(u_images) + [
+                manifest_images = [
                     (e['assetPath'], e.get('caption'), e['afterParagraph'])
                     for e in DIAGRAM_IMAGES[unit_id]
                 ]
+                if any(e.get('replace') for e in DIAGRAM_IMAGES[unit_id]):
+                    u_images = manifest_images
+                else:
+                    u_images = list(u_images) + manifest_images
             badge = {'prose': 'READ', 'glossary': 'TERM', 'slides': 'SLIDE'}[doc['kind']]
             a('        HandbookUnit(')
             a(f"          id: '{doc['id']}_c{ci}_u{ui}',")
