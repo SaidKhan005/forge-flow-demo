@@ -126,6 +126,18 @@ SOURCES = [
     dict(src='Push Employee SOP.pdf',
          doc_id='push_employee_sop',
          md='Push Employee SOP.md'),
+    # Manual-drop slice (2026-07-28): host, bar, and combined drink-spec
+    # training manuals from operator PDFs. The drink-spec source is the
+    # merge of Barrio Drink Specs (2).pdf + (3).pdf (see the doc frontmatter).
+    dict(src='Barrio host manual.pdf',
+         doc_id='host_manual',
+         md='Barrio Host Manual.md'),
+    dict(src='bar manual.pdf',
+         doc_id='bar_manual',
+         md='Bar Manual.md'),
+    dict(src='Barrio Drink Specs Combined.pdf',
+         doc_id='drink_specs',
+         md='Barrio Drink Specs.md'),
 ]
 
 

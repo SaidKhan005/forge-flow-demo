@@ -230,6 +230,13 @@ Widget _iconWidgetFor(
       return Icon(Icons.point_of_sale, size: size, color: color);
     case 'training_push_sop':
       return Icon(Icons.calendar_month, size: size, color: color);
+    // Manual-drop bubbles (2026-07-28 operator manuals)
+    case 'training_host_manual':
+      return Icon(Icons.support_agent, size: size, color: color);
+    case 'training_bar_manual':
+      return Icon(Icons.local_bar, size: size, color: color);
+    case 'training_drink_specs':
+      return Icon(Icons.wine_bar, size: size, color: color);
     default:
       return Icon(Icons.circle_outlined, size: size, color: color);
   }

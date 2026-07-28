@@ -74,6 +74,9 @@ PAIRS = [
     ('training_general_words', 'GENERAL WORDS TO KNOW.md'),
     ('training_clover_sop', 'Clover SOP.md'),
     ('training_push_sop', 'Push Employee SOP.md'),
+    ('training_host_manual', 'Barrio Host Manual.md'),
+    ('training_bar_manual', 'Bar Manual.md'),
+    ('training_drink_specs', 'Barrio Drink Specs.md'),
 ]
 
 for doc_id, md_name in PAIRS:

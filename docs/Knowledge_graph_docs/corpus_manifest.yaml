@@ -670,3 +670,93 @@ documents:
     heading_count: 31
     line_count: 274
     sha256: "a5b472db31fb0f4deb003673c3251469f2194566826dbe71d1330286f780fe81"
+
+  - doc_id: "host_manual"
+    file_name: "Barrio Host Manual.md"
+    source_path: "docs/Knowledge_graph_docs/Barrio Host Manual.md"
+    title: "Host Manual"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "hospitality_training"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "low"
+    audience:
+      - "staff"
+      - "managers"
+      - "founder_ops"
+    chunk_profile: "heading_aware_training_narrative"
+    graph_profiles:
+      - "Concept"
+      - "Procedure"
+    tags:
+      - "host"
+      - "hospitality"
+      - "service"
+      - "training"
+    word_count_estimate: 4528
+    heading_count: 39
+    line_count: 250
+    sha256: "7e765e9aa259653f4bd3157c224481d56492f169055b9024ad7a8d23c3d372ec"
+
+  - doc_id: "bar_manual"
+    file_name: "Bar Manual.md"
+    source_path: "docs/Knowledge_graph_docs/Bar Manual.md"
+    title: "Bar Manual"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "beverage_service_training"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "low"
+    audience:
+      - "staff"
+      - "managers"
+      - "founder_ops"
+    chunk_profile: "heading_aware_training_narrative"
+    graph_profiles:
+      - "Concept"
+      - "Term"
+      - "Procedure"
+    tags:
+      - "bar"
+      - "bartending"
+      - "beverage"
+      - "service"
+      - "training"
+    word_count_estimate: 10472
+    heading_count: 86
+    line_count: 574
+    sha256: "be90495f13e25fb89ae8a2d2e6ae6cec4b87d22fa2aa98ea3add262d78008992"
+
+  - doc_id: "drink_specs"
+    file_name: "Barrio Drink Specs.md"
+    source_path: "docs/Knowledge_graph_docs/Barrio Drink Specs.md"
+    title: "Drink Specs"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "beverage_training"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "low"
+    audience:
+      - "staff"
+      - "managers"
+      - "founder_ops"
+    chunk_profile: "heading_aware_training_narrative"
+    graph_profiles:
+      - "Concept"
+      - "Procedure"
+    tags:
+      - "cocktails"
+      - "drink_specs"
+      - "recipes"
+      - "beverage"
+      - "training"
+    word_count_estimate: 1362
+    heading_count: 17
+    line_count: 369
+    sha256: "7d3edc5f7ac1be77456c69bd4dae7fa58922f6ff0c13de64a0ede1638b6253ef"

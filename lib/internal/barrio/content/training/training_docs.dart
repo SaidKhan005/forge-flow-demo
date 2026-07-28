@@ -10,12 +10,15 @@ import 'barrio_training_doc.dart';
 import 'company_handbook_verbatim_content.dart';
 import 'interview_playbook_verbatim_content.dart';
 import 'jim_taylor_verbatim_content.dart';
+import 'training_bar_manual_content.dart';
 import 'training_bold_by_design_content.dart';
 import 'training_cheers_responsibility_content.dart';
 import 'training_clover_sop_content.dart';
 import 'training_coffee_content.dart';
+import 'training_drink_specs_content.dart';
 import 'training_food_safety_content.dart';
 import 'training_general_words_content.dart';
+import 'training_host_manual_content.dart';
 import 'training_labour_cost_content.dart';
 import 'training_latin_dishes_content.dart';
 import 'training_latin_ingredients_content.dart';
@@ -59,6 +62,10 @@ const Map<String, BarrioTrainingDoc> kBarrioTrainingDocs = {
   // SOP training manuals (Scribe-format point-of-sale + scheduling docs).
   'training_clover_sop': kTrainingCloverSop,
   'training_push_sop': kTrainingPushSop,
+  // Manual-drop slice (2026-07-28): host, bar, and drink-spec manuals.
+  'training_host_manual': kTrainingHostManual,
+  'training_bar_manual': kTrainingBarManual,
+  'training_drink_specs': kTrainingDrinkSpecs,
 };
 
 /// Per-destination accent bloom color (same convention as the
@@ -86,4 +93,8 @@ const Map<String, Color> kBarrioTrainingAccents = {
   // SOP training manuals (Scribe-format point-of-sale + scheduling docs).
   'training_clover_sop': BarrioColors.accentSteel, // steel blue
   'training_push_sop': BarrioColors.accentSeafoam,
+  // Manual-drop slice (2026-07-28): host, bar, and drink-spec manuals.
+  'training_host_manual': BarrioColors.accentPlum, // plum
+  'training_bar_manual': BarrioColors.gold, // gold
+  'training_drink_specs': BarrioColors.accentHerb, // herb green
 };

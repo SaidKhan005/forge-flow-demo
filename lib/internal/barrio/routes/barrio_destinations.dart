@@ -461,4 +461,55 @@ const List<BarrioDestination> barrioDestinations = [
     showOnHomeHub: true,
     iconCodePoint: 0xf06bb, // Icons.calendar_month
   ),
+
+  // -- Manual-drop bubbles (2026-07-28 operator manuals) -------------------
+  // Verbatim host, bar, and drink-spec training manuals rendered by
+  // TrainingDocScreen like the other training bubbles.
+  BarrioDestination(
+    id: 'training_host_manual',
+    label: 'Host',
+    description:
+        'Host Manual: greeting, seating, reservations, and guest experience.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    category: BarrioCategory.serviceHospitality,
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+    iconCodePoint: 0xe621, // Icons.support_agent
+  ),
+  BarrioDestination(
+    id: 'training_bar_manual',
+    label: 'Bar',
+    description:
+        'Bar Manual: bar protocols, drink preparation, and responsible service.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    category: BarrioCategory.foodAndDrink,
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+    iconCodePoint: 0xe38c, // Icons.local_bar
+  ),
+  BarrioDestination(
+    id: 'training_drink_specs',
+    label: 'Drink Specs',
+    description: 'Drink Specs: recipes, specs, and directions for our cocktails.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    category: BarrioCategory.foodAndDrink,
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+    iconCodePoint: 0xe6f1, // Icons.wine_bar
+  ),
 ];
