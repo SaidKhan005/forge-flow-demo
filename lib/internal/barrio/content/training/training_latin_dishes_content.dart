@@ -34,9 +34,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'tortilla chips, or crackers.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/01.webp',
-              caption: 'Photo: Pequeño mar, CC BY-SA 4.0, via Wikimedia Commons',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c0_u0.webp',
+              caption: 'Photo: El Nuevo Doge, CC0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -72,9 +72,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'an iconic comfort food across South America.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/03.webp',
-              caption: 'Photo: Aylin Oporto, CC BY-SA 4.0, via Wikimedia Commons',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c0_u2.webp',
+              caption: 'Photo: Anina2007, CC BY-SA 2.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -92,9 +92,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'spit-grilling lamb to Mexico.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/04.webp',
-              caption: 'Photo: T.Tseng, CC BY 2.0, via Wikimedia Commons',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c0_u3.webp',
+              caption: 'Photo: Popo le Chien, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -111,9 +111,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'meat.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/05.webp',
-              caption: 'Photo: Andreji, CC BY-SA 3.0, via Wikimedia Commons',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c0_u4.webp',
+              caption: 'Photo: Mitdralla, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -130,9 +130,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'flavors while typically using hearty chicken thighs or legs.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/06.webp',
-              caption: 'Photo: Jdvillalobos, CC BY 3.0, via Wikimedia Commons',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c0_u5.webp',
+              caption: 'Photo: MiguelAlanCS, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -150,9 +150,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'essence of the meat.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/07.webp',
-              caption: 'Photo: B.jars, CC BY-SA 4.0, via Wikimedia Commons',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c0_u6.webp',
+              caption: 'Photo: Janeefun, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -357,9 +357,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'topped with chimichurri sauce or salsa criolla.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/16.webp',
-              caption: 'Photo: David, CC BY 2.0',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c1_u3.webp',
+              caption: 'Photo: SimpleFoodie, Public domain, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -372,8 +372,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'Argentina, and Peru.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/17.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c1_u4.webp',
+              caption: 'Photo: Dtarazona, Public domain, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -408,8 +409,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'for dipping.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/19.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c1_u6.webp',
+              caption: 'Photo: Jorge Castro Ruso, CC BY-SA 2.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -425,8 +427,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'for a quick treat on the go.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/20.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c1_u7.webp',
+              caption: 'Photo: Sintegrity, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -463,9 +466,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'filling cookies, cakes, and ice cream.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/22.webp',
-              caption: 'Photo: audinou, CC BY 2.0',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c1_u9.webp',
+              caption: 'Photo: Andy Li, CC0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -481,8 +484,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'BBQs and a cherished part of Mexican street food culture.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/23.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c1_u10.webp',
+              caption: 'Photo: SimpleFoodie, Public domain, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -543,9 +547,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
           runLength: 2,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/24.webp',
-              caption: 'Photo: Horacio Cambeiro, CC BY 4.0',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c1_u12.webp',
+              caption: 'Photo: Horacio Cambeiro, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -599,9 +603,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'guacamole, and salsa.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/27.webp',
-              caption: 'Photo: jeffreyw, CC BY 2.0, via Wikimedia Commons',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c2_u2.webp',
+              caption: 'Photo: Missvain, CC BY 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -618,9 +622,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'plantains, cheese, and warm tortillas.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/28.webp',
-              caption: 'Photo: Legendre17, CC BY 3.0, via Wikimedia Commons',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c2_u3.webp',
+              caption: 'Photo: C T Johansson, CC BY 3.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -636,9 +640,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'beans.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/29.webp',
-              caption: 'Photo: Nicholas Lundgaard, CC BY-SA 2.0, via Wikimedia Commons',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c2_u4.webp',
+              caption: 'Photo: Ix kimiaranda, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -654,8 +658,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'tortilla chips.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/30.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c2_u5.webp',
+              caption: 'Photo: Nikodem Nijaki, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -669,8 +674,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'scoops or refreshing, fruit-filled popsicles.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/31.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c2_u6.webp',
+              caption: 'Photo: Izak.50, CC BY 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -683,9 +689,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'described as having a cinnamon-rice flavor profile.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/32.webp',
-              caption: 'Photo: Sharon Hahn Darlin, CC BY 2.0, via Wikimedia Commons',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c2_u7.webp',
+              caption: 'Photo: Photocapy / Lobo, CC BY-SA 2.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -754,9 +760,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'by potatoes, or topped with ham and cheese.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/36.webp',
-              caption: 'Photo: Ben Tavener, CC BY 2.0, via Wikimedia Commons',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c2_u11.webp',
+              caption: 'Photo: Federico L., CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -798,8 +804,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'alongside rice and corn tortillas.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/38.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c3_u1.webp',
+              caption: 'Photo: Infrogmation of New Orleans, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -817,8 +824,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'meats.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/39.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c3_u2.webp',
+              caption: 'Photo: jeffreyw, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -834,9 +842,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'like shredded cabbage, radishes, lime, and avocado.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/40.webp',
-              caption: 'Photo: Meutia Chaerani / Indradi Soemardjan, CC BY 2.5',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c3_u3.webp',
+              caption: 'Photo: Ivette Degollado, CC0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -852,9 +860,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'chili flakes.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/41.webp',
-              caption: 'Photo: Horacio Cambeiro, CC BY 3.0, via Wikimedia Commons',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c3_u4.webp',
+              caption: 'Photo: Horacio Cambeiro, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -869,9 +877,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'or fresh squash, and is typically enjoyed by hand.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/42.webp',
-              caption: 'Photo: Roland Tanglao, CC BY 2.0, via Wikimedia Commons',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c3_u5.webp',
+              caption: 'Photo: Jess Lander, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -906,8 +914,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'features rum or coconut for an extra touch of flavor.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/44.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c3_u7.webp',
+              caption: 'Photo: MiguelAlanCS, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -923,8 +932,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'chips, tacos, meats, and even stews.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/45.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c3_u8.webp',
+              caption: 'Photo: goblinbox_(queen_of_ad_hoc_bento) from Minneapolis, MN, US, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -954,9 +964,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'broth.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/47.webp',
-              caption: 'Photo: Jdvillalobos, CC BY 3.0, via Wikimedia Commons',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c3_u10.webp',
+              caption: 'Photo: Rodolfo pimentel, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -1014,9 +1024,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'crispy exterior and a tender interior.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/50.webp',
-              caption: 'Photo: Sarah Stierch, CC BY 4.0',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c4_u1.webp',
+              caption: 'Photo: Missvain, CC BY 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -1031,9 +1041,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'husk or banana leaf and steamed to perfection.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/51.webp',
-              caption: 'Photo: Sharon Hahn Darlin, CC BY 2.0',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c4_u2.webp',
+              caption: 'Photo: AraVazquez, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -1048,8 +1058,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'baked for a crispy texture.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/52.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c4_u3.webp',
+              caption: 'Photo: Jon Sullivan, Public domain, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -1116,9 +1127,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'pressed.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/56.webp',
-              caption: 'Photo: Hungry Dudes, CC BY 2.0',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c4_u7.webp',
+              caption: 'Photo: Jose Nicdao, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),

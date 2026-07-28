@@ -339,9 +339,9 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'finished dishes.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/18.webp',
-              caption: 'Photo: Leslie Seaton, CC BY 2.0',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c1_u5.webp',
+              caption: 'Photo: Legado Mexicano, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -374,9 +374,9 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'petroleum or camphor.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/20.webp',
-              caption: 'Photo: Jonny Hunter, CC BY 2.0',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c1_u7.webp',
+              caption: 'Photo: Vegan Feast Catering, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -389,9 +389,9 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'often describes seasoned, stewed pinto or black beans.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/21.webp',
-              caption: 'Photo: Drywontonmee, CC BY 2.5',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c1_u8.webp',
+              caption: 'Photo: Drywontonmee at English Wikipedia, CC BY 2.5, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -444,9 +444,9 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'tarragon, lime, and cilantro.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/24.webp',
-              caption: 'Photo: Forest and Kim Starr, CC BY 3.0 US',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c1_u11.webp',
+              caption: 'Photo: Paul venter, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -470,8 +470,9 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'but the white flesh can be eaten raw or cooked.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/25.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c2_u0.webp',
+              caption: 'Photo: Eric in SF, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -516,9 +517,9 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
           body: 'a Spanish term for lard.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/28.webp',
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c2_u3.webp',
               caption: 'Photo: Peter G Werner, CC BY 2.5, via Wikimedia Commons',
-              afterParagraph: 0,
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -651,8 +652,9 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'sweeter flavor profile as they ripen from yellow to black.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/35.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c2_u11.webp',
+              caption: 'Photo: Vis M, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -677,8 +679,9 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'or brown as it reaches full ripeness.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/36.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c3_u0.webp',
+              caption: 'Photo: Jonathan Cutrer, CC0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -690,9 +693,9 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
           body: 'the Spanish word for chicken.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/37.webp',
-              caption: 'Photo: Nesnad, CC BY 4.0, via Wikimedia Commons',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c3_u1.webp',
+              caption: 'Photo: Jameswasswa, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -704,9 +707,9 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
           body: 'the Spanish word for octopus.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/38.webp',
-              caption: 'Photo: Thomas Quine, CC BY 2.0, via Wikimedia Commons',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c3_u2.webp',
+              caption: 'Photo: Daderot, CC0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -742,9 +745,9 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'flavor that enhances a wide range of dishes.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/40.webp',
-              caption: 'Photo: nerissa\'s ring, CC BY 2.0, via Flickr',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c3_u4.webp',
+              caption: 'Photo: Fumikas Sagisavas, CC0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -850,9 +853,9 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'spaghetti or linguine, most commonly used in Peruvian cuisine.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/46.webp',
-              caption: 'Photo: Jenn Durfey, CC BY 2.0, via Flickr',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c3_u10.webp',
+              caption: 'Photo: Valereee, CC0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -872,9 +875,9 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'profile.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/47.webp',
-              caption: 'Photo: Sonja Pauen, CC BY 2.0 DE, via Wikimedia Commons',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c3_u11.webp',
+              caption: 'Photo: Ivar Leidus, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -900,8 +903,9 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'boasting a higher thickening power than cornstarch.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/48.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c4_u0.webp',
+              caption: 'Photo: Sophie, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -978,8 +982,9 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'traditionally enjoyed through a metal straw.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/52.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c4_u4.webp',
+              caption: 'Photo: Siarhei Besarab, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -991,8 +996,9 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
           body: 'a starchy root vegetable native to South America. SEE CASSAVA.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/53.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c4_u5.webp',
+              caption: 'Photo: David Monniaux, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
