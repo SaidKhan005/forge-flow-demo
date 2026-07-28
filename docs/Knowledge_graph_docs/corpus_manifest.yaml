@@ -638,8 +638,8 @@ documents:
       - "training"
     word_count_estimate: 1938
     heading_count: 81
-    line_count: 493
-    sha256: "3c067ece82576e136f7fac61657e719ac8a8174399bbb8930edeb682087e7604"
+    line_count: 469
+    sha256: "d9da064c70801a1cc88ec3ce6fdc28fa5ec7136d5c14208b3a05f1815e3d31ed"
 
   - doc_id: "push_employee_sop"
     file_name: "Push Employee SOP.md"
@@ -666,7 +666,7 @@ documents:
       - "shifts"
       - "sop"
       - "training"
-    word_count_estimate: 1010
-    heading_count: 31
-    line_count: 274
-    sha256: "a5b472db31fb0f4deb003673c3251469f2194566826dbe71d1330286f780fe81"
+    word_count_estimate: 671
+    heading_count: 22
+    line_count: 119
+    sha256: "89f6d9d376ae0d28a08ff78a3b1ec7eb66ede32a1a9625c006f4643577dceb9d"

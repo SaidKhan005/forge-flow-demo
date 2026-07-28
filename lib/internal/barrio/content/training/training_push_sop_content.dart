@@ -42,12 +42,6 @@ const BarrioTrainingDoc kTrainingPushSop = BarrioTrainingDoc(
               '\n'
               'These are managerial notes for your shift. This can be station '
               'assignment e.g Fryer/Complete the cleaning list.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/01.webp',
-              afterParagraph: 6,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_push_sop_c0_u1',
@@ -63,8 +57,8 @@ const BarrioTrainingDoc kTrainingPushSop = BarrioTrainingDoc(
               'the staff area.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/02.webp',
-              afterParagraph: 2,
+              assetPath: 'assets/internal/barrio/training/push_employee_sop/01.webp',
+              afterParagraph: 0,
             ),
           ],
         ),
@@ -73,20 +67,22 @@ const BarrioTrainingDoc kTrainingPushSop = BarrioTrainingDoc(
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Daily Schedule',
-          body: 'From the side bar:\n'
-              '\n'
-              'Daily Schedule shows everyone that is scheduled for the day.\n'
-              '\n'
-              'You can use the search bar at the top to see if someone is '
-              'working that day and you can also adjust the day.',
+          body: 'From the side bar: Daily Schedule shows everyone that is '
+              'scheduled for the day. You can use the search bar at the top '
+              'to see if someone is working that day and you can also adjust '
+              'the day.',
           images: [
             HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/push_employee_sop/02.webp',
+              afterParagraph: 0,
+            ),
+            HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/push_employee_sop/03.webp',
-              afterParagraph: 2,
+              afterParagraph: 0,
             ),
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/push_employee_sop/04.webp',
-              afterParagraph: 2,
+              afterParagraph: 0,
             ),
           ],
         ),
@@ -109,14 +105,12 @@ const BarrioTrainingDoc kTrainingPushSop = BarrioTrainingDoc(
               'Start and end date can be set based on your discretion and '
               'agreement with your manager. If your availability varies '
               'weekly that can be set here weekly after discussing with your '
-              'manager.\n'
-              '\n'
-              'Alternatively you can set availability start and end date to '
-              'any custom date range.',
+              'manager. Alternatively you can set availability start and end '
+              'date to any custom date range.',
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/push_employee_sop/05.webp',
-              afterParagraph: 5,
+              afterParagraph: 4,
             ),
           ],
         ),
@@ -127,18 +121,14 @@ const BarrioTrainingDoc kTrainingPushSop = BarrioTrainingDoc(
           title: 'Availability: Custom Tab',
           body: 'This is to set an availability within your normal availability '
               'that will expire and default back to the original availability '
-              'that is set in weekly.\n'
-              '\n'
-              'Reasons can be Exam week but going back to regular '
-              'availability after.\n'
-              '\n'
-              'Note Custom takes precedence over weekly on the scheduling '
-              'side that the manager sees. So make sure you are communicating '
-              'with management on this.',
+              'that is set in weekly. Reasons can be Exam week but going back '
+              'to regular availability after. Note Custom takes precedence '
+              'over weekly on the scheduling side that the manager sees. So '
+              'make sure you are communicating with management on this.',
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/push_employee_sop/06.webp',
-              afterParagraph: 2,
+              afterParagraph: 0,
             ),
           ],
         ),
@@ -148,22 +138,19 @@ const BarrioTrainingDoc kTrainingPushSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Time Off',
           body: 'Time Off is used to send a request to management to not be '
-              'scheduled for a particular date or date range.\n'
-              '\n'
-              'This can be Vacation, exams, emergencies, illness etc.\n'
-              '\n'
-              'Time offs must be approved by management before taken.\n'
-              '\n'
-              'Note your availability defaults to what is set in '
-              'weekly/custom once your time off period ends.',
+              'scheduled for a particular date or date range. This can be '
+              'Vacation, exams, emergencies, illness etc. Time offs must be '
+              'approved by management before taken. Note your availability '
+              'defaults to what is set in weekly/custom once your time off '
+              'period ends.',
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/push_employee_sop/07.webp',
-              afterParagraph: 3,
+              afterParagraph: 0,
             ),
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/push_employee_sop/08.webp',
-              afterParagraph: 3,
+              afterParagraph: 0,
             ),
           ],
         ),
@@ -172,7 +159,7 @@ const BarrioTrainingDoc kTrainingPushSop = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_push_sop_c1',
       title: 'Hours and Shift Management',
-      subtitle: '7 cards',
+      subtitle: '5 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -180,28 +167,16 @@ const BarrioTrainingDoc kTrainingPushSop = BarrioTrainingDoc(
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Hours Worked',
-          body: 'Hours worked shows what hours you have clocked in for.\n'
-              '\n'
-              'All clocked in hours need to go through Manager approval '
-              'first.\n'
-              '\n'
+          body: 'Hours worked shows what hours you have clocked in for. All '
+              'clocked in hours need to go through Manager approval first. '
               'The screen will show manager approved hours at the top and '
-              'approval status on the shift display.\n'
-              '\n'
-              'Once a manager approves a shift the Shift display turns green '
-              'and the approved hours get displayed at the top.',
+              'approval status on the shift display. Once a manager approves '
+              'a shift the Shift display turns green and the approved hours '
+              'get displayed at the top.',
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/push_employee_sop/09.webp',
-              afterParagraph: 2,
-            ),
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/10.webp',
-              afterParagraph: 3,
-            ),
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/11.webp',
-              afterParagraph: 3,
+              afterParagraph: 0,
             ),
           ],
         ),
@@ -211,15 +186,12 @@ const BarrioTrainingDoc kTrainingPushSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'My Swaps',
           body: 'My Swaps Shows shifts that the you have requested to swap with '
-              'a teammate.\n'
-              '\n'
-              'The status of the swap will show in yellow.\n'
-              '\n'
-              'Status 2; Pending Manager approval.',
+              'a teammate. The status of the swap will show in yellow. Status '
+              '2; Pending Manager approval.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/12.webp',
-              afterParagraph: 2,
+              assetPath: 'assets/internal/barrio/training/push_employee_sop/10.webp',
+              afterParagraph: 0,
             ),
           ],
         ),
@@ -229,47 +201,29 @@ const BarrioTrainingDoc kTrainingPushSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Swap Requests',
           body: 'Swap Requests shows shifts that your teammates have requested '
-              'to swap with you.\n'
-              '\n'
-              'You can approve the request on your end here.\n'
-              '\n'
-              'Make sure all shift swaps go through the Push app.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/13.webp',
-              afterParagraph: 2,
-            ),
-          ],
+              'to swap with you. You can approve the request on your end '
+              'here. Make sure all shift swaps go through the Push app.',
         ),
         HandbookUnit(
           id: 'training_push_sop_c1_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Initializing a Swap Request',
-          body: 'To initialize a swap request:\n'
+          body: 'To initialize a swap request: Navigate back to the My schedule '
+              'screen and click on the arrow on the shift you want to swap.\n'
               '\n'
-              'Navigate back to the My schedule screen and click on the arrow '
-              'on the shift you want to swap.\n'
-              '\n'
-              'This will open up a swaps screen.\n'
-              '\n'
-              'You can switch shifts here with a teammate that is also '
-              'assigned the same shift type.\n'
-              '\n'
-              'For example a bartender can swap with another bartender. A '
+              'This will open up a swaps screen. You can switch shifts here '
+              'with a teammate that is also assigned the same shift type. For '
+              'example a bartender can swap with another bartender. A '
               'bartender cannot swap with a server unless Manager authorized.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/14.webp',
-              afterParagraph: 1,
+              assetPath: 'assets/internal/barrio/training/push_employee_sop/11.webp',
+              afterParagraph: 0,
             ),
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/15.webp',
-              afterParagraph: 4,
-            ),
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/16.webp',
-              afterParagraph: 4,
+              assetPath: 'assets/internal/barrio/training/push_employee_sop/12.webp',
+              afterParagraph: 0,
             ),
           ],
         ),
@@ -279,226 +233,22 @@ const BarrioTrainingDoc kTrainingPushSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Shift Releases',
           body: 'Shift releases allows you to give up your shift into a pool '
-              'for a teammate to pickup.\n'
-              '\n'
-              'Note you are fully responsible for your shift release all the '
-              'way up to manager approval.\n'
-              '\n'
-              'If not approved by a manager the shift defaults to its '
-              'original scheduled state.\n'
+              'for a teammate to pickup. Note you are fully responsible for '
+              'your shift release all the way up to manager approval. If not '
+              'approved by a manager the shift defaults to its original '
+              'scheduled state.\n'
               '\n'
               'My Releases\n'
               '\n'
               'My releases shows shift you have submitted into the pool.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/17.webp',
-              afterParagraph: 4,
+              assetPath: 'assets/internal/barrio/training/push_employee_sop/13.webp',
+              afterParagraph: 0,
             ),
-          ],
-        ),
-        HandbookUnit(
-          id: 'training_push_sop_c1_u5',
-          type: HandbookUnitType.explainer,
-          badgeHint: 'READ',
-          title: 'Release Pool',
-          body: 'This shows all the shifts that have been put up for \'auction\' '
-              'by other teammates.\n'
-              '\n'
-              'These are available for you to pickup.\n'
-              '\n'
-              'Pickup also goes through manager approval.',
-          images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/18.webp',
+              assetPath: 'assets/internal/barrio/training/push_employee_sop/14.webp',
               afterParagraph: 2,
-            ),
-          ],
-        ),
-        HandbookUnit(
-          id: 'training_push_sop_c1_u6',
-          type: HandbookUnitType.explainer,
-          badgeHint: 'READ',
-          title: 'Releasing a Shift',
-          body: 'To release a shift navigate back to my schedule, click on the '
-              'arrow icon on the shift you want to release and click on '
-              'releases on the next screen.\n'
-              '\n'
-              'Add a note before sending it over for the manger to approve.\n'
-              '\n'
-              'Once shifts are release or swap requests are made they will '
-              'apear with a yellow status banner below. The 2 banners as '
-              'mentioned above are:\n'
-              '\n'
-              '1. pending user approval\n'
-              '\n'
-              '2. pending manager approval\n'
-              '\n'
-              'Note that on this screen you will also see shifts that other '
-              'teammate\'s have requested you to swap with.\n'
-              '\n'
-              'Click "Accept" to confirm the shift swap request.\n'
-              '\n'
-              'Click on "Cancel" to reject the shift swap request.\n'
-              '\n'
-              'Once any release or swap is accepted by a teammate it has to '
-              'go through manager approval.\n'
-              '\n'
-              'Always check with management.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/19.webp',
-              afterParagraph: 1,
-            ),
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/20.webp',
-              afterParagraph: 2,
-            ),
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/21.webp',
-              afterParagraph: 7,
-            ),
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/22.webp',
-              afterParagraph: 8,
-            ),
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/23.webp',
-              afterParagraph: 8,
-            ),
-          ],
-        ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_push_sop_c2',
-      title: 'Documents and Communication',
-      subtitle: '3 cards',
-      iconCodePoint: 0xe865,
-      units: [
-        HandbookUnit(
-          id: 'training_push_sop_c2_u0',
-          type: HandbookUnitType.explainer,
-          badgeHint: 'READ',
-          title: 'My Files',
-          body: 'This will contain all your requested files.\n'
-              '\n'
-              'This includes yearly T4\'s.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/24.webp',
-              afterParagraph: 0,
-            ),
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/25.webp',
-              afterParagraph: 0,
-            ),
-          ],
-        ),
-        HandbookUnit(
-          id: 'training_push_sop_c2_u1',
-          type: HandbookUnitType.explainer,
-          badgeHint: 'READ',
-          title: 'Pay Stubs',
-          body: 'Paystubs shows all your weekly paystubs',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/26.webp',
-              afterParagraph: 0,
-            ),
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/27.webp',
-              afterParagraph: 0,
-            ),
-          ],
-        ),
-        HandbookUnit(
-          id: 'training_push_sop_c2_u2',
-          type: HandbookUnitType.explainer,
-          badgeHint: 'READ',
-          title: 'Messages',
-          body: 'Messages allows you to communicate with management or '
-              'teammates: This sends users an email and sms based on their '
-              'notification preferences.\n'
-              '\n'
-              'There is a typical Inbox and Outbox.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/28.webp',
-              afterParagraph: 1,
-            ),
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/29.webp',
-              afterParagraph: 1,
-            ),
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/30.webp',
-              afterParagraph: 1,
-            ),
-          ],
-        ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_push_sop_c3',
-      title: 'Account Settings',
-      subtitle: '2 cards',
-      iconCodePoint: 0xe865,
-      units: [
-        HandbookUnit(
-          id: 'training_push_sop_c3_u0',
-          type: HandbookUnitType.explainer,
-          badgeHint: 'READ',
-          title: 'Notifications',
-          body: 'Most important in setting is Notifications\n'
-              '\n'
-              'Notifications allows you to setup how you want alerts to '
-              'appear on your phone.\n'
-              '\n'
-              'As mentioned this can be set via sms, email and push app '
-              'notification\n'
-              '\n'
-              'You can set notifications for all actions we have discussed '
-              'above',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/31.webp',
-              afterParagraph: 0,
-            ),
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/32.webp',
-              afterParagraph: 3,
-            ),
-          ],
-        ),
-        HandbookUnit(
-          id: 'training_push_sop_c3_u1',
-          type: HandbookUnitType.explainer,
-          badgeHint: 'READ',
-          title: 'Bonus',
-          body: 'You can sync your schedule with your ios calendar app or '
-              'google calender\n'
-              '\n'
-              'On an iPhone:\n'
-              '\n'
-              '- Settings > Calendar > Accounts > Add Account > Other\n'
-              '\n'
-              '- Tap "Add Subscribed Calendar"\n'
-              '\n'
-              '- Paste the URL, tap Next, then Save\n'
-              '\n'
-              'On Google Calendar (must be done on a computer, not the phone '
-              'app):\n'
-              '\n'
-              '- Go to calendar.google.com\n'
-              '\n'
-              '- Next to "Other calendars" click the + , then "From URL"\n'
-              '\n'
-              '- Paste the URL and click "Add calendar"',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/push_employee_sop/33.webp',
-              afterParagraph: 8,
             ),
           ],
         ),

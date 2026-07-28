@@ -120,10 +120,10 @@ SOURCES = [
     dict(src='interview playbook.pdf',
          doc_id='barrio_interview_playbook',
          md='Barrio_interview_playbook.md'),
-    dict(src='Clover SOP.pdf',
+    dict(src='Clover Training Full Manual.pdf',
          doc_id='clover_sop',
          md='Clover SOP.md'),
-    dict(src='Push Employee SOP.pdf',
+    dict(src='PUSH OPERATIONS MANUAL.pdf',
          doc_id='push_employee_sop',
          md='Push Employee SOP.md'),
 ]
