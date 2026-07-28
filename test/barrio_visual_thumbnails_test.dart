@@ -73,12 +73,25 @@ void main() {
       final dishes = kBarrioTrainingDocs[_kDishes]!;
       final imaged =
           _firstUnit(dishes, (u) => u.images.isNotEmpty && !_isCont(u));
-      final plain =
-          _firstUnit(dishes, (u) => u.images.isEmpty && !_isCont(u));
+      // The picture campaign now covers every dishes card, so the imageless
+      // sanity case scans all training docs for the first imageless
+      // (non-cont) card wherever it lives, keeping this robust as coverage
+      // grows.
+      String? plainDoc;
+      _Coord? plain;
+      for (final entry in kBarrioTrainingDocs.entries) {
+        final c =
+            _firstUnit(entry.value, (u) => u.images.isEmpty && !_isCont(u));
+        if (c != null) {
+          plainDoc = entry.key;
+          plain = c;
+          break;
+        }
+      }
       expect(imaged, isNotNull,
           reason: 'sanity: the dishes glossary has photo-bearing cards');
       expect(plain, isNotNull,
-          reason: 'sanity: the dishes glossary also has imageless cards');
+          reason: 'sanity: at least one manual still has imageless cards');
 
       expect(
         barrioUnitFirstImageAt(
@@ -87,7 +100,7 @@ void main() {
         reason: 'an image-bearing coordinate resolves to its first photo',
       );
       expect(
-        barrioUnitFirstImageAt(_kDishes, plain!.chapterIndex, plain.unitIndex),
+        barrioUnitFirstImageAt(plainDoc!, plain!.chapterIndex, plain.unitIndex),
         isNull,
         reason: 'an imageless coordinate resolves to null (no stock art)',
       );
