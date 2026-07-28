@@ -154,30 +154,11 @@ const Map<String, IconData> kBarrioChapterIcons = <String, IconData>{
   'training_bold_by_design_c30': Icons.emoji_events, // Best Version
   'training_bold_by_design_c31': Icons.psychology, // Productivity Mindset
 
-  // -- Cheers Responsibility (24 chapters; c0 title page uncurated) ----
+  // -- Cheers Responsibility (5 chapters; c0 title page uncurated) ------
   'training_cheers_responsibility_c1': Icons.account_balance, // Governing
   'training_cheers_responsibility_c2': Icons.corporate_fare, // NLLC
   'training_cheers_responsibility_c3': Icons.card_membership, // Licenses
   'training_cheers_responsibility_c4': Icons.note_add, // Secondary Licenses
-  'training_cheers_responsibility_c5': Icons.local_drink, // Standard Drink
-  'training_cheers_responsibility_c6': Icons.bar_chart, // BAC Chart
-  'training_cheers_responsibility_c7': Icons.visibility, // Signs of Intox.
-  'training_cheers_responsibility_c8': Icons.badge, // Identification
-  'training_cheers_responsibility_c9': Icons.credit_card, // Valid Forms of ID
-  'training_cheers_responsibility_c10': Icons.science, // Alcohol Combination
-  'training_cheers_responsibility_c11': Icons.bolt, // Energy Drinks
-  'training_cheers_responsibility_c12': Icons.grass, // Cannabis
-  'training_cheers_responsibility_c13': Icons.medication, // Other Drugs
-  'training_cheers_responsibility_c14': Icons.sports_bar, // Binge Drinking
-  'training_cheers_responsibility_c15': Icons.monitor_heart, // Monitor Intox.
-  'training_cheers_responsibility_c16': Icons.do_not_disturb, // Refusing
-  'training_cheers_responsibility_c17': Icons.directions_car, // Driving
-  'training_cheers_responsibility_c18': Icons.gavel, // Liability
-  'training_cheers_responsibility_c19': Icons.exit_to_app, // Leaving Premises
-  'training_cheers_responsibility_c20': Icons.groups, // Overcrowding
-  'training_cheers_responsibility_c21': Icons.schedule, // Hours of Sale
-  'training_cheers_responsibility_c22': Icons.logout, // Mandatory Exit
-  'training_cheers_responsibility_c23': Icons.attach_money, // Min. Pricing
 
   // -- Coffee (14 chapters; c0 What Is Coffee uncurated) ---------------
   'training_coffee_c1': Icons.local_fire_department, // Roasting
