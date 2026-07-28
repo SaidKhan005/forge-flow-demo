@@ -38,6 +38,13 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'spirit we now know simply as tequila.',
           runIndex: 1,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c0_u0.webp',
+              caption: 'Photo: Ralf Roletschek, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_tequila_c0_u1',
@@ -58,6 +65,13 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'integrity of tequila as a unique Mexican spirit.',
           runIndex: 2,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c0_u1.webp',
+              caption: 'Photo: Tomascastelazo, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_tequila_c0_u2',
@@ -83,6 +97,13 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'spirit.',
           runIndex: 3,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c0_u2.webp',
+              caption: 'Photo: Juan Carlos Fonseca Mata, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -113,6 +134,13 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'surrounding tequila production.',
           runIndex: 1,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c1_u0.webp',
+              caption: 'Photo: sergio niebla from Cd. Victoria, Tamaulipas, Mexico, CC BY-SA 2.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_tequila_c1_u1',
@@ -141,6 +169,13 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'resulting in a final ABV of approximately 40%.',
           runIndex: 2,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c1_u1.webp',
+              caption: 'Photo: Gzzz, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_tequila_c1_u2',
@@ -156,6 +191,13 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'of vanilla, caramel, and spice.',
           runIndex: 3,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c1_u2.webp',
+              caption: 'Photo: ORGP, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -171,6 +213,13 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Classes of Tequila',
           body: 'All Tequila falls into one of these five categories:',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c2_u0.webp',
+              caption: 'Photo: Anonymous editor2066, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_tequila_c2_u1',
@@ -189,6 +238,13 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'flavors of cooked agave that define this pristine spirit, '
               'offering a direct connection to its origins and the meticulous '
               'craftsmanship behind every bottle.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c2_u1.webp',
+              caption: 'Photo: Indrajit Das, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_tequila_c2_u2',
@@ -207,6 +263,13 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'When crafted from 100% agave, joven tequila represents a '
               'sophisticated blend of blanco and other types of tequila, '
               'showcasing the complexity of its ingredients.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c2_u2.webp',
+              caption: 'Photo: StoliNL, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_tequila_c2_u3',
@@ -223,6 +286,13 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'offers a smooth and sophisticated drinking experience that '
               'falls between the fresh vibrancy of blanco and the deep '
               'complexity of añejo.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c2_u3.webp',
+              caption: 'Photo: Ralf Roletschek, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_tequila_c2_u4',
@@ -239,6 +309,13 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'to those accustomed to the depth of Scotch and other fine '
               'whiskeys. The result is a luxurious sipping experience, '
               'characterized by a long, intricate finish.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c2_u4.webp',
+              caption: 'Photo: Chris Woodrich, CC BY 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_tequila_c2_u5',
@@ -299,6 +376,13 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'to sip.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c3_u0.webp',
+              caption: 'Photo: Rkolarsky, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_tequila_c3_u1',
@@ -320,6 +404,13 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'flavorful experience.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c3_u1.webp',
+              caption: 'Photo: Missvain, CC BY 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -359,6 +450,13 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'flavors that enhance the drinking experience.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c4_u0.webp',
+              caption: 'Photo: Calipso03, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_tequila_c4_u1',
@@ -378,6 +476,13 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'techniques that honor the land and its bounty.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c4_u1.webp',
+              caption: 'Photo: Cristian Jimenez L., CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -409,6 +514,13 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'combination of orange and cinnamon. This pairing beautifully '
               'complements the natural flavors of aged tequilas, transforming '
               'your tasting journey into a rich, sensory experience.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c5_u0.webp',
+              caption: 'Photo: Tierra Mexicana, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
