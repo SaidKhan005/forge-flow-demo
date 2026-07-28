@@ -5,6 +5,7 @@ import 'barrio_celebration_overlay.dart';
 import 'barrio_destination_scaffold.dart';
 import 'barrio_training_image_viewer.dart';
 import '../content/company_handbook_content.dart';
+import '../content/highlight/barrio_key_terms.dart';
 import '../content/quiz/barrio_quiz_models.dart';
 import '../content/training/training_docs.dart';
 import '../search/barrio_training_search.dart';
@@ -105,6 +106,12 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
     // own chapter-end quiz answer phrases by unit id, so no call site changes
     // and no new constructor param. Empty for the vast majority of cards.
     final answerEvidence = barrioAnswerEvidenceForUnit(unit.id);
+
+    // Key-term color emphasis pilot (2026-07-28): the card looks up its own
+    // curated key terms by unit id, so no call-site changes and no new
+    // public constructor param. GATED to the Three Pillars manual: every
+    // other doc returns an empty list and shows no key-term highlighting.
+    final keyTerms = barrioKeyTermsForUnit(unit.id);
 
     // Accessibility (rec #12): a collapsed interactive card is one big
     // tap target, so ONLY that state gets a button-role wrapper (its
@@ -290,6 +297,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
                   onTermTap: widget.onTermTap,
                   accent: _numberAccent,
                   answerEvidence: answerEvidence,
+                  keyTerms: keyTerms,
                 ),
                 const SizedBox(height: 12),
                 Row(
@@ -324,6 +332,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
                   onTermTap: widget.onTermTap,
                   accent: _numberAccent,
                   answerEvidence: answerEvidence,
+                  keyTerms: keyTerms,
                 ),
               ],
 
@@ -670,12 +679,21 @@ class _UnitBody extends StatelessWidget {
   /// for cards with no quiz evidence (the default), which render unchanged.
   final List<String> answerEvidence;
 
+  /// Curated key terms to emphasize (color-emphasis pilot, 2026-07-28).
+  /// Each first occurrence per card renders bold + [BarrioColors.tealInk]
+  /// (AA on cream), capped at [kBarrioKeyTermCardCap] spans per card.
+  /// Styling only; the body string is never altered (verbatim law). Empty
+  /// for every doc except the Three Pillars pilot manual (the default),
+  /// which render unchanged.
+  final List<String> keyTerms;
+
   const _UnitBody({
     required this.unit,
     required this.accent,
     this.highlightTerms = const [],
     this.onTermTap,
     this.answerEvidence = const [],
+    this.keyTerms = const [],
   });
 
   static const double _blockGap = 12;
@@ -693,9 +711,14 @@ class _UnitBody extends StatelessWidget {
     // threaded through every text chunk in reading order, so a term
     // appearing many times on one card links only its first occurrence.
     final linked = <String>{};
+    // First-occurrence-per-card + hard density cap for the key-term pilot:
+    // one fresh set per build threaded through every chunk in reading order,
+    // so a curated term emphasizes only its first occurrence on the card and
+    // the set size caps total emphasized spans at [kBarrioKeyTermCardCap].
+    final keyed = <String>{};
     final paragraphs = unit.body.split('\n\n');
     if (unit.images.isEmpty) {
-      return _renderRun(paragraphs, linked);
+      return _renderRun(paragraphs, linked, keyed);
     }
     // Picture-first for every imaged card (visual-first pass rec #1,
     // 2026-07-24; extended 2026-07-26 from TERM glossary cards to ALL
@@ -709,22 +732,22 @@ class _UnitBody extends StatelessWidget {
       children: [
         for (final image in unit.images)
           _UnitImage(image: image, cardTitle: unit.title),
-        _renderRun(paragraphs, linked),
+        _renderRun(paragraphs, linked, keyed),
       ],
     );
   }
 
   /// Renders a contiguous paragraph slice. A lone prose paragraph renders
   /// as a single Text; anything else stacks typed blocks with even gaps.
-  Widget _renderRun(List<String> paras, Set<String> linked) {
+  Widget _renderRun(List<String> paras, Set<String> linked, Set<String> keyed) {
     final blocks = _parseBlocks(paras);
     if (blocks.length == 1 && blocks.first.kind == _BlockKind.prose) {
-      return _bodyText(blocks.first.items.first, _style, linked);
+      return _bodyText(blocks.first.items.first, _style, linked, keyed);
     }
     final children = <Widget>[];
     for (var b = 0; b < blocks.length; b++) {
       if (b > 0) children.add(const SizedBox(height: _blockGap));
-      children.add(_renderBlock(blocks[b], linked));
+      children.add(_renderBlock(blocks[b], linked, keyed));
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -732,22 +755,22 @@ class _UnitBody extends StatelessWidget {
     );
   }
 
-  Widget _renderBlock(_BodyBlock block, Set<String> linked) {
+  Widget _renderBlock(_BodyBlock block, Set<String> linked, Set<String> keyed) {
     switch (block.kind) {
       case _BlockKind.prose:
-        return _bodyText(block.items.first, _style, linked);
+        return _bodyText(block.items.first, _style, linked, keyed);
       case _BlockKind.bullet:
         return _spacedColumn([
           for (final item in block.items)
-            _bulletRow(item.trimLeft().substring(2), linked),
+            _bulletRow(item.trimLeft().substring(2), linked, keyed),
         ]);
       case _BlockKind.numbered:
         return _spacedColumn([
           for (final item in block.items)
-            _numberedRow(item.trimLeft(), linked),
+            _numberedRow(item.trimLeft(), linked, keyed),
         ]);
       case _BlockKind.table:
-        return _table(block.items, linked);
+        return _table(block.items, linked, keyed);
     }
   }
 
@@ -764,7 +787,7 @@ class _UnitBody extends StatelessWidget {
     );
   }
 
-  Widget _bulletRow(String text, Set<String> linked) {
+  Widget _bulletRow(String text, Set<String> linked, Set<String> keyed) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -777,12 +800,12 @@ class _UnitBody extends StatelessWidget {
             shape: BoxShape.circle,
           ),
         ),
-        Expanded(child: _bodyText(text, _style, linked)),
+        Expanded(child: _bodyText(text, _style, linked, keyed)),
       ],
     );
   }
 
-  Widget _numberedRow(String text, Set<String> linked) {
+  Widget _numberedRow(String text, Set<String> linked, Set<String> keyed) {
     final match = _numberedItem.firstMatch(text);
     final marker = match != null ? '${match.group(1)}.' : '•';
     final body = match != null ? match.group(2)! : text;
@@ -801,15 +824,15 @@ class _UnitBody extends StatelessWidget {
             ),
           ),
         ),
-        Expanded(child: _bodyText(body, _style, linked)),
+        Expanded(child: _bodyText(body, _style, linked, keyed)),
       ],
     );
   }
 
-  Widget _table(List<String> rows, Set<String> linked) {
+  Widget _table(List<String> rows, Set<String> linked, Set<String> keyed) {
     final children = <Widget>[];
     for (var r = 0; r < rows.length; r++) {
-      children.add(_tableRow(rows[r].split(' | '), r == 0, linked));
+      children.add(_tableRow(rows[r].split(' | '), r == 0, linked, keyed));
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -817,7 +840,8 @@ class _UnitBody extends StatelessWidget {
     );
   }
 
-  Widget _tableRow(List<String> cells, bool header, Set<String> linked) {
+  Widget _tableRow(
+      List<String> cells, bool header, Set<String> linked, Set<String> keyed) {
     final cellStyle = _style.copyWith(
       fontSize: 12.5,
       fontWeight: header ? FontWeight.w700 : FontWeight.w400,
@@ -835,7 +859,7 @@ class _UnitBody extends StatelessWidget {
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.only(right: 8),
-                child: _bodyText(cell.trim(), cellStyle, linked),
+                child: _bodyText(cell.trim(), cellStyle, linked, keyed),
               ),
             ),
         ],
@@ -843,15 +867,17 @@ class _UnitBody extends StatelessWidget {
     );
   }
 
-  /// One text chunk: plain, search-highlighted, term-linked, and/or
-  /// number-popped. The search fold is length-preserving per code
-  /// unit, so fold-space match offsets index the original string
-  /// directly. Precedence: search highlights win over term links (the
-  /// matcher drops overlaps via [blockedRanges]), and both win over
-  /// numeric pops (a number+unit token overlapping either is dropped
-  /// whole, so text inside a term link is never re-styled). The text
-  /// itself is NEVER altered: styling only (verbatim law).
-  Widget _bodyText(String text, TextStyle style, Set<String> linked) {
+  /// One text chunk: plain, search-highlighted, term-linked,
+  /// number-popped, answer-evidence, and/or key-term-emphasized. The
+  /// search fold is length-preserving per code unit, so fold-space match
+  /// offsets index the original string directly. Precedence (highest
+  /// first): search highlights, term links, numeric pops, answer evidence,
+  /// then curated key terms. Each lower tier passes the higher tiers'
+  /// ranges as [blockedRanges] and drops any overlap whole, so no span
+  /// fights another. The text itself is NEVER altered: styling only
+  /// (verbatim law).
+  Widget _bodyText(
+      String text, TextStyle style, Set<String> linked, Set<String> keyed) {
     final highlightRanges = highlightTerms.isEmpty
         ? const <List<int>>[]
         : _mergeRanges(_rawMatchRanges(BarrioTrainingSearch.fold(text)));
@@ -869,10 +895,10 @@ class _UnitBody extends StatelessWidget {
         for (final t in termMatches) [t.start, t.end],
       ],
     );
-    // Answer highlight ranges are the LOWEST precedence: any that overlap a
-    // search highlight, term link, or numeric pop are dropped whole, so the
-    // teal answer wording never fights another span (verbatim substrings, so
-    // plain case-sensitive matching).
+    // Answer highlight ranges: any that overlap a search highlight, term
+    // link, or numeric pop are dropped whole, so the teal answer wording
+    // never fights another span (verbatim substrings, so plain
+    // case-sensitive matching).
     final answerRanges = answerEvidence.isEmpty
         ? const <List<int>>[]
         : _answerEvidenceRanges(
@@ -883,17 +909,36 @@ class _UnitBody extends StatelessWidget {
               for (final n in numericMatches) [n.start, n.end],
             ],
           );
+    // Key-term emphasis is the LOWEST precedence: any curated term that
+    // overlaps a search highlight, term link, numeric pop, or answer span
+    // is dropped whole (the existing span wins). First-occurrence-per-card
+    // and the [kBarrioKeyTermCardCap] density cap are enforced through the
+    // [keyed] set threaded across the card's chunks.
+    final keyTermMatches = keyTerms.isEmpty
+        ? const <BarrioKeyTermMatch>[]
+        : BarrioKeyTermHighlight.matchesIn(
+            text,
+            keyTerms,
+            alreadyUsed: keyed,
+            blockedRanges: [
+              ...highlightRanges,
+              for (final t in termMatches) [t.start, t.end],
+              for (final n in numericMatches) [n.start, n.end],
+              ...answerRanges,
+            ],
+          );
     if (highlightRanges.isEmpty &&
         termMatches.isEmpty &&
         numericMatches.isEmpty &&
-        answerRanges.isEmpty) {
+        answerRanges.isEmpty &&
+        keyTermMatches.isEmpty) {
       return Text(text, style: style);
     }
     return Text.rich(
       TextSpan(
         style: style,
         children: _composeSpans(text, highlightRanges, termMatches,
-            numericMatches, answerRanges, style),
+            numericMatches, answerRanges, keyTermMatches, style),
       ),
     );
   }
@@ -956,24 +1001,19 @@ class _UnitBody extends StatelessWidget {
     return merged;
   }
 
-  /// Interleaves the highlight ranges, term-link matches, and numeric
-  /// fact tokens (all sorted, mutually non-overlapping) into one span
-  /// run over [text].
+  /// Interleaves the highlight ranges, term-link matches, numeric fact
+  /// tokens, answer-evidence spans, and key-term spans (all sorted,
+  /// mutually non-overlapping) into one span run over [text].
   List<InlineSpan> _composeSpans(
     String text,
     List<List<int>> highlights,
     List<BarrioTermMatch> terms,
     List<BarrioNumericMatch> numerics,
     List<List<int>> answers,
+    List<BarrioKeyTermMatch> keyTermSpans,
     TextStyle style,
   ) {
-    final segments = <_BodySegment>[
-      for (final r in highlights) _BodySegment(r[0], r[1], null),
-      for (final t in terms) _BodySegment(t.start, t.end, t),
-      for (final n in numerics)
-        _BodySegment(n.start, n.end, null, numeric: true),
-      for (final r in answers) _BodySegment(r[0], r[1], null, answer: true),
-    ]..sort((a, b) => a.start.compareTo(b.start));
+    // Search highlight: bold navy on a soft tealWarm wash.
     final mark = style.copyWith(
       color: BarrioColors.textPrimary,
       fontWeight: FontWeight.w700,
@@ -994,6 +1034,27 @@ class _UnitBody extends StatelessWidget {
       fontWeight: FontWeight.w600,
       color: BarrioColors.tealDeep,
     );
+    // Key-term emphasis (color-emphasis pilot, 2026-07-28): a curated
+    // domain concept renders bold + tealInk, an AA-compliant deep teal on
+    // cream (5.18:1). Bold is the required non-color second cue for
+    // accessibility. Colors+weight only; the verbatim substring is
+    // unchanged (no backgroundColor).
+    final keyTermMark = style.copyWith(
+      fontWeight: FontWeight.w700,
+      color: BarrioColors.tealInk,
+    );
+    // Each segment carries its resolved style ([mark]) up front so the
+    // render loop stays a single term-link-or-styled-span decision (a
+    // term link is a tappable widget span; every other tier is a plain
+    // styled TextSpan over the verbatim substring).
+    final segments = <_BodySegment>[
+      for (final r in highlights) _BodySegment(r[0], r[1], mark: mark),
+      for (final t in terms) _BodySegment(t.start, t.end, term: t),
+      for (final n in numerics) _BodySegment(n.start, n.end, mark: numberPop),
+      for (final r in answers) _BodySegment(r[0], r[1], mark: answerMark),
+      for (final k in keyTermSpans)
+        _BodySegment(k.start, k.end, mark: keyTermMark),
+    ]..sort((a, b) => a.start.compareTo(b.start));
     final spans = <InlineSpan>[];
     var cursor = 0;
     for (final seg in segments) {
@@ -1004,12 +1065,8 @@ class _UnitBody extends StatelessWidget {
       final term = seg.term;
       if (term != null) {
         spans.add(_termLinkSpan(segText, term, style));
-      } else if (seg.numeric) {
-        spans.add(TextSpan(text: segText, style: numberPop));
-      } else if (seg.answer) {
-        spans.add(TextSpan(text: segText, style: answerMark));
       } else {
-        spans.add(TextSpan(text: segText, style: mark));
+        spans.add(TextSpan(text: segText, style: seg.mark));
       }
       cursor = seg.end;
     }
@@ -1053,17 +1110,17 @@ class _UnitBody extends StatelessWidget {
   }
 }
 
-/// One styled segment inside a text chunk: a search highlight ([term] null
-/// and both flags false), a term link, a numeric fact pop ([numeric] true),
-/// or a quiz answer highlight ([answer] true).
+/// One styled segment inside a text chunk. [term] non-null renders a
+/// tappable term-link widget span; otherwise the segment renders as a
+/// styled TextSpan using [mark] (a search highlight, numeric fact pop,
+/// quiz answer highlight, or curated key-term emphasis: the caller resolves
+/// which style up front). Styling only; the substring is verbatim.
 class _BodySegment {
   final int start;
   final int end;
   final BarrioTermMatch? term;
-  final bool numeric;
-  final bool answer;
-  const _BodySegment(this.start, this.end, this.term,
-      {this.numeric = false, this.answer = false});
+  final TextStyle? mark;
+  const _BodySegment(this.start, this.end, {this.term, this.mark});
 }
 
 /// One content picture inside a unit body: rounded corners, full card
