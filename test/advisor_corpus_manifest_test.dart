@@ -24,8 +24,10 @@ void main() {
         // dinner menu + concept history, curated from the slide deck).
         // 21 as of 2026-07-27: clover_sop + push_employee_sop added
         // (Scribe-format point-of-sale + scheduling SOP training manuals).
-        expect(result.manifest.documents, hasLength(21));
-        expect(result.activeMarkdownFiles, hasLength(21));
+        // 24 as of 2026-07-28: host_manual + bar_manual + drink_specs added
+        // (operator host, bar, and combined drink-spec training manuals).
+        expect(result.manifest.documents, hasLength(24));
+        expect(result.activeMarkdownFiles, hasLength(24));
         expect(
           result.activeMarkdownFiles,
           isNot(contains(excludedEmptyApronFileName)),

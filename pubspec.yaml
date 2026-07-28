@@ -197,6 +197,10 @@ flutter:
     - assets/internal/barrio/training/latin_american_ingredients/
     - assets/internal/barrio/training/latin_american_ingredients_diagrams/
     - assets/internal/barrio/training/push_employee_sop/
+    # Manual-drop slice (2026-07-28): host, bar, drink-spec photo folders.
+    - assets/internal/barrio/training/bar_manual/
+    - assets/internal/barrio/training/drink_specs/
+    - assets/internal/barrio/training/host_manual/
     - assets/internal/barrio/training/training_tequila_diagrams/
 
   # An image asset can refer to one or more resolution-specific "variants", see

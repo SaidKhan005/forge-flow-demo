@@ -100,6 +100,14 @@ DOCS = [
          const='kTrainingCloverSop', title='Clover POS', kind='prose'),
     dict(md='Push Employee SOP.md', id='training_push_sop',
          const='kTrainingPushSop', title='Push Schedule', kind='prose'),
+    # Manual-drop slice (2026-07-28): host, bar, and combined drink-spec
+    # training manuals from operator PDFs.
+    dict(md='Barrio Host Manual.md', id='training_host_manual',
+         const='kTrainingHostManual', title='Host Manual', kind='prose'),
+    dict(md='Bar Manual.md', id='training_bar_manual',
+         const='kTrainingBarManual', title='Bar Manual', kind='prose'),
+    dict(md='Barrio Drink Specs.md', id='training_drink_specs',
+         const='kTrainingDrinkSpecs', title='Drink Specs', kind='prose'),
 ]
 
 CHAPTER_ICON = '0xe865'  # Icons.menu_book glyph, used by the chapter rail

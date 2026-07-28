@@ -48,6 +48,9 @@ class BarrioRouteMap {
     'training_general_words': '/barrio/training/general-words',
     'training_clover_sop': '/barrio/training/clover-sop',
     'training_push_sop': '/barrio/training/push-schedule',
+    'training_host_manual': '/barrio/training/host-manual',
+    'training_bar_manual': '/barrio/training/bar-manual',
+    'training_drink_specs': '/barrio/training/drink-specs',
   };
 
   /// Returns the route path for a [BarrioDestination] by its id.
