@@ -120,6 +120,13 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'maintenance to ensure optimal performance.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training_diagrams/training_coffee_c1_u1.webp',
+              caption: 'Photo: Sage Ross, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -294,6 +301,13 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'to stand out in the global market.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training_diagrams/training_coffee_c5_u1.webp',
+              caption: 'Photo: Bernard Gagnon, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -471,6 +485,13 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'several times until no coffee grounds are visible.',
           runIndex: 2,
           runLength: 4,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training_diagrams/training_coffee_c9_u1.webp',
+              caption: 'Photo: EspressoExpresso, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_coffee_c9_u2',
@@ -493,6 +514,13 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'quality of your espresso.',
           runIndex: 3,
           runLength: 4,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training_diagrams/training_coffee_c9_u2.webp',
+              caption: 'Photo: massage-techniques, CC BY-SA 2.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_coffee_c9_u3',
@@ -509,6 +537,13 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'performance.',
           runIndex: 4,
           runLength: 4,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training_diagrams/training_coffee_c9_u3.webp',
+              caption: 'Photo: Fletcher, CC BY 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -774,6 +809,13 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'expertly extracting a rich and flavorful shot of espresso.',
           runIndex: 1,
           runLength: 7,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training_diagrams/training_coffee_c13_u0.webp',
+              caption: 'Photo: Roxy Saunders, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_coffee_c13_u1',
@@ -811,6 +853,13 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'pot or mug below.',
           runIndex: 2,
           runLength: 7,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training_diagrams/training_coffee_c13_u1.webp',
+              caption: 'Photo: massage-techniques, CC BY-SA 2.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_coffee_c13_u2',
@@ -841,6 +890,13 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'separate the grounds from the finished, full-bodied coffee.',
           runIndex: 3,
           runLength: 7,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training_diagrams/training_coffee_c13_u2.webp',
+              caption: 'Photo: Alorin, CC BY 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_coffee_c13_u3',
@@ -873,6 +929,13 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'holds whole coffee beans before they are ground.',
           runIndex: 4,
           runLength: 7,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training_diagrams/training_coffee_c13_u3.webp',
+              caption: 'Photo: Shixart1985, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_coffee_c13_u4',
@@ -902,6 +965,13 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'This process highlights delicate flavour notes.',
           runIndex: 5,
           runLength: 7,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training_diagrams/training_coffee_c13_u4.webp',
+              caption: 'Photo: Editor at Large, CC BY-SA 2.5, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_coffee_c13_u5',
@@ -936,6 +1006,13 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'microfoam.',
           runIndex: 6,
           runLength: 7,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training_diagrams/training_coffee_c13_u5.webp',
+              caption: 'Photo: HungryHuy, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_coffee_c13_u6',
@@ -956,6 +1033,13 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'form before being ground.',
           runIndex: 7,
           runLength: 7,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training_diagrams/training_coffee_c13_u6.webp',
+              caption: 'Photo: massage-techniques, CC BY-SA 2.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
