@@ -188,12 +188,6 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Fire the Order',
           body: 'Select Fire All to send the order.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/11.webp',
-              afterParagraph: 0,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_clover_sop_c1_u8',
@@ -204,7 +198,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'Select the tab to reopen it and make adjustments.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/12.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/11.webp',
               afterParagraph: 0,
             ),
           ],
@@ -227,7 +221,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'cash drawer.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/13.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/12.webp',
               afterParagraph: 0,
             ),
           ],
@@ -242,7 +236,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'drawer without providing a reason.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/14.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/13.webp',
               afterParagraph: 0,
             ),
           ],
@@ -256,7 +250,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'opens the search function, which includes open tables.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/15.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/14.webp',
               afterParagraph: 0,
             ),
           ],
@@ -273,7 +267,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'pay for an order.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/16.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/15.webp',
               afterParagraph: 0,
             ),
           ],
@@ -287,7 +281,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'named Brian.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/17.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/16.webp',
               afterParagraph: 0,
             ),
           ],
@@ -302,7 +296,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'select View All Orders.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/18.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/17.webp',
               afterParagraph: 0,
             ),
           ],
@@ -316,7 +310,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'thirty days.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/19.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/18.webp',
               afterParagraph: 0,
             ),
           ],
@@ -329,7 +323,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           body: 'Open orders and paid orders can be filtered as shown.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/20.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/19.webp',
               afterParagraph: 0,
             ),
           ],
@@ -344,7 +338,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'example, you can filter orders by employee.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/21.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/20.webp',
               afterParagraph: 0,
             ),
           ],
@@ -358,7 +352,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'partially paid.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/22.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/21.webp',
               afterParagraph: 0,
             ),
           ],
@@ -372,7 +366,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'or the time the table was closed.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/23.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/22.webp',
               afterParagraph: 0,
             ),
           ],
@@ -401,12 +395,6 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               '\n'
               '- Green indicates that the table has paid. Because payments '
               'are integrated, this status should not normally appear.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/24.webp',
-              afterParagraph: 3,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_clover_sop_c3_u1',
@@ -419,7 +407,11 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'another teammate\'s table.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/25.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/23.webp',
+              afterParagraph: 0,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/clover_sop/24.webp',
               afterParagraph: 0,
             ),
           ],
@@ -435,7 +427,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'server\'s tables.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/26.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/25.webp',
               afterParagraph: 0,
             ),
           ],
@@ -458,7 +450,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               '2 in this case.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/27.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/26.webp',
               afterParagraph: 0,
             ),
           ],
@@ -472,7 +464,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'it to adjust the number of guests for the table.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/28.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/27.webp',
               afterParagraph: 0,
             ),
           ],
@@ -483,19 +475,16 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Navigate the Categories List',
           body: 'On the left side, the categories are organized in a list. '
-              'Scroll up and down to view all the categories.\n'
-              '\n'
-              'Some categories are broken down into color-coded '
-              'subcategories. For example, Beverages is broken down into Cold '
-              'Beverages and Hot Beverages. The items appear in order of '
-              'subcategory.\n'
-              '\n'
-              'The final item in each category is a custom item, which is '
-              'available to higher access levels.',
+              'Scroll up and down to view all the categories. Some categories '
+              'are broken down into color-coded subcategories. For example, '
+              'Beverages is broken down into Cold Beverages and Hot '
+              'Beverages. The items appear in order of subcategory. The final '
+              'item in each category is a custom item, which is available to '
+              'higher access levels.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/29.webp',
-              afterParagraph: 2,
+              assetPath: 'assets/internal/barrio/training/clover_sop/28.webp',
+              afterParagraph: 0,
             ),
           ],
         ),
@@ -509,7 +498,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'Beverages, then Cold Beverages.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/30.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/29.webp',
               afterParagraph: 0,
             ),
           ],
@@ -523,7 +512,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'liquor lists, are further organized in alphabetical order.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/31.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/30.webp',
               afterParagraph: 0,
             ),
           ],
@@ -537,7 +526,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'category',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/32.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/31.webp',
               afterParagraph: 0,
             ),
           ],
@@ -550,7 +539,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           body: 'Use the search bar to quickly find an item on the menu.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/33.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/32.webp',
               afterParagraph: 0,
             ),
           ],
@@ -571,16 +560,15 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           body: 'When ringing in any item, first select the guest the item '
               'belongs to, unless it is an item being shared by the whole '
               'table. This is essential for the kitchen to understand timing, '
-              'plating, and fulfillment.\n'
-              '\n'
-              'Select a guest to manage their individual order.\n'
+              'plating, and fulfillment. Select a guest to manage their '
+              'individual order.\n'
               '\n'
               'Important: The Whole Table option is used only for shareable '
               'items.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/34.webp',
-              afterParagraph: 2,
+              assetPath: 'assets/internal/barrio/training/clover_sop/33.webp',
+              afterParagraph: 1,
             ),
           ],
         ),
@@ -591,10 +579,10 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           title: 'Manage an Individual Guest',
           body: 'Select the three dots on each guest to manage that guest. This '
               'opens a menu that allows you to manage the guest and their '
-              'items',
+              'items.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/35.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/34.webp',
               afterParagraph: 0,
             ),
           ],
@@ -609,7 +597,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'Allergen function.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/36.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/35.webp',
               afterParagraph: 0,
             ),
           ],
@@ -620,14 +608,13 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Move Items Between Guests',
           body: 'Use Move Items to transfer items from one guest to another or '
-              'to move items to the entire table.\n'
-              '\n'
-              'Select the item you want to move on the left, then select the '
-              'destination on the right side tabs',
+              'to move items to the entire table. Select the item you want to '
+              'move on the left, then select the destination on the right '
+              'side tabs.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/37.webp',
-              afterParagraph: 1,
+              assetPath: 'assets/internal/barrio/training/clover_sop/36.webp',
+              afterParagraph: 0,
             ),
           ],
         ),
@@ -636,10 +623,10 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Move a Guest to Another Table',
-          body: 'Select Move Guest to relocate a diner to a different table',
+          body: 'Select Move Guest to relocate a diner to a different table.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/38.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/37.webp',
               afterParagraph: 0,
             ),
           ],
@@ -651,16 +638,13 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           title: 'Guest Appearance After Being Moved',
           body: 'Once a guest has been moved to another table, they will appear '
               'at the destination table as shown, for example Guest 5 (From '
-              'Table 2).\n'
-              '\n'
-              'Moving a guest adds another guest to the destination table.\n'
-              '\n'
-              'It does not merge the guest number from the former table into '
-              'the new one',
+              'Table 2). Moving a guest adds another guest to the destination '
+              'table. It does not merge the guest number from the former '
+              'table into the new one.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/39.webp',
-              afterParagraph: 2,
+              assetPath: 'assets/internal/barrio/training/clover_sop/38.webp',
+              afterParagraph: 0,
             ),
           ],
         ),
@@ -681,7 +665,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'Modifier, and type in the modifier',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/40.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/39.webp',
               afterParagraph: 0,
             ),
           ],
@@ -692,10 +676,10 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Set the Item Quantity',
           body: 'Select the quantity at the top to choose the number of items '
-              'to ring in, for example six tequila shots',
+              'to ring in, for example six tequila shots.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/41.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/40.webp',
               afterParagraph: 0,
             ),
           ],
@@ -708,7 +692,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           body: 'The quantity appears as a blue number next to the item.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/42.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/41.webp',
               afterParagraph: 0,
             ),
           ],
@@ -719,16 +703,14 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Adjust Quantity and Apply Item-Level Discounts',
           body: 'Select an item to view it and make quantity adjustments. This '
-              'screen can also be used to apply item-level discounts.\n'
-              '\n'
-              'Use the plus and minus icons to adjust the quantity of items.\n'
-              '\n'
-              'Select the Add Discount button to apply a discount to the '
-              'selected item only',
+              'screen can also be used to apply item-level discounts. Use the '
+              'plus and minus icons to adjust the quantity of items. Select '
+              'the Add Discount button to apply a discount to the selected '
+              'item only.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/43.webp',
-              afterParagraph: 2,
+              assetPath: 'assets/internal/barrio/training/clover_sop/42.webp',
+              afterParagraph: 0,
             ),
           ],
         ),
@@ -737,10 +719,10 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Discount Menu',
-          body: 'Selecting Add Discount opens a discount menu',
+          body: 'Selecting Add Discount opens a discount menu.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/44.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/43.webp',
               afterParagraph: 0,
             ),
           ],
@@ -753,7 +735,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           body: 'The discount is applied to the specific item only.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/45.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/44.webp',
               afterParagraph: 0,
             ),
           ],
@@ -766,10 +748,10 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           body: 'Subtracting the quantity of items that have already been fired '
               'triggers a void of that individual item quantity. Voided item '
               'receipts are printed for transparent tracking and '
-              'accountability',
+              'accountability.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/46.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/45.webp',
               afterParagraph: 0,
             ),
           ],
@@ -780,13 +762,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Void an Entire Item',
           body: 'Selecting Void while on an item deletes the entire item, '
-              'including all quantities of it',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/47.webp',
-              afterParagraph: 0,
-            ),
-          ],
+              'including all quantities of it.',
         ),
         HandbookUnit(
           id: 'training_clover_sop_c6_u8',
@@ -794,10 +770,10 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Deleting Items That Have Not Been Fired',
           body: 'When items have not been fired, they can be deleted directly. '
-              'This does not trigger a void',
+              'This does not trigger a void.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/48.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/46.webp',
               afterParagraph: 0,
             ),
           ],
@@ -808,17 +784,14 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Using Whole Table to Split and Share Items',
           body: 'Placing and moving items to the Whole Table allows for '
-              'splitting and sharing among seats and guests.\n'
-              '\n'
-              'If any items under a guest need to be split, move them to the '
-              'Whole Table first, then split them as shown.\n'
-              '\n'
-              'Selecting the three-dot icon on Whole Table opens the screen '
-              'shown below.',
+              'splitting and sharing among seats and guests. If any items '
+              'under a guest need to be split, move them to the Whole Table '
+              'first, then split them as shown. Selecting the three-dot icon '
+              'on Whole Table opens the screen shown below.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/49.webp',
-              afterParagraph: 2,
+              assetPath: 'assets/internal/barrio/training/clover_sop/47.webp',
+              afterParagraph: 0,
             ),
           ],
         ),
@@ -829,10 +802,14 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           title: 'Split Item Cost Among Guests',
           body: 'Select Split Item Cost to divide shared items between guests. '
               'Select the items on the left and the guests who will split the '
-              'item on the right',
+              'item on the right.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/50.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/48.webp',
+              afterParagraph: 0,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/clover_sop/49.webp',
               afterParagraph: 0,
             ),
           ],
@@ -851,13 +828,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Initiate a Payment',
           body: 'To initiate a payment on either a handheld or stationed '
-              'device, select Pay or select Pay by Guest',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/51.webp',
-              afterParagraph: 0,
-            ),
-          ],
+              'device, select Pay or select Pay by Guest.',
         ),
         HandbookUnit(
           id: 'training_clover_sop_c7_u1',
@@ -876,19 +847,19 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'the table to take payment',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/52.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/50.webp',
               afterParagraph: 1,
             ),
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/53.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/51.webp',
               afterParagraph: 2,
             ),
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/54.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/52.webp',
               afterParagraph: 3,
             ),
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/55.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/53.webp',
               afterParagraph: 4,
             ),
           ],
@@ -902,7 +873,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'the Whole Table items or not',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/56.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/54.webp',
               afterParagraph: 0,
             ),
           ],
@@ -916,7 +887,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'from.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/57.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/55.webp',
               afterParagraph: 0,
             ),
           ],
@@ -935,10 +906,10 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Move an Order',
           body: 'Use Move Order to transfer a table or tab to another table or '
-              'tab',
+              'tab.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/58.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/56.webp',
               afterParagraph: 0,
             ),
           ],
@@ -949,10 +920,10 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Transfer Prompt',
           body: 'You will be prompted to make a transfer to either a table or a '
-              'tab',
+              'tab.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/59.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/57.webp',
               afterParagraph: 0,
             ),
           ],
@@ -965,7 +936,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           body: 'Select the destination table or tab.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/60.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/58.webp',
               afterParagraph: 0,
             ),
           ],
@@ -976,10 +947,10 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Confirm the Transfer',
           body: 'Confirm the transfer. Note that this action is irreversible. '
-              'You will need to perform a manual re-transfer to undo it',
+              'You will need to perform a manual re-transfer to undo it.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/61.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/59.webp',
               afterParagraph: 0,
             ),
           ],
@@ -990,13 +961,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Add an Order-Level Discount',
           body: 'To add discounts to the entire order rather than a single '
-              'item, use Add Order Discounts',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/62.webp',
-              afterParagraph: 0,
-            ),
-          ],
+              'item, use Add Order Discounts.',
         ),
         HandbookUnit(
           id: 'training_clover_sop_c8_u5',
@@ -1005,10 +970,10 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           title: 'Order Discount Pop-Up',
           body: 'This opens the same pop-up seen with item discounts. Note that '
               'these discounts apply to the entire bill and stack on top of '
-              'item discounts',
+              'item discounts.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/63.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/60.webp',
               afterParagraph: 0,
             ),
           ],
@@ -1019,10 +984,10 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Open the Full Function Menu',
           body: 'Selecting the three-dot icon on the lower toolbar opens the '
-              'full function menu',
+              'full function menu.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/64.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/61.webp',
               afterParagraph: 0,
             ),
           ],
@@ -1033,10 +998,10 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Transfer the Server',
           body: 'Select Transfer Server to reassign the order to another team '
-              'member',
+              'member.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/65.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/62.webp',
               afterParagraph: 0,
             ),
           ],
@@ -1046,10 +1011,10 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Use Coursing',
-          body: 'Use Coursing to organize the timing of order delivery',
+          body: 'Use Coursing to organize the timing of order delivery.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/66.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/63.webp',
               afterParagraph: 0,
             ),
           ],
@@ -1059,10 +1024,10 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Combine Orders',
-          body: 'Select Combine Orders to merge two existing tables or tabs',
+          body: 'Select Combine Orders to merge two existing tables or tabs.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/67.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/64.webp',
               afterParagraph: 0,
             ),
           ],
@@ -1072,10 +1037,14 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Combining Orders Steps',
-          body: 'The steps are the same as those for moving a table',
+          body: 'The steps are the same as those for moving a table.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/68.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/65.webp',
+              afterParagraph: 0,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/clover_sop/66.webp',
               afterParagraph: 0,
             ),
           ],
@@ -1086,14 +1055,14 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Add Notes',
           body: 'Use Notes to create custom notes for yourself or any team '
-              'member viewing the point-of-sale system\n'
+              'member viewing the point-of-sale system.\n'
               '\n'
               'These notes can be used to track bar tabs or to record special '
               'reservation details for a table. They serve as your personal '
               'go-to reference for a table or tab.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/69.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/67.webp',
               afterParagraph: 1,
             ),
           ],
@@ -1104,10 +1073,10 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Delete an Order',
           body: 'Use Delete to cancel an order and start over. Note that Delete '
-              'can only be used before anything has been fired',
+              'can only be used before anything has been fired.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/70.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/68.webp',
               afterParagraph: 0,
             ),
           ],
@@ -1121,7 +1090,7 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               'individually.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/clover_sop/71.webp',
+              assetPath: 'assets/internal/barrio/training/clover_sop/69.webp',
               afterParagraph: 0,
             ),
           ],
