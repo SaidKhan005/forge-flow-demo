@@ -780,9 +780,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'and require hours of preparation.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/37.webp',
-              caption: 'Photo: Laurie Avocado, CC BY 2.0, via Flickr',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c3_u0.webp',
+              caption: 'Photo: T.Tseng, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -936,9 +936,9 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
           body: 'the Spanish term for Worcestershire sauce.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_dishes/46.webp',
-              caption: 'Photo: Dimitri Torterat, CC BY 2.0 FR, via Wikimedia Commons',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c3_u9.webp',
+              caption: 'Photo: Andrea Levers, CC BY-SA 2.0, via Wikimedia Commons',
+              afterParagraph: -1,
             ),
           ],
         ),
