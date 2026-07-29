@@ -357,12 +357,29 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     );
   }
 
-  /// Builds the reading text selection menu (select-any-word-to-search,
-  /// 2026-07-29): the platform default items (Copy, Select all) plus a
-  /// "Search the web" action that looks the selected words up in the
-  /// in-app browser through the same launch path the header button uses.
-  /// The action dismisses the menu first; an empty or whitespace-only
-  /// selection does nothing.
+  /// Opens ChatGPT seeded with [query] in an in-app browser view (the
+  /// "Ask chat" selection action, 2026-07-29). If the launch returns
+  /// false or throws, shows a plain-English SnackBar instead of crashing.
+  Future<void> _launchAskChat(String query) async {
+    final uri = barrioAskChatUri(query);
+    var opened = false;
+    try {
+      opened = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+    } catch (_) {
+      opened = false;
+    }
+    if (opened || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Could not open the chat.')),
+    );
+  }
+
+  /// Builds the reading text selection menu (select-any-word action,
+  /// 2026-07-29 operator curation: only two actions, no Copy/Select all).
+  /// "Ask chat" opens ChatGPT and "Search the web" opens Google, each
+  /// seeded with the highlighted words in the in-app browser through the
+  /// same launch paths the surface uses elsewhere. Each action dismisses
+  /// the menu first; an empty or whitespace-only selection does nothing.
   Widget _buildSelectionContextMenu(
     BuildContext context,
     SelectableRegionState selectableRegionState,
@@ -370,7 +387,15 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     return AdaptiveTextSelectionToolbar.buttonItems(
       anchors: selectableRegionState.contextMenuAnchors,
       buttonItems: <ContextMenuButtonItem>[
-        ...selectableRegionState.contextMenuButtonItems,
+        ContextMenuButtonItem(
+          label: 'Ask chat',
+          onPressed: () {
+            final selection = _selectedText?.trim() ?? '';
+            selectableRegionState.hideToolbar();
+            if (selection.isEmpty) return;
+            _launchAskChat(selection);
+          },
+        ),
         ContextMenuButtonItem(
           label: 'Search the web',
           onPressed: () {

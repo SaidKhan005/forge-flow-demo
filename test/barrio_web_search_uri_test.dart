@@ -51,4 +51,27 @@ void main() {
       expect(uri.path, '/search');
     });
   });
+
+  group('barrioAskChatUri', () {
+    test('seeds ChatGPT q with a simple query (spaces as +)', () {
+      final uri = barrioAskChatUri('what is horchata');
+      expect(uri.toString(), 'https://chatgpt.com/?q=what+is+horchata');
+    });
+
+    test('percent-encodes reserved and accented characters', () {
+      final uri = barrioAskChatUri('tequila añejo & mezcal');
+      expect(uri.queryParameters['q'], 'tequila añejo & mezcal');
+    });
+
+    test('trims surrounding whitespace before encoding', () {
+      final uri = barrioAskChatUri('   pozole   ');
+      expect(uri.toString(), 'https://chatgpt.com/?q=pozole');
+    });
+
+    test('always targets ChatGPT over https', () {
+      final uri = barrioAskChatUri('mezcal');
+      expect(uri.scheme, 'https');
+      expect(uri.host, 'chatgpt.com');
+    });
+  });
 }
