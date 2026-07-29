@@ -197,20 +197,23 @@ void main() {
       final total = doc.chapters.length;
       expect(find.text('SECTION 1 OF $total'), findsOneWidget);
 
-      // Swipe left through every card of section 1; the last swipe
-      // crosses into section 2 and the hero follows.
+      // Flick left through every card of section 1; the last flick
+      // crosses into section 2 and the hero follows. A flick (not a slow
+      // drag) is THE page-turn gesture: the reader now carries a
+      // select-any-word-to-search text layer, so a slow horizontal drag on
+      // a word is legitimately claimed for text selection while a clear
+      // flick still turns the page. This mirrors how
+      // barrio_learning_carousel_gestures_test drives page turns.
       final firstSectionCards = doc.chapters.first.units.length;
       for (var i = 0; i < firstSectionCards; i++) {
-        await tester.drag(find.byType(PageView), const Offset(-400, 0));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 500));
+        await tester.fling(find.byType(PageView), const Offset(-250, 0), 1200);
+        await tester.pumpAndSettle();
       }
       expect(find.text('SECTION 2 OF $total'), findsOneWidget);
 
-      // One swipe right crosses back into section 1.
-      await tester.drag(find.byType(PageView), const Offset(400, 0));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 500));
+      // One flick right crosses back into section 1.
+      await tester.fling(find.byType(PageView), const Offset(250, 0), 1200);
+      await tester.pumpAndSettle();
       expect(find.text('SECTION 1 OF $total'), findsOneWidget);
     });
   });

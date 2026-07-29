@@ -204,6 +204,23 @@ const List<BarrioDestination> barrioDestinations = [
   // -- Verbatim training bubbles (2026-07-11 training-drop slice) ----------
   // One bubble per converted knowledge-graph training document. Content is
   // word-for-word source text rendered by TrainingDocScreen.
+  // Operator curation 2026-07-29: Host leads Service & Hospitality.
+  BarrioDestination(
+    id: 'training_host_manual',
+    label: 'Host',
+    description:
+        'Host Manual: greeting, seating, reservations, and guest experience.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    category: BarrioCategory.serviceHospitality,
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+    iconCodePoint: 0xe621, // Icons.support_agent
+  ),
   BarrioDestination(
     id: 'training_strong_foundation',
     label: 'Strong Foundation',
@@ -450,8 +467,8 @@ const List<BarrioDestination> barrioDestinations = [
   // TrainingDocScreen: every step carries its source screenshot inline.
   BarrioDestination(
     id: 'training_clover_sop',
-    label: 'Clover POS',
-    description: 'Clover POS: point-of-sale system step-by-step SOP.',
+    label: 'Clover Training',
+    description: 'Clover Training: point-of-sale system step-by-step SOP.',
     audiences: {
       BarrioAudience.allStaff,
       BarrioAudience.supervisor,
@@ -465,8 +482,8 @@ const List<BarrioDestination> barrioDestinations = [
   ),
   BarrioDestination(
     id: 'training_push_sop',
-    label: 'Push Schedule',
-    description: 'Push Schedule: view your schedule and set availability.',
+    label: 'Push Training',
+    description: 'Push Training: view your schedule and set availability.',
     audiences: {
       BarrioAudience.allStaff,
       BarrioAudience.supervisor,
@@ -480,24 +497,9 @@ const List<BarrioDestination> barrioDestinations = [
   ),
 
   // -- Manual-drop bubbles (2026-07-28 operator manuals) -------------------
-  // Verbatim host, bar, and drink-spec training manuals rendered by
-  // TrainingDocScreen like the other training bubbles.
-  BarrioDestination(
-    id: 'training_host_manual',
-    label: 'Host',
-    description:
-        'Host Manual: greeting, seating, reservations, and guest experience.',
-    audiences: {
-      BarrioAudience.allStaff,
-      BarrioAudience.supervisor,
-      BarrioAudience.manager,
-      BarrioAudience.admin,
-    },
-    category: BarrioCategory.serviceHospitality,
-    prominence: BarrioProminence.secondary,
-    showOnHomeHub: true,
-    iconCodePoint: 0xe621, // Icons.support_agent
-  ),
+  // The Bar manual renders word-for-word by TrainingDocScreen. (Host now
+  // leads Service & Hospitality and Drink Specs sits just under MENU, both
+  // per operator curation, so only Bar remains in this group.)
   BarrioDestination(
     id: 'training_bar_manual',
     label: 'Bar',

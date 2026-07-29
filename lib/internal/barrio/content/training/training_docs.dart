@@ -37,7 +37,10 @@ import 'training_three_pillars_content.dart';
 /// (operator directive 2026-07-11: everything word-for-word). Their curated
 /// interactive content files remain on disk; reversal = restoring the
 /// screen cases in `barrio_route_map.dart`.
-const Map<String, BarrioTrainingDoc> kBarrioTrainingDocs = {
+// Not const: the two SOP manuals carry an operator-facing display title
+// (via copyWith) that differs from their verbatim source H1, so the map
+// is built at load time rather than as a compile-time constant.
+final Map<String, BarrioTrainingDoc> kBarrioTrainingDocs = {
   'company_handbook': kTrainingCompanyHandbook,
   'interview_playbook': kTrainingInterviewPlaybook,
   'jim_taylor_labor_model': kTrainingJimTaylor,
@@ -60,8 +63,12 @@ const Map<String, BarrioTrainingDoc> kBarrioTrainingDocs = {
   'training_mastering_metrics': kTrainingMasteringMetrics,
   'training_general_words': kTrainingGeneralWords,
   // SOP training manuals (Scribe-format point-of-sale + scheduling docs).
-  'training_clover_sop': kTrainingCloverSop,
-  'training_push_sop': kTrainingPushSop,
+  // Operator curation 2026-07-29: presented as '<system> Training' on the
+  // home hub and reader header. The source content constants keep their
+  // verbatim H1 ('Clover POS' / 'Push Schedule'), so the verbatim guard is
+  // unaffected; only the display title is overridden here.
+  'training_clover_sop': kTrainingCloverSop.copyWith(title: 'Clover Training'),
+  'training_push_sop': kTrainingPushSop.copyWith(title: 'Push Training'),
   // Manual-drop slice (2026-07-28): host, bar, and drink-spec manuals.
   'training_host_manual': kTrainingHostManual,
   'training_bar_manual': kTrainingBarManual,
