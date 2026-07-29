@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../content/company_handbook_content.dart';
 import '../content/training/barrio_training_doc.dart';
 import '../search/barrio_training_search.dart';
@@ -12,6 +13,7 @@ import '../services/barrio_reading_progress_service.dart';
 import '../services/barrio_reading_time.dart';
 import '../services/barrio_term_links.dart';
 import '../services/barrio_training_deck.dart';
+import '../services/barrio_web_search.dart';
 import '../widgets/barrio_destination_scaffold.dart';
 import '../widgets/barrio_quiz_checkpoint_card.dart';
 import '../widgets/barrio_streak_tracker.dart';
@@ -317,6 +319,37 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     );
   }
 
+  /// Opens the "Search the web" input (2026-07-28 operator request:
+  /// let a reader look something up on Google without leaving the app).
+  /// A cancelled or empty query does nothing; a non-empty query opens
+  /// the Google results IN-APP (Custom Tab / SFSafariViewController) so
+  /// the reader stays inside the manual reader.
+  Future<void> _openWebSearch() async {
+    final query = await showDialog<String>(
+      context: context,
+      builder: (_) => _WebSearchDialog(accent: widget.accent),
+    );
+    if (query == null || query.trim().isEmpty) return;
+    await _launchWebSearch(query);
+  }
+
+  /// Opens the Google web search for [query] in an in-app browser view.
+  /// If the launch returns false or throws, shows a plain-English
+  /// SnackBar instead of crashing.
+  Future<void> _launchWebSearch(String query) async {
+    final uri = barrioWebSearchUri(query);
+    var opened = false;
+    try {
+      opened = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+    } catch (_) {
+      opened = false;
+    }
+    if (opened || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Could not open the web search.')),
+    );
+  }
+
   /// Opens the A-Z term index sheet (rec #6; TERM manuals only).
   void _openIndexSheet() {
     showModalBottomSheet<void>(
@@ -484,6 +517,7 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
         // TERM glossaries.
         trailing: _HeaderActions(
           onSearchTap: _openSearchSheet,
+          onWebSearchTap: _openWebSearch,
           onIndexTap: _kTermManualIds.contains(widget.doc.id)
               ? _openIndexSheet
               : null,
@@ -556,13 +590,19 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   }
 }
 
-/// The header's quiet navigation icons: search on every manual, the
-/// A-Z term index only when [onIndexTap] is provided (TERM manuals).
+/// The header's quiet navigation icons: search-this-manual and
+/// search-the-web on every manual, plus the A-Z term index only when
+/// [onIndexTap] is provided (TERM manuals).
 class _HeaderActions extends StatelessWidget {
   final VoidCallback onSearchTap;
+  final VoidCallback onWebSearchTap;
   final VoidCallback? onIndexTap;
 
-  const _HeaderActions({required this.onSearchTap, this.onIndexTap});
+  const _HeaderActions({
+    required this.onSearchTap,
+    required this.onWebSearchTap,
+    this.onIndexTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -579,6 +619,20 @@ class _HeaderActions extends StatelessWidget {
             color: BarrioColors.textSecondary,
           ),
         ),
+        // Search the web (2026-07-28): a globe-with-magnifier icon,
+        // distinct from the in-manual magnifier above, so the reader can
+        // look something up on Google without leaving the app. Opens an
+        // in-app browser view, not an external browser.
+        IconButton(
+          tooltip: 'Search the web',
+          onPressed: onWebSearchTap,
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(
+            Icons.travel_explore_rounded,
+            size: 22,
+            color: BarrioColors.textSecondary,
+          ),
+        ),
         if (onIndexTap != null)
           IconButton(
             tooltip: 'Jump to a term',
@@ -590,6 +644,106 @@ class _HeaderActions extends StatelessWidget {
               color: BarrioColors.textSecondary,
             ),
           ),
+      ],
+    );
+  }
+}
+
+/// Simple "Search the web" input on the light Barrio surface. One text
+/// field plus Cancel and Search. Owns its own controller so the field
+/// disposes cleanly. Pops the trimmed query on Search (or on keyboard
+/// submit) when it is non-empty; pops null on Cancel. An empty query
+/// keeps the button inert so nothing opens.
+class _WebSearchDialog extends StatefulWidget {
+  final Color accent;
+
+  const _WebSearchDialog({required this.accent});
+
+  @override
+  State<_WebSearchDialog> createState() => _WebSearchDialogState();
+}
+
+class _WebSearchDialogState extends State<_WebSearchDialog> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    Navigator.of(context).pop(text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      title: Text(
+        'Search the web',
+        style: GoogleFonts.playfairDisplay(
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          color: BarrioColors.textPrimary,
+        ),
+      ),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        textInputAction: TextInputAction.search,
+        onSubmitted: (_) => _submit(),
+        style: GoogleFonts.ibmPlexSans(
+          fontSize: 15,
+          color: BarrioColors.textPrimary,
+        ),
+        decoration: InputDecoration(
+          hintText: 'Search the web',
+          hintStyle: GoogleFonts.ibmPlexSans(
+            fontSize: 15,
+            color: BarrioColors.textMuted,
+          ),
+          enabledBorder: UnderlineInputBorder(
+            borderSide: BorderSide(
+              color: BarrioColors.textMuted.withValues(alpha: 0.4),
+            ),
+          ),
+          focusedBorder: UnderlineInputBorder(
+            borderSide: BorderSide(color: widget.accent, width: 2),
+          ),
+        ),
+        cursorColor: widget.accent,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(
+            'Cancel',
+            style: GoogleFonts.ibmPlexMono(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.3,
+              color: BarrioColors.textMuted,
+            ),
+          ),
+        ),
+        TextButton(
+          onPressed: _submit,
+          child: Text(
+            'Search',
+            style: GoogleFonts.ibmPlexMono(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.3,
+              color: widget.accent,
+            ),
+          ),
+        ),
       ],
     );
   }

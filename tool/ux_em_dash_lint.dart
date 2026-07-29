@@ -66,6 +66,8 @@ const List<String> kUxCopyRoots = <String>[
   'lib/internal/barrio/widgets/handbook_lesson_card.dart',
   'lib/internal/barrio/widgets/barrio_streak_tracker.dart',
   'lib/internal/barrio/widgets/barrio_term_definition_sheet.dart',
+  // Training doc reader + its in-app web search (2026-07-28).
+  'lib/internal/barrio/screens/training_doc_screen.dart',
   'lib/internal/barrio/services/barrio_bookmarks_service.dart',
   'lib/internal/barrio/services/barrio_term_links.dart',
 ];
