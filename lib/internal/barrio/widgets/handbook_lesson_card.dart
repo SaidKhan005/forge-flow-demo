@@ -107,10 +107,11 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
     // and no new constructor param. Empty for the vast majority of cards.
     final answerEvidence = barrioAnswerEvidenceForUnit(unit.id);
 
-    // Key-term color emphasis pilot (2026-07-28): the card looks up its own
-    // curated key terms by unit id, so no call-site changes and no new
-    // public constructor param. GATED to the Three Pillars manual: every
-    // other doc returns an empty list and shows no key-term highlighting.
+    // Key-term color emphasis (2026-07-28, rolled out 2026-07-29): the card
+    // looks up its own curated key terms by unit id, so no call-site changes
+    // and no new public constructor param. Every prose reading manual has a
+    // curated list; glossary decks, SOP/screenshot manuals, recipe cards,
+    // slides, and picture-first docs return an empty list (no highlighting).
     final keyTerms = barrioKeyTermsForUnit(unit.id);
 
     // Accessibility (rec #12): a collapsed interactive card is one big
@@ -679,12 +680,13 @@ class _UnitBody extends StatelessWidget {
   /// for cards with no quiz evidence (the default), which render unchanged.
   final List<String> answerEvidence;
 
-  /// Curated key terms to emphasize (color-emphasis pilot, 2026-07-28).
-  /// Each first occurrence per card renders bold + [BarrioColors.tealInk]
-  /// (AA on cream), capped at [kBarrioKeyTermCardCap] spans per card.
-  /// Styling only; the body string is never altered (verbatim law). Empty
-  /// for every doc except the Three Pillars pilot manual (the default),
-  /// which render unchanged.
+  /// Curated key terms to emphasize (color-emphasis, 2026-07-28; rolled out
+  /// to all prose manuals 2026-07-29). Each first occurrence per card renders
+  /// bold + [BarrioColors.tealInk] (AA on cream), capped at
+  /// [kBarrioKeyTermCardCap] spans per card. Styling only; the body string is
+  /// never altered (verbatim law). Empty for non-prose docs (glossary decks,
+  /// SOP/screenshot manuals, recipe cards, slides, picture-first docs), which
+  /// render unchanged.
   final List<String> keyTerms;
 
   const _UnitBody({
@@ -1034,9 +1036,9 @@ class _UnitBody extends StatelessWidget {
       fontWeight: FontWeight.w600,
       color: BarrioColors.tealDeep,
     );
-    // Key-term emphasis (color-emphasis pilot, 2026-07-28): a curated
-    // domain concept renders bold + tealInk, an AA-compliant deep teal on
-    // cream (5.18:1). Bold is the required non-color second cue for
+    // Key-term emphasis (color-emphasis, 2026-07-28): a curated domain
+    // concept renders bold + tealInk, a bold, vivid AA-compliant deep teal
+    // on cream (4.74:1). Bold is the required non-color second cue for
     // accessibility. Colors+weight only; the verbatim substring is
     // unchanged (no backgroundColor).
     final keyTermMark = style.copyWith(

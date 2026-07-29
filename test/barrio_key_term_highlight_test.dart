@@ -1,21 +1,28 @@
-// Tests for the key-term color emphasis pilot (2026-07-28).
+// Tests for the key-term color emphasis (2026-07-28 pilot; rolled out to all
+// prose manuals 2026-07-29).
 //
-// A research-backed, author-CURATED pilot gated to ONE manual, "The Three
-// Pillars of Hospitality" (doc id `training_three_pillars`): a small set of
-// unambiguous domain concepts render bold + BarrioColors.tealInk (an
-// AA-compliant deep teal on cream, 5.18:1) so the text-heavy reading cards
-// become more scannable. Every OTHER doc shows no key-term highlighting.
+// A research-backed, author-CURATED emphasis: a small set of unambiguous
+// domain concepts render bold + BarrioColors.tealInk (a bold, vivid
+// AA-compliant deep teal on cream, 4.74:1) so the text-heavy reading cards
+// become more scannable. The pilot proved the look on "The Three Pillars of
+// Hospitality" (`training_three_pillars`); the rollout adds a curated list for
+// every prose reading manual. Non-prose docs (glossary decks, SOP/screenshot
+// manuals, recipe cards, menu slides, picture-first docs) stay uncurated and
+// show no highlighting.
 //
-// Two layers are proven here:
+// Three layers are proven here:
 //   * The pure matcher [BarrioKeyTermHighlight.matchesIn] on crafted
 //     strings: whole-word (case-insensitive) matching, the hard
 //     per-card density cap, first-occurrence-per-card, longest-wins at a
 //     tie, overlap dropping, and verbatim substring preservation.
+//   * The per-manual lookup [barrioKeyTermsForUnit]: prose manuals return a
+//     non-empty curated list, non-prose docs return empty, and a sampled term
+//     from a rolled-out manual really matches (whole-word) in its body prose.
 //   * The rendering card [HandbookLessonCard] on real + crafted Three
-//     Pillars units and a non-pilot unit: the term renders as w700 +
-//     tealInk, only the pilot manual highlights (the gate), the cap and
-//     first-occurrence hold at render time, and the visible text stays
-//     byte-identical to the source body (verbatim law: styling only).
+//     Pillars units and an uncurated unit: the term renders as w700 +
+//     tealInk, only curated manuals highlight, the cap and first-occurrence
+//     hold at render time, and the visible text stays byte-identical to the
+//     source body (verbatim law: styling only).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -35,6 +42,20 @@ HandbookUnit _realUnit(String id) => kBarrioTrainingDocs.values
     .expand((d) => d.chapters)
     .expand((c) => c.units)
     .firstWhere((u) => u.id == id);
+
+/// Whether [term] matches whole-word in any unit body of [docId] via the real
+/// render-time matcher (coverage b: proves a curated term is not dead weight).
+bool _termMatchesInDocBody(String docId, String term) {
+  final doc = kBarrioTrainingDocs[docId]!;
+  for (final ch in doc.chapters) {
+    for (final u in ch.units) {
+      final m = BarrioKeyTermHighlight.matchesIn(
+        u.body, [term], alreadyUsed: <String>{});
+      if (m.isNotEmpty) return true;
+    }
+  }
+  return false;
+}
 
 /// Every leaf [TextSpan] under [span], in reading order.
 List<TextSpan> _flatten(InlineSpan span) {
@@ -221,15 +242,79 @@ void main() {
     });
   });
 
-  group('barrioKeyTermsForUnit (pilot gate)', () {
-    test('only Three Pillars units return curated terms; all else empty', () {
+  group('barrioKeyTermsForUnit (per-manual rollout)', () {
+    test('the Three Pillars pilot list is preserved', () {
       expect(barrioKeyTermsForUnit('training_three_pillars_c0_u0'), isNotEmpty);
       expect(barrioKeyTermsForUnit('training_three_pillars_c2_u5'), isNotEmpty);
-      // Every other doc returns an empty list (the gate).
-      expect(barrioKeyTermsForUnit('training_food_safety_c0_u0'), isEmpty);
-      expect(barrioKeyTermsForUnit('training_strong_foundation_c0_u0'), isEmpty);
-      expect(barrioKeyTermsForUnit('training_coffee_c1_u2'), isEmpty);
+    });
+
+    test('every rolled-out prose manual returns a curated list (coverage a: '
+        'many more than two newly-added manuals are non-empty)', () {
+      // The newly-added prose manuals (all EXCEPT the original pilot). Each
+      // must return a non-empty curated list now that the gate is per-manual.
+      const rolledOut = <String>[
+        'company_handbook',
+        'interview_playbook',
+        'jim_taylor_labor_model',
+        'training_strong_foundation',
+        'training_table_manicuring',
+        'training_suggestive_selling',
+        'training_labour_cost',
+        'training_food_safety',
+        'training_cheers_responsibility',
+        'training_mastering_metrics',
+        'training_bold_by_design',
+        'training_host_manual',
+        'training_bar_manual',
+      ];
+      for (final docId in rolledOut) {
+        final terms = barrioKeyTermsForUnit('${docId}_c0_u0');
+        expect(terms, isNotEmpty, reason: '$docId should be curated now');
+        // Quality bar mirrors the pilot: ~10 to 18 curated terms.
+        expect(terms.length, inInclusiveRange(10, 18),
+            reason: '$docId list is $terms');
+      }
+    });
+
+    test('non-prose docs stay uncurated and the empty/unknown ids are empty',
+        () {
+      // Deliberately SKIPPED docs: glossary term-card decks, SOP/screenshot
+      // manuals, recipe cards, menu slides, and picture-first docs.
+      for (final docId in const <String>[
+        'training_latin_dishes',
+        'training_latin_ingredients',
+        'training_general_words',
+        'training_clover_sop',
+        'training_push_sop',
+        'training_drink_specs',
+        'training_menu_concept',
+        'training_tequila',
+        'training_coffee',
+      ]) {
+        expect(barrioKeyTermsForUnit('${docId}_c1_u2'), isEmpty,
+            reason: '$docId is intentionally not curated');
+      }
       expect(barrioKeyTermsForUnit(''), isEmpty);
+      expect(barrioKeyTermsForUnit('some_unknown_doc_c0_u0'), isEmpty);
+    });
+
+    test('coverage b: a sampled term from a rolled-out manual really matches '
+        '(whole-word) in that manual body prose', () {
+      // (docId, a curated term expected to appear verbatim in the body).
+      const samples = <List<String>>[
+        ['training_food_safety', 'food safety'],
+        ['company_handbook', 'workplace harassment'],
+        ['training_bold_by_design', 'productivity zone'],
+        ['training_bar_manual', 'barrio legado'],
+      ];
+      for (final s in samples) {
+        final docId = s[0], term = s[1];
+        // The reader hands this exact term list to the matcher for the doc.
+        expect(barrioKeyTermsForUnit('${docId}_c0_u0'), contains(term),
+            reason: '$term should be curated for $docId');
+        expect(_termMatchesInDocBody(docId, term), isTrue,
+            reason: '"$term" must match whole-word somewhere in $docId body');
+      }
     });
   });
 
@@ -275,26 +360,28 @@ void main() {
     });
 
     testWidgets(
-        'a non-Three-Pillars unit renders NO key-term highlight even when its '
-        'body is full of curated words (the gate), body stays verbatim',
+        'an uncurated (non-prose) unit renders NO key-term highlight even when '
+        'its body is full of curated words, body stays verbatim',
         (tester) async {
-      const nonPilot = HandbookUnit(
-        id: 'training_strong_foundation_c0_u0',
+      // training_coffee is a deliberately-skipped picture-first doc, so it
+      // returns no curated terms even though the body is full of them.
+      const uncurated = HandbookUnit(
+        id: 'training_coffee_c0_u0',
         type: HandbookUnitType.explainer,
-        title: 'Foundation',
+        title: 'Coffee',
         body: 'Great service and food and hospitality shape the atmosphere '
             'and set the standards here.',
       );
-      // Sanity: the gate returns no terms for this doc.
-      expect(barrioKeyTermsForUnit(nonPilot.id), isEmpty);
+      // Sanity: the lookup returns no terms for this uncurated doc.
+      expect(barrioKeyTermsForUnit(uncurated.id), isEmpty);
 
-      await _pumpCard(tester, nonPilot);
+      await _pumpCard(tester, uncurated);
 
       final rich = _bodyRich(tester, 'shape the atmosphere');
-      expect(rich.text.toPlainText(), nonPilot.body,
+      expect(rich.text.toPlainText(), uncurated.body,
           reason: 'the body text is unchanged');
       expect(_flatten(rich.text).where(_isKeyTermSpan), isEmpty,
-          reason: 'no key-term emphasis outside the Three Pillars pilot');
+          reason: 'no key-term emphasis on an uncurated (non-prose) doc');
       expect(tester.takeException(), isNull);
     });
 
