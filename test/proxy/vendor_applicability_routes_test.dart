@@ -255,6 +255,201 @@ void main() {
       },
     );
 
+    test('admin POST threads location_id through to the gateway', () async {
+      final gateway = _FakeVendorApplicabilityGateway();
+      final ctx = await _serve(
+        claims: const ProxyJwtClaims(
+          userId: 'firebase-admin',
+          firebaseUid: 'firebase-admin',
+          operatorId: null,
+          locationId: null,
+          roles: <String>['super_admin'],
+        ),
+        gateway: gateway,
+        resolver: _FakeIntegrationAdminActorResolver(_adminPostgresUserId),
+        idempotencyStore: _MemoryAdminIdempotencyStore(),
+      );
+      addTearDown(ctx.close);
+
+      final body = Map<String, Object?>.from(_upsertBody())
+        ..['operator_id'] = _operatorId
+        ..['location_id'] = _locationId;
+
+      final response = await _httpJson(
+        'POST',
+        ctx.uri('/v1/admin/vendor-applicability'),
+        idempotencyKey: 'idem-location-upsert',
+        body: body,
+      );
+
+      expect(response.statusCode, 200);
+      expect(gateway.upsertCalls, hasLength(1));
+      expect(gateway.upsertCalls.single.operatorId, _operatorId);
+      expect(gateway.upsertCalls.single.locationId, _locationId);
+    });
+
+    test(
+      'admin POST rejects location_id without operator_id before the gateway',
+      () async {
+        final gateway = _FakeVendorApplicabilityGateway();
+        final ctx = await _serve(
+          claims: const ProxyJwtClaims(
+            userId: 'firebase-admin',
+            firebaseUid: 'firebase-admin',
+            operatorId: null,
+            locationId: null,
+            roles: <String>['super_admin'],
+          ),
+          gateway: gateway,
+          resolver: _FakeIntegrationAdminActorResolver(_adminPostgresUserId),
+          idempotencyStore: _MemoryAdminIdempotencyStore(),
+        );
+        addTearDown(ctx.close);
+
+        final body = Map<String, Object?>.from(_upsertBody())
+          ..['location_id'] = _locationId;
+
+        final response = await _httpJson(
+          'POST',
+          ctx.uri('/v1/admin/vendor-applicability'),
+          idempotencyKey: 'idem-location-no-operator',
+          body: body,
+        );
+
+        expect(response.statusCode, 400);
+        final decoded = jsonDecode(response.body) as Map<String, Object?>;
+        expect(decoded['error'], 'location_requires_operator');
+        expect(gateway.upsertCalls, isEmpty);
+      },
+    );
+
+    test('admin PATCH end threads location_id through to the gateway', () async {
+      final gateway = _FakeVendorApplicabilityGateway();
+      final ctx = await _serve(
+        claims: const ProxyJwtClaims(
+          userId: 'firebase-admin',
+          firebaseUid: 'firebase-admin',
+          operatorId: null,
+          locationId: null,
+          roles: <String>['super_admin'],
+        ),
+        gateway: gateway,
+        resolver: _FakeIntegrationAdminActorResolver(_adminPostgresUserId),
+        idempotencyStore: _MemoryAdminIdempotencyStore(),
+      );
+      addTearDown(ctx.close);
+
+      final response = await _httpJson(
+        'PATCH',
+        ctx.uri('/v1/admin/vendor-applicability'),
+        idempotencyKey: 'idem-location-end',
+        body: <String, Object?>{
+          'action': 'end',
+          'operator_id': _operatorId,
+          'location_id': _locationId,
+          'setting_kind': 'wage',
+          'setting_key': 'tip_credit',
+          'vendor_slug': 'toast',
+          'admin_reason': 'Ticket VA-130 retire location override',
+        },
+      );
+
+      expect(response.statusCode, 200);
+      expect(gateway.endCalls, hasLength(1));
+      expect(gateway.endCalls.single.operatorId, _operatorId);
+      expect(gateway.endCalls.single.locationId, _locationId);
+    });
+
+    test(
+      'admin PATCH end rejects location_id without operator_id',
+      () async {
+        final gateway = _FakeVendorApplicabilityGateway();
+        final ctx = await _serve(
+          claims: const ProxyJwtClaims(
+            userId: 'firebase-admin',
+            firebaseUid: 'firebase-admin',
+            operatorId: null,
+            locationId: null,
+            roles: <String>['super_admin'],
+          ),
+          gateway: gateway,
+          resolver: _FakeIntegrationAdminActorResolver(_adminPostgresUserId),
+          idempotencyStore: _MemoryAdminIdempotencyStore(),
+        );
+        addTearDown(ctx.close);
+
+        final response = await _httpJson(
+          'PATCH',
+          ctx.uri('/v1/admin/vendor-applicability'),
+          idempotencyKey: 'idem-end-location-no-operator',
+          body: <String, Object?>{
+            'action': 'end',
+            'location_id': _locationId,
+            'setting_kind': 'wage',
+            'setting_key': 'tip_credit',
+            'vendor_slug': 'toast',
+            'admin_reason': 'Ticket VA-131 bad scope',
+          },
+        );
+
+        expect(response.statusCode, 400);
+        final decoded = jsonDecode(response.body) as Map<String, Object?>;
+        expect(decoded['error'], 'location_requires_operator');
+        expect(gateway.endCalls, isEmpty);
+      },
+    );
+
+    test('admin GET passes operator + location filters through', () async {
+      final gateway = _FakeVendorApplicabilityGateway();
+      final ctx = await _serve(
+        claims: const ProxyJwtClaims(
+          userId: 'firebase-admin',
+          operatorId: null,
+          locationId: null,
+          roles: <String>['super_admin'],
+        ),
+        gateway: gateway,
+      );
+      addTearDown(ctx.close);
+
+      final response = await _httpGet(
+        ctx.uri(
+          '/v1/admin/vendor-applicability?setting_kind=wage'
+          '&operator_id=$_operatorId&location_id=$_locationId',
+        ),
+      );
+
+      expect(response.statusCode, 200);
+      expect(gateway.listAdminCalls, hasLength(1));
+      expect(gateway.listAdminCalls.single.operatorId, _operatorId);
+      expect(gateway.listAdminCalls.single.locationId, _locationId);
+    });
+
+    test('admin GET rejects location filter without operator filter', () async {
+      final gateway = _FakeVendorApplicabilityGateway();
+      final ctx = await _serve(
+        claims: const ProxyJwtClaims(
+          userId: 'firebase-admin',
+          operatorId: null,
+          locationId: null,
+          roles: <String>['super_admin'],
+        ),
+        gateway: gateway,
+      );
+      addTearDown(ctx.close);
+
+      final response = await _httpGet(
+        ctx.uri(
+          '/v1/admin/vendor-applicability?location_id=$_locationId',
+        ),
+      );
+
+      expect(response.statusCode, 400);
+      final decoded = jsonDecode(response.body) as Map<String, Object?>;
+      expect(decoded['error'], 'location_requires_operator');
+      expect(gateway.listAdminCalls, isEmpty);
+    });
+
     test('operator GET requires setting_kind and tenant scope', () async {
       final gateway = _FakeVendorApplicabilityGateway();
       final ctx = await _serve(
@@ -461,6 +656,7 @@ class _FakeVendorApplicabilityGateway
   Future<List<Map<String, Object?>>> listAdmin({
     required String actorUserId,
     String? operatorId,
+    String? locationId,
     String? settingKind,
     String? settingKey,
     String? vendorSlug,
@@ -470,6 +666,8 @@ class _FakeVendorApplicabilityGateway
     listAdminCalls.add(
       _AdminListCall(
         actorUserId: actorUserId,
+        operatorId: operatorId,
+        locationId: locationId,
         settingKind: settingKind,
         currentOnly: currentOnly,
       ),
@@ -481,6 +679,7 @@ class _FakeVendorApplicabilityGateway
   Future<Map<String, Object?>> upsert({
     required String actorUserId,
     String? operatorId,
+    String? locationId,
     required String settingKind,
     required String settingKey,
     required String vendorSlug,
@@ -493,6 +692,8 @@ class _FakeVendorApplicabilityGateway
     upsertCalls.add(
       _UpsertCall(
         actorUserId: actorUserId,
+        operatorId: operatorId,
+        locationId: locationId,
         settingKind: settingKind,
         metadata: metadata,
         adminReason: adminReason,
@@ -505,6 +706,7 @@ class _FakeVendorApplicabilityGateway
   Future<Map<String, Object?>?> end({
     required String actorUserId,
     String? operatorId,
+    String? locationId,
     required String settingKind,
     required String settingKey,
     required String vendorSlug,
@@ -515,6 +717,8 @@ class _FakeVendorApplicabilityGateway
     endCalls.add(
       _EndCall(
         actorUserId: actorUserId,
+        operatorId: operatorId,
+        locationId: locationId,
         adminReason: adminReason,
         reasonNote: reasonNote,
       ),
@@ -556,11 +760,15 @@ class _FakeVendorApplicabilityGateway
 class _AdminListCall {
   const _AdminListCall({
     required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
     required this.settingKind,
     required this.currentOnly,
   });
 
   final String actorUserId;
+  final String? operatorId;
+  final String? locationId;
   final String? settingKind;
   final bool currentOnly;
 }
@@ -568,12 +776,16 @@ class _AdminListCall {
 class _UpsertCall {
   const _UpsertCall({
     required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
     required this.settingKind,
     required this.metadata,
     required this.adminReason,
   });
 
   final String actorUserId;
+  final String? operatorId;
+  final String? locationId;
   final String settingKind;
   final Map<String, Object?> metadata;
   final String adminReason;
@@ -582,11 +794,15 @@ class _UpsertCall {
 class _EndCall {
   const _EndCall({
     required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
     required this.adminReason,
     required this.reasonNote,
   });
 
   final String actorUserId;
+  final String? operatorId;
+  final String? locationId;
   final String adminReason;
   final String? reasonNote;
 }
