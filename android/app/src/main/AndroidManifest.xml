@@ -87,5 +87,14 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- url_launcher: the Barrio manual reader's "Search the web"
+             action opens https results in an in-app browser view
+             (Android Custom Tabs). Android 11+ package visibility
+             requires declaring the https VIEW intent so the browser
+             backing the Custom Tab resolves. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
     </queries>
 </manifest>
