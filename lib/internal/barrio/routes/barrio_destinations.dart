@@ -278,6 +278,23 @@ const List<BarrioDestination> barrioDestinations = [
     prominence: BarrioProminence.secondary,
     showOnHomeHub: true,
   ),
+  // Operator curation 2026-07-29: Drink Specs sits right after MENU so the
+  // cocktail recipes live next to the food menu at the top of Food & Drink.
+  BarrioDestination(
+    id: 'training_drink_specs',
+    label: 'Drink Specs',
+    description: 'Drink Specs: recipes, specs, and directions for our cocktails.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    category: BarrioCategory.foodAndDrink,
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+    iconCodePoint: 0xe6f1, // Icons.wine_bar
+  ),
   BarrioDestination(
     id: 'training_tequila',
     label: 'Tequila',
@@ -496,20 +513,5 @@ const List<BarrioDestination> barrioDestinations = [
     prominence: BarrioProminence.secondary,
     showOnHomeHub: true,
     iconCodePoint: 0xe38c, // Icons.local_bar
-  ),
-  BarrioDestination(
-    id: 'training_drink_specs',
-    label: 'Drink Specs',
-    description: 'Drink Specs: recipes, specs, and directions for our cocktails.',
-    audiences: {
-      BarrioAudience.allStaff,
-      BarrioAudience.supervisor,
-      BarrioAudience.manager,
-      BarrioAudience.admin,
-    },
-    category: BarrioCategory.foodAndDrink,
-    prominence: BarrioProminence.secondary,
-    showOnHomeHub: true,
-    iconCodePoint: 0xe6f1, // Icons.wine_bar
   ),
 ];
