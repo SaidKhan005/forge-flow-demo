@@ -40,4 +40,27 @@ class BarrioTrainingDoc {
     required this.chapters,
     this.depthBadge,
   });
+
+  /// Returns a copy with selected fields overridden. Used by
+  /// [kBarrioTrainingDocs] to give a manual an operator-facing display
+  /// title that differs from the verbatim source H1 (for example the
+  /// 'Clover POS' SOP presented on the home hub and reader header as
+  /// 'Clover Training'). The source content constant keeps its verbatim
+  /// [title], so the training verbatim guard still compares against the
+  /// unchanged source words.
+  BarrioTrainingDoc copyWith({
+    String? id,
+    String? title,
+    String? sourcePath,
+    List<HandbookChapter>? chapters,
+    String? depthBadge,
+  }) {
+    return BarrioTrainingDoc(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      sourcePath: sourcePath ?? this.sourcePath,
+      chapters: chapters ?? this.chapters,
+      depthBadge: depthBadge ?? this.depthBadge,
+    );
+  }
 }
