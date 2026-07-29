@@ -1,6 +1,7 @@
 // Widget tests for the 2026-07-29 manual-reader search polish:
 //   1) the reading deck is wrapped in a SelectionArea whose selection
-//      menu adds a "Search the web" action (select-any-word-to-search),
+//      menu offers only "Ask chat" and "Search the web"
+//      (select-any-word action),
 //   2) the header search actions grew to a 28px glyph on a 48px tap
 //      target (bigger search buttons).
 //
@@ -69,8 +70,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 800));
   }
 
-  testWidgets('long-pressing a word builds a selection menu that adds '
-      'Search the web to the default items (mobile)', (tester) async {
+  testWidgets('long-pressing a word builds a selection menu with only '
+      'Ask chat and Search the web (mobile)', (tester) async {
     // Reset the platform override in a finally so the foundation-var
     // invariant check (which runs before addTearDown) never trips.
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
@@ -107,16 +108,16 @@ void main() {
       ) as AdaptiveTextSelectionToolbar;
 
       final items = toolbar.buttonItems!;
-      expect(items.map((item) => item.label), contains('Search the web'),
-          reason: 'the selection menu must add the web search action');
-      // The platform default items (Copy, Select all) carry a button
-      // type, not a literal label, and must survive ahead of the custom
-      // action so the reader still gets native Copy for free.
+      expect(items.map((item) => item.label),
+          containsAll(<String>['Ask chat', 'Search the web']),
+          reason: 'the selection menu offers Ask chat and Search the web');
+      // Operator curation (2026-07-29): only those two actions, so the
+      // native Copy / Select all defaults are dropped.
       expect(items.map((item) => item.type),
-          contains(ContextMenuButtonType.copy),
-          reason: 'the default Copy item must be preserved');
-      expect(items.length, greaterThanOrEqualTo(2),
-          reason: 'the custom action appends to the defaults, never replaces');
+          isNot(contains(ContextMenuButtonType.copy)),
+          reason: 'Copy is removed; only the two custom actions remain');
+      expect(items.length, 2,
+          reason: 'exactly two actions: Ask chat and Search the web');
       expect(tester.takeException(), isNull);
     } finally {
       debugDefaultTargetPlatformOverride = null;
