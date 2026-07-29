@@ -43,10 +43,12 @@ class BarrioColors {
   static const Color tealMuted = Color(0xFF1A9898);
   static const Color tealFaint = Color(0x1A40CFCF);
   static const Color tealDeep  = Color(0xFF2E9B8F); // icon-leaf teal — teal text on cream
-  // AA-compliant deep teal for key-term emphasis on cream, 5.18:1.
-  // (tealDeep is only ~3.06:1 and FAILS AA for body text; use tealInk
-  // for the key-term w700 emphasis pilot.)
-  static const Color tealInk   = Color(0xFF1E7268);
+  // Bold, vivid deep teal for key-term emphasis on cream: AA-compliant at
+  // 4.74:1 against shellDeep (#F7F3EA), and far more saturated than the
+  // prior #1E7268 (HSL S ~0.82 vs ~0.58) so the rollout reads bolder.
+  // Paired with w700 as the required non-color cue. (tealDeep is only
+  // ~3.06:1 and FAILS AA for body text; use tealInk for key-term emphasis.)
+  static const Color tealInk   = Color(0xFF0C7A68);
 
   // Text hierarchy — deep navy on cream (icon palette)
   static const Color textPrimary   = Color(0xFF16243B); // deep navy
