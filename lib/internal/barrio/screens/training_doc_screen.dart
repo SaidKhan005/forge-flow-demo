@@ -125,6 +125,13 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
       GlobalKey<LearningCarouselState>();
   int _initialPage = 0;
 
+  /// The plain text of the reader's current text selection (select-any-
+  /// word-to-search, 2026-07-29). The reading deck is wrapped in a
+  /// [SelectionArea]; its onSelectionChanged keeps this current so the
+  /// selection menu's "Search the web" action can read the highlighted
+  /// words. Null or empty means nothing is selected.
+  String? _selectedText;
+
   late final AnimationController _heroController = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 700),
@@ -347,6 +354,33 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     if (opened || !mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Could not open the web search.')),
+    );
+  }
+
+  /// Builds the reading text selection menu (select-any-word-to-search,
+  /// 2026-07-29): the platform default items (Copy, Select all) plus a
+  /// "Search the web" action that looks the selected words up in the
+  /// in-app browser through the same launch path the header button uses.
+  /// The action dismisses the menu first; an empty or whitespace-only
+  /// selection does nothing.
+  Widget _buildSelectionContextMenu(
+    BuildContext context,
+    SelectableRegionState selectableRegionState,
+  ) {
+    return AdaptiveTextSelectionToolbar.buttonItems(
+      anchors: selectableRegionState.contextMenuAnchors,
+      buttonItems: <ContextMenuButtonItem>[
+        ...selectableRegionState.contextMenuButtonItems,
+        ContextMenuButtonItem(
+          label: 'Search the web',
+          onPressed: () {
+            final selection = _selectedText?.trim() ?? '';
+            selectableRegionState.hideToolbar();
+            if (selection.isEmpty) return;
+            _launchWebSearch(selection);
+          },
+        ),
+      ],
     );
   }
 
@@ -573,13 +607,30 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
               ),
               const SizedBox(height: 8),
               Expanded(
-                child: LearningCarousel(
-                  key: _carouselKey,
-                  cardCount: _deck.length,
-                  initialPage: _initialPage,
-                  onPageChanged: _onCardPageChanged,
-                  accent: accent,
-                  cardBuilder: _buildDeckCard,
+                // Select-any-word-to-search (2026-07-29 operator request):
+                // the whole reading deck is a text selection region, so a
+                // reader can long-press an unfamiliar word (for example a
+                // Spanish term like 'Amatitan') to select it and then pick
+                // "Search the web" from the selection menu, or Copy it.
+                // Selection is a long-press or drag gesture; every reading
+                // gesture still works because each lives on a recognizer
+                // deeper than this region: a plain tap still turns the page
+                // (the carousel edge tap zones), a clearly horizontal swipe
+                // still moves between cards, a near-vertical drag still
+                // scrolls a long card, term-link taps still open the
+                // definition popover, and an image tap still zooms.
+                child: SelectionArea(
+                  onSelectionChanged: (content) =>
+                      _selectedText = content?.plainText,
+                  contextMenuBuilder: _buildSelectionContextMenu,
+                  child: LearningCarousel(
+                    key: _carouselKey,
+                    cardCount: _deck.length,
+                    initialPage: _initialPage,
+                    onPageChanged: _onCardPageChanged,
+                    accent: accent,
+                    cardBuilder: _buildDeckCard,
+                  ),
                 ),
               ),
             ],
@@ -606,16 +657,25 @@ class _HeaderActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Bigger, easier-to-hit header actions (2026-07-29 operator request):
+    // the icons step up from 22 to 28 so the two search glyphs read more
+    // clearly, while explicit 48x48 constraints keep a comfortable tap
+    // target. The A-Z index (TERM manuals only) grows with them so all
+    // three stay a matched set. Three 48px buttons still fit the bar with
+    // room for the title at phone width, so nothing crowds or overflows.
+    const double kIconSize = 28;
+    const BoxConstraints kTapTarget =
+        BoxConstraints(minWidth: 48, minHeight: 48);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         IconButton(
           tooltip: 'Search this manual',
           onPressed: onSearchTap,
-          visualDensity: VisualDensity.compact,
+          iconSize: kIconSize,
+          constraints: kTapTarget,
           icon: const Icon(
             Icons.search_rounded,
-            size: 22,
             color: BarrioColors.textSecondary,
           ),
         ),
@@ -626,10 +686,10 @@ class _HeaderActions extends StatelessWidget {
         IconButton(
           tooltip: 'Search the web',
           onPressed: onWebSearchTap,
-          visualDensity: VisualDensity.compact,
+          iconSize: kIconSize,
+          constraints: kTapTarget,
           icon: const Icon(
             Icons.travel_explore_rounded,
-            size: 22,
             color: BarrioColors.textSecondary,
           ),
         ),
@@ -637,10 +697,10 @@ class _HeaderActions extends StatelessWidget {
           IconButton(
             tooltip: 'Jump to a term',
             onPressed: onIndexTap,
-            visualDensity: VisualDensity.compact,
+            iconSize: kIconSize,
+            constraints: kTapTarget,
             icon: const Icon(
               Icons.sort_by_alpha_rounded,
-              size: 22,
               color: BarrioColors.textSecondary,
             ),
           ),
@@ -680,71 +740,155 @@ class _WebSearchDialogState extends State<_WebSearchDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: Colors.white,
+    final accent = widget.accent;
+    return Dialog(
+      backgroundColor: BarrioColors.shellMid,
+      elevation: 10,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
       ),
-      title: Text(
-        'Search the web',
-        style: GoogleFonts.playfairDisplay(
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
-          color: BarrioColors.textPrimary,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(22, 22, 22, 14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Title row: the same globe-with-magnifier glyph the header
+            // action carries, in the manual accent, beside a Playfair
+            // header so the popup reads as part of the premium reader.
+            Row(
+              children: [
+                Icon(Icons.travel_explore_rounded, size: 20, color: accent),
+                const SizedBox(width: 10),
+                Text(
+                  'Search the web',
+                  style: GoogleFonts.playfairDisplay(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w700,
+                    color: BarrioColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Opens Google results inside the app.',
+              style: GoogleFonts.ibmPlexSans(
+                fontSize: 12.5,
+                height: 1.4,
+                color: BarrioColors.textMuted,
+              ),
+            ),
+            const SizedBox(height: 18),
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => _submit(),
+              style: GoogleFonts.ibmPlexSans(
+                fontSize: 15,
+                color: BarrioColors.textPrimary,
+              ),
+              cursorColor: accent,
+              decoration: InputDecoration(
+                hintText: 'Search the web',
+                hintStyle: GoogleFonts.ibmPlexSans(
+                  fontSize: 15,
+                  color: BarrioColors.textMuted,
+                ),
+                filled: true,
+                fillColor: BarrioColors.shellSurface,
+                isDense: true,
+                prefixIcon: Icon(
+                  Icons.search_rounded,
+                  size: 20,
+                  color: BarrioColors.textMuted,
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: BarrioColors.textMuted.withValues(alpha: 0.25),
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: accent, width: 2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.ibmPlexMono(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.3,
+                      color: BarrioColors.textMuted,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                _SearchActionButton(accent: accent, onTap: _submit),
+              ],
+            ),
+          ],
         ),
       ),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        textInputAction: TextInputAction.search,
-        onSubmitted: (_) => _submit(),
-        style: GoogleFonts.ibmPlexSans(
-          fontSize: 15,
-          color: BarrioColors.textPrimary,
+    );
+  }
+}
+
+/// The dialog's primary action: a filled teal-accent "Search" button so
+/// the search action reads as the clear next step (the old plain text
+/// button sat flat against the surface). A luminance-picked foreground
+/// keeps the label legible on any manual accent, matching the reader's
+/// flashcard chip treatment.
+class _SearchActionButton extends StatelessWidget {
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _SearchActionButton({required this.accent, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final onAccent =
+        ThemeData.estimateBrightnessForColor(accent) == Brightness.dark
+            ? Colors.white
+            : const Color(0xFF10151F);
+    return Material(
+      color: accent,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.arrow_forward_rounded, size: 16, color: onAccent),
+              const SizedBox(width: 6),
+              Text(
+                'Search',
+                style: GoogleFonts.ibmPlexMono(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                  color: onAccent,
+                ),
+              ),
+            ],
+          ),
         ),
-        decoration: InputDecoration(
-          hintText: 'Search the web',
-          hintStyle: GoogleFonts.ibmPlexSans(
-            fontSize: 15,
-            color: BarrioColors.textMuted,
-          ),
-          enabledBorder: UnderlineInputBorder(
-            borderSide: BorderSide(
-              color: BarrioColors.textMuted.withValues(alpha: 0.4),
-            ),
-          ),
-          focusedBorder: UnderlineInputBorder(
-            borderSide: BorderSide(color: widget.accent, width: 2),
-          ),
-        ),
-        cursorColor: widget.accent,
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(
-            'Cancel',
-            style: GoogleFonts.ibmPlexMono(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.3,
-              color: BarrioColors.textMuted,
-            ),
-          ),
-        ),
-        TextButton(
-          onPressed: _submit,
-          child: Text(
-            'Search',
-            style: GoogleFonts.ibmPlexMono(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.3,
-              color: widget.accent,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
