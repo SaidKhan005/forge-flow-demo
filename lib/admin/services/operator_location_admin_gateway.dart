@@ -32,6 +32,18 @@ import 'admin_http_timeout.dart';
 /// tests pin a synthetic value.
 typedef AdminBearerTokenProvider = Future<String> Function();
 
+/// Demo store-sync hook fired by [InMemoryOperatorLocationAdminGateway]
+/// after a location is added, so the divergent in-memory hierarchy
+/// store can register the matching leaf. Demo / share-preview only; the
+/// production HTTP path wires nothing.
+typedef DemoLocationAddedSync = void Function(LocationAdminRecord location);
+
+/// Demo store-sync hook fired by [InMemoryOperatorLocationAdminGateway]
+/// after a location is removed, so the divergent in-memory hierarchy
+/// store can drop the matching leaf. Demo / share-preview only.
+typedef DemoLocationRemovedSync =
+    void Function(String operatorId, String locationId);
+
 void _validateParentOrgUnitId(String? value) {
   if (value == null || value.trim().isEmpty) {
     throw const OperatorLocationAdminGatewayError(
@@ -320,8 +332,12 @@ class InMemoryOperatorLocationAdminGateway
     Iterable<OperatorAdminBundle> seed = const <OperatorAdminBundle>[],
     DateTime Function()? now,
     String Function()? idGenerator,
+    DemoLocationAddedSync? onLocationAdded,
+    DemoLocationRemovedSync? onLocationRemoved,
   }) : _now = now ?? DateTime.now,
        _idGenerator = idGenerator ?? _randomId,
+       _onLocationAdded = onLocationAdded,
+       _onLocationRemoved = onLocationRemoved,
        _bundles = <String, _MutableBundle>{
          for (final bundle in seed)
            bundle.operator.operatorId: _MutableBundle.from(bundle),
@@ -329,6 +345,19 @@ class InMemoryOperatorLocationAdminGateway
 
   final DateTime Function() _now;
   final String Function() _idGenerator;
+
+  /// Demo-only store-sync hooks. The two in-memory admin gateways
+  /// (this one + [InMemoryRolesHierarchySessionsAdminGateway]) keep
+  /// SEPARATE location stores, so a location added here was invisible to
+  /// the hierarchy gateway and every hierarchy-tree action
+  /// (delete / move / suspend / reactivate) 404'd on it. When wired (the
+  /// demo / share-preview path), [_onLocationAdded] registers the new
+  /// location as a hierarchy leaf and [_onLocationRemoved] soft-deletes
+  /// it there too, so the two stores stay in lockstep. Both default to
+  /// null, so the production [HttpOperatorLocationAdminGateway] path and
+  /// every existing widget test are byte-unchanged.
+  final DemoLocationAddedSync? _onLocationAdded;
+  final DemoLocationRemovedSync? _onLocationRemoved;
   final Map<String, _MutableBundle> _bundles;
 
   /// Per-key cache so a retried mutation on the in-memory gateway
@@ -498,6 +527,11 @@ class InMemoryOperatorLocationAdminGateway
       updatedAt: ts,
     );
     bundle.locations.add(location);
+    // Demo store-sync: mirror the new location into the hierarchy
+    // gateway's store as an active leaf under the same org unit, so the
+    // hierarchy-tree actions resolve it. No-op (null) on the production
+    // HTTP path and in widget tests that wire no sync hook.
+    _onLocationAdded?.call(location);
     _idempotentResults[command.idempotencyKey] = location;
     return location;
   }
@@ -560,6 +594,10 @@ class InMemoryOperatorLocationAdminGateway
     bundle.locations
       ..clear()
       ..addAll(removed);
+    // Demo store-sync: keep the hierarchy gateway's store in lockstep so
+    // the location also disappears from the hierarchy tree. No-op (null)
+    // on the production HTTP path.
+    _onLocationRemoved?.call(operatorId, locationId);
     // Sentinel value - `removeLocation` returns void so any non-null
     // marker suffices for the cache hit branch above.
     _idempotentResults[idempotencyKey] = const Object();
@@ -650,7 +688,17 @@ class InMemoryOperatorLocationAdminGateway
     );
   }
 
-  static int _idCounter = 0;
+  /// Counter seed for the default id generator. Starts at a high offset
+  /// (well above every reserved demo seed id, which all live in the low
+  /// `00000000-0000-4000-8000-0000000000XX` range) so a freshly minted
+  /// id can NEVER collide with a seeded operator id
+  /// (`...000000000001`/`...000000000002`) or a seeded location id
+  /// (`...0000000000a1` etc.). The pre-offset counter started at 0, so
+  /// the very first `addLocation` minted `...000000000001` — the demo
+  /// operator id — which is what produced the
+  /// `unknown_location: <op-id> not found for operator <op-id>` 404 when
+  /// a hierarchy-tree action then ran against the bogus id.
+  static int _idCounter = 0x010000000000;
   static String _randomId() {
     _idCounter += 1;
     final hex = _idCounter.toRadixString(16).padLeft(12, '0');
