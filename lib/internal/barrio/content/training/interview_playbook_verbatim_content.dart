@@ -73,6 +73,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               'resilient, coachable, and adaptable. After all, we\'re not '
               'merely filling positions; we\'re cultivating a passionate team '
               'that will help shape and elevate our brand for years to come!',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c1_u0.webp',
+              caption: 'Diagram: Building Our Dream Team',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c1_u1',
@@ -107,6 +114,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               'that perfect fit, and by focusing on distinct traits '
               'throughout our evaluation journey, we can make smarter, more '
               'confident hiring decisions.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c1_u1.webp',
+              caption: 'Diagram: The Hiring Flow',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -150,6 +164,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               '\n'
               '- Ask if they have any questions to show their interest and '
               'values.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c2_u0.webp',
+              caption: 'Diagram: Interview Principles',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -180,6 +201,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               'coachability.\n'
               '\n'
               '- Look for someone with warmth, showing a positive demeanor.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c3_u0.webp',
+              caption: 'Diagram: What To Look For',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -202,6 +230,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               'interview feeling unsure about a candidate, it is a no. Trust '
               'that gut feeling knowing great candidates do not make you '
               'question your instincts.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c4_u0.webp',
+              caption: 'Diagram: Green Flags V.S Red Flags',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c4_u1',
@@ -227,6 +262,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               '- Has self-regulation strategies and system for multi-tasking.\n'
               '\n'
               '- Sees opportunities not burdens.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c4_u1.webp',
+              caption: 'Diagram: Green Flags',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c4_u2',
@@ -252,6 +294,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               '- Lacks self-awareness.\n'
               '\n'
               '- Speaks poorly about others.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c4_u2.webp',
+              caption: 'Diagram: Red Flags',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -273,6 +322,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               '- Screened By:\n'
               '\n'
               '- Position Applied For:',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c5_u0.webp',
+              caption: 'Diagram: Candidate Details',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c5_u1',
@@ -288,6 +344,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               '\n'
               '4. What is your availability? How many shifts are you looking '
               'for?',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c5_u1.webp',
+              caption: 'Diagram: Questions',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c5_u2',
@@ -311,6 +374,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               'Sunday\n'
               '\n'
               '# of Shifts',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c5_u2.webp',
+              caption: 'Diagram: Availability',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c5_u3',
@@ -318,6 +388,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Notes',
           body: 'Green Flags | Red Flags',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c5_u3.webp',
+              caption: 'Diagram: Notes',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c5_u4',
@@ -331,6 +408,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               '- Facebook:\n'
               '\n'
               '- Tiktok:',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c5_u4.webp',
+              caption: 'Diagram: Social Media Vetting',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c5_u5',
@@ -340,6 +424,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
           body: '- Is this candidate qualitied to move forward?\n'
               '\n'
               '- Next interview:',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c5_u5.webp',
+              caption: 'Diagram: Decision',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -361,6 +452,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               '- Interviewed By:\n'
               '\n'
               '- Position Applied For:',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c6_u0.webp',
+              caption: 'Diagram: Candidate Details',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c6_u1',
@@ -383,6 +481,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               '\n'
               '6. What is the hardest piece of feedback you have ever '
               'received? How did you overcome it?',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c6_u1.webp',
+              caption: 'Diagram: Questions',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -404,6 +509,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               '- Interviewed By:\n'
               '\n'
               '- Position Applied For:',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c7_u0.webp',
+              caption: 'Diagram: Candidate Details',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c7_u1',
@@ -426,6 +538,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               '\n'
               '6. A guest calls you over to complain about their experience. '
               'What do you do?',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c7_u1.webp',
+              caption: 'Diagram: Questions',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c7_u2',
@@ -433,6 +552,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Notes',
           body: 'Green Flags | Red Flags',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c7_u2.webp',
+              caption: 'Diagram: Notes',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -454,6 +580,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               '- Interviewed By:\n'
               '\n'
               '- Position Applied For:',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c8_u0.webp',
+              caption: 'Diagram: Candidate Details',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c8_u1',
@@ -477,6 +610,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               '\n'
               '6. A guest calls you over to complain about their experience. '
               'What do you do?',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c8_u1.webp',
+              caption: 'Diagram: Questions',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c8_u2',
@@ -484,6 +624,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Notes',
           body: 'Green Flags | Red Flags',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c8_u2.webp',
+              caption: 'Diagram: Notes',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -505,6 +652,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               '- Interviewed By:\n'
               '\n'
               '- Position Applied For:',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c9_u0.webp',
+              caption: 'Diagram: Candidate Details',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c9_u1',
@@ -531,6 +685,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               'and what made them difficult? What did you learn from them?\n'
               '\n'
               '6. What is your favourite classic cocktail?',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c9_u1.webp',
+              caption: 'Diagram: Questions',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c9_u2',
@@ -538,6 +699,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Notes',
           body: 'Green Flags | Red Flags',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c9_u2.webp',
+              caption: 'Diagram: Notes',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -559,6 +727,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               '- Interviewed By:\n'
               '\n'
               '- Position Applied For:',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c10_u0.webp',
+              caption: 'Diagram: Candidate Details',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c10_u1',
@@ -584,6 +759,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               '6. Tell me about a time when you went above and beyond for a '
               'guest. Follow up: What was their reaction? What was your '
               'manager\'s reaction?',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c10_u1.webp',
+              caption: 'Diagram: Questions',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c10_u2',
@@ -591,6 +773,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Notes',
           body: 'Green Flags | Red Flags',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c10_u2.webp',
+              caption: 'Diagram: Notes',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -612,6 +801,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               '- Interviewed By:\n'
               '\n'
               '- Position Applied For:',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c11_u0.webp',
+              caption: 'Diagram: Candidate Details',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c11_u1',
@@ -635,6 +831,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               '\n'
               '6. Tell me about a time a coworker took their frustrations out '
               'on you? How did you handle it?',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c11_u1.webp',
+              caption: 'Diagram: Questions',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c11_u2',
@@ -642,6 +845,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Notes',
           body: 'Green Flags | Red Flags',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c11_u2.webp',
+              caption: 'Diagram: Notes',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -663,6 +873,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               '- Interviewed By:\n'
               '\n'
               '- Position Applied For:',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c12_u0.webp',
+              caption: 'Diagram: Candidate Details',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c12_u1',
@@ -687,6 +904,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               '\n'
               '6. What chefs do you look to for inspiration? Who is the most '
               'influential chef you worked for?',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c12_u1.webp',
+              caption: 'Diagram: Questions',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'interview_playbook_c12_u2',
@@ -694,6 +918,13 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Notes',
           body: 'Green Flags | Red Flags',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/interview_playbook_diagrams/interview_playbook_c12_u2.webp',
+              caption: 'Diagram: Notes',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),

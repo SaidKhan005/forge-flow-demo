@@ -5,9 +5,11 @@
 // wiring so a future regeneration or manifest edit can never silently drop
 // or mis-anchor a diagram.
 //
-// The counts are the operator-approved set: 36 Company Handbook + 9 Food
-// Safety = 45 diagrams. If a diagram is intentionally added or cut, update
-// these numbers deliberately (that is the point of the guard).
+// Full diagram coverage (2026-07-30): every previously text-only reading
+// card now carries a house-style diagram pictogram, so the counts are
+// 176 Company Handbook + 85 Food Safety = 261 diagrams. If a diagram is
+// intentionally added or cut, update these numbers deliberately (that is
+// the point of the guard).
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/internal/barrio/content/company_handbook_content.dart';
@@ -38,18 +40,18 @@ void main() {
               if (_isDiagram(image)) image,
       ];
 
-  test('Company Handbook carries exactly its 36 approved diagrams', () {
+  test('Company Handbook carries exactly its 176 approved diagrams', () {
     final diagrams = diagramsIn(handbook);
-    expect(diagrams, hasLength(36));
+    expect(diagrams, hasLength(176));
     for (final image in diagrams) {
       expect(image.assetPath, startsWith(_kHandbookDiagramDir));
       expect(image.assetPath, endsWith('.webp'));
     }
   });
 
-  test('Food Safety carries exactly its 9 approved diagrams', () {
+  test('Food Safety carries exactly its 85 approved diagrams', () {
     final diagrams = diagramsIn(foodSafety);
-    expect(diagrams, hasLength(9));
+    expect(diagrams, hasLength(85));
     for (final image in diagrams) {
       expect(image.assetPath, startsWith(_kFoodSafetyDiagramDir));
       expect(image.assetPath, endsWith('.webp'));
@@ -58,7 +60,7 @@ void main() {
 
   test('every diagram leads its card and carries an honest alt caption', () {
     final all = [...diagramsIn(handbook), ...diagramsIn(foodSafety)];
-    expect(all, hasLength(45));
+    expect(all, hasLength(261));
     for (final image in all) {
       // afterParagraph -1 renders the diagram before the first paragraph:
       // the picture sets context, then the verbatim text follows.

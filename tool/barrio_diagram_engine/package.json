@@ -1,0 +1,14 @@
+{
+  "name": "barrio-diagram-engine",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Renders house-style diagram pictograms for Barrio training cards (Lucide icons, ISC-licensed, rasterised to webp with sharp). See README.md.",
+  "scripts": {
+    "render": "node engine.mjs ALL"
+  },
+  "dependencies": {
+    "lucide-static": "0.400.0",
+    "sharp": "0.33.5"
+  }
+}

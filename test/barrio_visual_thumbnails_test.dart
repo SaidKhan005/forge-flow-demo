@@ -72,16 +72,16 @@ void main() {
         'null for an imageless one', () {
       final dishes = kBarrioTrainingDocs[_kDishes]!;
       final imaged =
-          _firstUnit(dishes, (u) => u.images.isNotEmpty && !_isCont(u));
-      // The picture campaign now covers every dishes card, so the imageless
-      // sanity case scans all training docs for the first imageless
-      // (non-cont) card wherever it lives, keeping this robust as coverage
-      // grows.
+          _firstUnit(dishes, (u) => u.firstPhoto != null && !_isCont(u));
+      // Full diagram coverage (2026-07-30) gives every reading card a visual,
+      // but browse thumbnails are PHOTO-only: a diagram-only card carries no
+      // photo, so it resolves null here exactly like a bare card once did.
+      // Scan all docs for the first photo-less (non-cont) card.
       String? plainDoc;
       _Coord? plain;
       for (final entry in kBarrioTrainingDocs.entries) {
         final c =
-            _firstUnit(entry.value, (u) => u.images.isEmpty && !_isCont(u));
+            _firstUnit(entry.value, (u) => u.firstPhoto == null && !_isCont(u));
         if (c != null) {
           plainDoc = entry.key;
           plain = c;
@@ -91,7 +91,7 @@ void main() {
       expect(imaged, isNotNull,
           reason: 'sanity: the dishes glossary has photo-bearing cards');
       expect(plain, isNotNull,
-          reason: 'sanity: at least one manual still has imageless cards');
+          reason: 'sanity: at least one manual has a photo-less card');
 
       expect(
         barrioUnitFirstImageAt(
@@ -206,7 +206,7 @@ void main() {
       usePhone(tester);
       final dishes = kBarrioTrainingDocs[_kDishes]!;
       final imaged =
-          _firstUnit(dishes, (u) => u.images.isNotEmpty && !_isCont(u))!;
+          _firstUnit(dishes, (u) => u.firstPhoto != null && !_isCont(u))!;
 
       await pumpSearch(tester, _kDishes);
       await tester.enterText(find.byType(TextField), imaged.unit.title);
@@ -354,11 +354,13 @@ void main() {
       usePhone(tester);
       final dishes = kBarrioTrainingDocs[_kDishes]!;
       final imaged =
-          _firstUnit(dishes, (u) => u.images.isNotEmpty && !_isCont(u))!;
+          _firstUnit(dishes, (u) => u.firstPhoto != null && !_isCont(u))!;
       final tequila = kBarrioTrainingDocs[_kTequila]!;
-      final plain = _firstUnit(tequila, (u) => u.images.isEmpty)!;
-      expect(plain.unit.images, isEmpty,
-          reason: 'sanity: the tequila manual carries no card photos');
+      // A card with no PHOTO (tequila's last bare card now carries a
+      // diagram, which is never a browse thumbnail) keeps the manual icon.
+      final plain = _firstUnit(tequila, (u) => u.firstPhoto == null)!;
+      expect(plain.unit.firstPhoto, isNull,
+          reason: 'sanity: this tequila card has no photo');
 
       final imagedBookmark = BarrioBookmark(
         docId: _kDishes,

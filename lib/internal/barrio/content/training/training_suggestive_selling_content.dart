@@ -42,6 +42,13 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'a way that feels organic rather than forced. When executed '
               'thoughtfully, these strategies can transform a simple meal '
               'into a memorable occasion, encouraging repeat business.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c0_u0.webp',
+              caption: 'Diagram: Leveraging Suggestive Selling Techniques',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -74,6 +81,13 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'quality control.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c1_u0.webp',
+              caption: 'Diagram: Selling Strategies',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c1_u1',
@@ -94,6 +108,13 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'loyalty, and ultimately drive sales.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c1_u1.webp',
+              caption: 'Diagram: Selling Strategies',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -120,6 +141,13 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'higher-value options without feeling coerced.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c2_u0.webp',
+              caption: 'Diagram: Suggestive Selling',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c2_u1',
@@ -143,6 +171,13 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'upselling serve as powerful sales tactics.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c2_u1.webp',
+              caption: 'Diagram: Suggestive Selling',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c2_u2',
@@ -160,6 +195,13 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'the server\'s ability to understand the guests\' needs and '
               'preferences, enabling them to suggest alternatives that feel '
               'both natural and advantageous.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c2_u2.webp',
+              caption: 'Diagram: Upselling',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c2_u3',
@@ -179,6 +221,13 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'practice not only benefits the guest by offering them a '
               'curated selection of items but also contributes to increased '
               'sales.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c2_u3.webp',
+              caption: 'Diagram: Cross-Selling',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -204,6 +253,13 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'their needs, it may lead to confusion and irritation.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c3_u0.webp',
+              caption: 'Diagram: Managing Improper Execution',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c3_u1',
@@ -233,6 +289,13 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'guest experience.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c3_u1.webp',
+              caption: 'Diagram: Managing Improper Execution',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -255,6 +318,13 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'quality and trust established through menu knowledge, personal '
               'connection, adaptability, and the strategic picking of '
               'moments.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c4_u0.webp',
+              caption: 'Diagram: Tools for Effective Strategies',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c4_u1',
@@ -281,6 +351,13 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'understanding of the menu, the more empowered the staff and '
               'the stronger the foundation for an unforgettable dining '
               'experience.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c4_u1.webp',
+              caption: 'Diagram: Menu Knowledge',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c4_u2',
@@ -299,6 +376,13 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'elevating the meal and creating memorable experiences instead '
               'of inflating the bill, ensuring guests leave with a lasting '
               'impression of genuine hospitality.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c4_u2.webp',
+              caption: 'Diagram: Building Connection',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c4_u3',
@@ -327,6 +411,13 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'dining experience rather than selling techniques, servers can '
               'create lasting memories and enrich the guests\' dining '
               'experience.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c4_u3.webp',
+              caption: 'Diagram: Establishing Trust',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c4_u4',
@@ -351,6 +442,13 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'personalized approach stands in stark contrast to the '
               'one-size-fits-all script, allowing for a more genuine '
               'connection with guests.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c4_u4.webp',
+              caption: 'Diagram: Adaptability',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c4_u5',
@@ -372,6 +470,13 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'expectation that the guest is already on board.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c4_u5.webp',
+              caption: 'Diagram: Pick Your Moments',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c4_u6',
@@ -394,6 +499,13 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'rather than the primary objective.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c4_u6.webp',
+              caption: 'Diagram: Pick Your Moments',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c4_u7',
@@ -421,6 +533,13 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'authentic invitations to explore the menu. This approach not '
               'only increases average check but also increases guest loyalty, '
               'reinforcing the importance of thoughtful communication.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c4_u7.webp',
+              caption: 'Diagram: Power of Language',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c4_u8',
@@ -446,6 +565,13 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'restaurants can elevate the value and satisfaction of each '
               'meal, leaving a lasting impression that encourages repeat '
               'visits.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c4_u8.webp',
+              caption: 'Diagram: Use in Combination',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -475,6 +601,13 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'sense of shared purpose and achievement.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c5_u0.webp',
+              caption: 'Diagram: Setting Goals',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c5_u1',
@@ -497,6 +630,13 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'and its guests.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c5_u1.webp',
+              caption: 'Diagram: Setting Goals',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),

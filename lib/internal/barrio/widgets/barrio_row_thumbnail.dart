@@ -17,6 +17,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../content/company_handbook_content.dart';
 import '../content/training/training_docs.dart';
 import 'barrio_destination_scaffold.dart';
 
@@ -39,8 +40,9 @@ String? barrioUnitFirstImageAt(
   if (chapterIndex < 0 || chapterIndex >= doc.chapters.length) return null;
   final units = doc.chapters[chapterIndex].units;
   if (unitIndex < 0 || unitIndex >= units.length) return null;
-  final images = units[unitIndex].images;
-  return images.isEmpty ? null : images.first.assetPath;
+  // Photo-only: diagram pictograms live in the reading card body, never on a
+  // browse thumbnail (a pictogram is not a photo of the item).
+  return units[unitIndex].firstPhoto?.assetPath;
 }
 
 /// A small rounded photo of a card, shown on a browse row's leading

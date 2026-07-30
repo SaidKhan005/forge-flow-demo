@@ -38,6 +38,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'behaviors, and practices that food business operators and '
               'their employees adhere to in order to prepare and serve food '
               'safely.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c0_u0.webp',
+              caption: 'Diagram: What Is Food Safety',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c0_u1',
@@ -72,6 +79,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'The food industry widely recognizes these four principles as '
               'essential foundations for good hygiene practices, ensuring '
               'food safety and maintaining public health.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c0_u1.webp',
+              caption: 'Diagram: 4 C\'s to Food Safety',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -113,6 +127,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'operate safely and responsibly.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c1_u0.webp',
+              caption: 'Diagram: Governing Laws And Regulations',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c1_u1',
@@ -138,6 +159,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'establishments.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c1_u1.webp',
+              caption: 'Diagram: Governing Laws And Regulations',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -176,6 +204,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'essential to shower daily, keep your fingernails clean - '
               'avoiding fake nails or nail polish - and wear comfortable, '
               'closed-toe shoes to ensure a hygienic environment.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c2_u0.webp',
+              caption: 'Diagram: Personal Hygiene',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c2_u1',
@@ -254,6 +289,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               '- After handling dirty equipment.\n'
               '\n'
               '- After cleaning.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c2_u2.webp',
+              caption: 'Diagram: Did You Wash Your Hands1/2',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c2_u3',
@@ -277,6 +319,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               '\n'
               'It is essential that food be protected from contamination, '
               'especially ready-to-eat items.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c2_u3.webp',
+              caption: 'Diagram: Using Utensils',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c2_u4',
@@ -320,6 +369,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'It is important to remember that gloves DO NOT replace '
               'handwashing. Handwashing is still necessary as small holes and '
               'tears can occur in the gloves causing bacteria to escape.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c2_u4.webp',
+              caption: 'Diagram: Wearing Gloves',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -342,6 +398,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'children, pregnant individuals, the elderly, and those with '
               'weakened immune systems, who face a higher risk of '
               'experiencing severe illness.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c3_u0.webp',
+              caption: 'Diagram: Foodborne Illness',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c3_u1',
@@ -370,6 +433,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               '- Severe Exhaustion\n'
               '\n'
               '- Paralysis',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c3_u1.webp',
+              caption: 'Diagram: Symptoms',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c3_u2',
@@ -405,6 +475,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               '- Improperly cooled food\n'
               '\n'
               '- Improperly handling leftovers',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c3_u2.webp',
+              caption: 'Diagram: Higher Risk Foods',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c3_u3',
@@ -456,6 +533,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               '\n'
               '- Do not leave potentially dangerous foods in the temperature '
               'danger zone for too long',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c3_u3.webp',
+              caption: 'Diagram: Major Factors Responsible',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -504,6 +588,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'practices to identify food hazards. A hazard is anything '
               'present in food with the potential to harm someone, either by '
               'causing illness or injury.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c5_u0.webp',
+              caption: 'Diagram: Categories of Hazards',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c5_u1',
@@ -531,6 +622,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               '- Storing and preparing food at proper temperatures.\n'
               '\n'
               '- Practicing good hygiene in your facilities.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c5_u1.webp',
+              caption: 'Diagram: Biological Hazards',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c5_u2',
@@ -554,6 +652,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               '- Labelling and storing chemicals separately from food.\n'
               '\n'
               '- Using correct cleaning and preparation procedures.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c5_u2.webp',
+              caption: 'Diagram: Chemical Hazards',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c5_u3',
@@ -584,6 +689,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'processing, shipping, storing, or handling.\n'
               '\n'
               'Source shown: inspection.gc.ca/safefood',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c5_u3.webp',
+              caption: 'Diagram: Physical Hazards',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -603,6 +715,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'These hazards occur from contamination during production, '
               'processing, or handling, such as pathogen growth, chemical '
               'residues, or foreign objects.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c6_u0.webp',
+              caption: 'Diagram: Hazards In Food',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u1',
@@ -634,6 +753,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'Viruses',
           runIndex: 1,
           runLength: 6,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c6_u1.webp',
+              caption: 'Diagram: Biological Hazards',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u2',
@@ -659,6 +785,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'Parasites',
           runIndex: 2,
           runLength: 6,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c6_u2.webp',
+              caption: 'Diagram: Biological Hazards',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u3',
@@ -688,6 +821,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'potential dangers posed by foodborne parasites.',
           runIndex: 3,
           runLength: 6,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c6_u3.webp',
+              caption: 'Diagram: Biological Hazards',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u4',
@@ -722,6 +862,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'moldy',
           runIndex: 4,
           runLength: 6,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c6_u4.webp',
+              caption: 'Diagram: Biological Hazards',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u5',
@@ -750,6 +897,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'further enhance preservation.',
           runIndex: 5,
           runLength: 6,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c6_u5.webp',
+              caption: 'Diagram: Biological Hazards',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u6',
@@ -798,6 +952,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'cleaning agents, pesticides, or environmental pollutants.',
           runIndex: 1,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c6_u7.webp',
+              caption: 'Diagram: Chemical Hazards',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u8',
@@ -818,6 +979,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'harmful metals into the food, causing metal poisoning.',
           runIndex: 2,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c6_u8.webp',
+              caption: 'Diagram: Chemical Hazards',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u9',
@@ -840,6 +1008,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'environment.',
           runIndex: 3,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c6_u9.webp',
+              caption: 'Diagram: Chemical Hazards',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u10',
@@ -856,6 +1031,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'packaging, or during processing.',
           runIndex: 1,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c6_u10.webp',
+              caption: 'Diagram: Physical Hazards',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u11',
@@ -881,6 +1063,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'protects them from external contaminants.',
           runIndex: 2,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c6_u11.webp',
+              caption: 'Diagram: Physical Hazards',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u12',
@@ -907,6 +1096,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'of our guests and ensure a safe dining experience.',
           runIndex: 3,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c6_u12.webp',
+              caption: 'Diagram: Physical Hazards',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -933,6 +1129,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'estimated 8% of children and 4% of adults have food allergies. '
               'There is no cure for allergies, however, some children do '
               'outgrow them.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c7_u0.webp',
+              caption: 'Diagram: Food Allergies',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u1',
@@ -963,6 +1166,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'untreated, immediate medical attention is essential.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c7_u1.webp',
+              caption: 'Diagram: Symptoms',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u2',
@@ -977,6 +1187,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'is and are informed on how to use it.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c7_u2.webp',
+              caption: 'Diagram: Symptoms',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u3',
@@ -1011,6 +1228,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'individuals.',
           runIndex: 1,
           runLength: 10,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c7_u3.webp',
+              caption: 'Diagram: Common Food Allergies',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u4',
@@ -1038,6 +1262,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'haddock, halibut, and cod, among others.',
           runIndex: 2,
           runLength: 10,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c7_u4.webp',
+              caption: 'Diagram: Common Food Allergies',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u5',
@@ -1060,6 +1291,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'Milk',
           runIndex: 3,
           runLength: 10,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c7_u5.webp',
+              caption: 'Diagram: Common Food Allergies',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u6',
@@ -1086,6 +1324,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'proteins, which can be life-threatening.',
           runIndex: 4,
           runLength: 10,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c7_u6.webp',
+              caption: 'Diagram: Common Food Allergies',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u7',
@@ -1114,6 +1359,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'Peanut',
           runIndex: 5,
           runLength: 10,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c7_u7.webp',
+              caption: 'Diagram: Common Food Allergies',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u8',
@@ -1142,6 +1394,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'experiences.',
           runIndex: 6,
           runLength: 10,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c7_u8.webp',
+              caption: 'Diagram: Common Food Allergies',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u9',
@@ -1164,6 +1423,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'management of tree nut allergies.',
           runIndex: 7,
           runLength: 10,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c7_u9.webp',
+              caption: 'Diagram: Common Food Allergies',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u10',
@@ -1184,6 +1450,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'hours later with the most',
           runIndex: 8,
           runLength: 10,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c7_u10.webp',
+              caption: 'Diagram: Common Food Allergies',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u11',
@@ -1218,6 +1491,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'most severe response to this allergen.',
           runIndex: 9,
           runLength: 10,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c7_u11.webp',
+              caption: 'Diagram: Common Food Allergies',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u12',
@@ -1244,6 +1524,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'although delaying exercise can mitigate these risks.',
           runIndex: 10,
           runLength: 10,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c7_u12.webp',
+              caption: 'Diagram: Common Food Allergies',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c7_u13',
@@ -1336,6 +1623,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'the guest.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c8_u0.webp',
+              caption: 'Diagram: Food Allergies: Keep Your Guests Safe',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c8_u1',
@@ -1361,6 +1655,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'Call 911 at the first sign of a reaction.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c8_u1.webp',
+              caption: 'Diagram: Food Allergies: Keep Your Guests Safe',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c8_u2',
@@ -1379,6 +1680,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'finding it quickly.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c8_u2.webp',
+              caption: 'Diagram: What To Do If Someone Has A Reaction',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c8_u3',
@@ -1408,6 +1716,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'of the incident are addressed comprehensively.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c8_u3.webp',
+              caption: 'Diagram: What To Do If Someone Has A Reaction',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -1467,6 +1782,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'successful kitchen operation.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c9_u1.webp',
+              caption: 'Diagram: Temperature Danger Zone',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c9_u2',
@@ -1479,6 +1801,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'can happen through inadequate storage temperatures, '
               'insufficient cooking or reheating to eliminate pathogens, or '
               'improper cooling of hot foods before refrigeration.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c9_u2.webp',
+              caption: 'Diagram: Time Temperature Abuse',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c9_u3',
@@ -1510,6 +1839,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'open doors to keep food out of the temperature danger zone, '
               'while also being mindful that freezing does not kill bacteria '
               'and viruses.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c9_u4.webp',
+              caption: 'Diagram: Controlling Time and Temperature',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -1572,6 +1908,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'thinner pieces can significantly speed up the cooling process.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c11_u0.webp',
+              caption: 'Diagram: Safe Cooling Practices',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c11_u1',
@@ -1593,6 +1936,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'crucial to maintaining food safety and quality.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c11_u1.webp',
+              caption: 'Diagram: Safe Cooling Practices',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c11_u2',
@@ -1682,6 +2032,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'running cold tap water over it or submerging it in cold water '
               'within a leak-proof plastic wrap, ensuring the water is '
               'changed every 30 minutes.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c11_u4.webp',
+              caption: 'Diagram: Defrosting Food',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -1713,6 +2070,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'freeze uniformly. Addressing these small but impactful '
               'mistakes is crucial to maintaining accuracy in your culinary '
               'endeavors, empowering you to cook with confidence.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c12_u0.webp',
+              caption: 'Diagram: Thermometer Calibration',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c12_u1',
@@ -1786,6 +2150,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'probe.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c13_u0.webp',
+              caption: 'Diagram: Critical Steps To Creating A Proper Ice Bath',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c13_u1',
@@ -1800,6 +2171,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'the specified tolerance, do not adjust.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c13_u1.webp',
+              caption: 'Diagram: Critical Steps To Creating A Proper Ice Bath',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -1899,6 +2277,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'safety and health of you and your guests.',
           runIndex: 2,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c14_u2.webp',
+              caption: 'Diagram: Refrigerator Storage',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c14_u3',
@@ -1927,6 +2312,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               '(such as pepperoni)',
           runIndex: 3,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c14_u3.webp',
+              caption: 'Diagram: Refrigerator Storage',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -1980,6 +2372,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'fundamental; food should be sealed in appropriate containers, '
               'and fridges should not be overcrowded, as this ensures proper '
               'airflow and cooling.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c15_u1.webp',
+              caption: 'Diagram: FIFO Principles',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c15_u2',
@@ -1999,6 +2398,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'An organized storage system fosters smooth inventory '
               'management, making it easy to locate and access ingredients '
               'when needed.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c15_u2.webp',
+              caption: 'Diagram: Benefits',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c15_u3',
@@ -2045,6 +2451,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'information but also contributes to a well-organized workflow, '
               'allowing kitchen staff to easily identify ingredients and '
               'manage inventory effectively.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c16_u0.webp',
+              caption: 'Diagram: Labelling',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c16_u1',
@@ -2060,6 +2473,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'In, First Out (FIFO) principle, which is crucial in managing '
               'perishable goods and minimizing the risk of using expired '
               'products.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c16_u1.webp',
+              caption: 'Diagram: Label Practices',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c16_u2',
@@ -2079,6 +2499,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'safer and more efficient working environment. By prioritizing '
               'labeling, we not only enhance operational efficiency but also '
               'uphold our commitment to food safety and quality.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c16_u2.webp',
+              caption: 'Diagram: Label Details',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -2097,6 +2524,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'any debris from a surface, usually with detergent and water. '
               'Sanitizing refers to the reduction of most harmful '
               'microorganisms and pathogens on a surface to a safe level.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c17_u0.webp',
+              caption: 'Diagram: Cleaning And Sanitation',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c17_u1',
@@ -2160,6 +2594,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               '- Sanitize surfaces before and after every shift.\n'
               '\n'
               '- Detergent/soap are cleaning agents, not sanitizers.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c17_u2.webp',
+              caption: 'Diagram: Important Things To Consider In Sanitation',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c17_u3',
@@ -2177,6 +2618,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'consistently, while making sure to use a properly concentrated '
               'sanitizing solution guarantees effective elimination of '
               'harmful pathogens.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c17_u3.webp',
+              caption: 'Diagram: When To Clean And Sanitize',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c17_u4',
@@ -2196,6 +2644,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'maintain the cleanliness of the area around outdoor dumpsters '
               'to prevent pests that can carry and spread pathogens, leading '
               'to foodborne illnesses and disease.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c17_u4.webp',
+              caption: 'Diagram: Garbage Disposal',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -2235,6 +2690,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'employees. Comprehensive training equips staff with the '
               'knowledge they need to recognize hazards and adhere to safety '
               'protocols, thus creating a safer food supply chain.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c18_u0.webp',
+              caption: 'Diagram: HACCP',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c18_u1',
@@ -2255,6 +2717,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'in food quality and aligning with regulatory requirements, '
               'HACCP helps organizations build a solid foundation for '
               'sustainable success in an increasingly competitive market.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c18_u1.webp',
+              caption: 'Diagram: Key Aspects',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c18_u2',
@@ -2281,6 +2750,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               '\n'
               '7. Establish Record-Keeping Procedures: Maintain documentation '
               'for the HACCP plan.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c18_u2.webp',
+              caption: 'Diagram: The 7 Principles of HACCP',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -2305,6 +2781,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'it\'s essential to label all items with their storage dates, '
               'ensuring that ingredients are used in a timely manner, which '
               'minimizes waste while maximizing quality.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c19_u0.webp',
+              caption: 'Diagram: Ingredients',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c19_u1',
@@ -2320,6 +2803,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'into the cardboard box and tape the box closed. Then tie the '
               'garbage bag closed, label the bag as broken glass, and '
               'immediately put into the dumpster.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c19_u1.webp',
+              caption: 'Diagram: Broken Glass',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c19_u2',
@@ -2333,6 +2823,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'accidents. Regular cleaning and sanitizing of high-risk food '
               'equipment, such as blenders and shakers, must be a routine '
               'task to prevent cross-contamination.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c19_u2.webp',
+              caption: 'Diagram: Bar Cleanliness',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c19_u3',
@@ -2345,6 +2842,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'designated scoops should be used to serve ice, never '
               'glassware, to prevent the risk of glass shattering and '
               'contaminating the ice supply.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c19_u3.webp',
+              caption: 'Diagram: Ice',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -2368,6 +2872,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'actively communicating and coordinating with kitchen staff and '
               'each other, servers help create a seamless dining experience '
               'that prioritizes safety alongside service.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c20_u0.webp',
+              caption: 'Diagram: Food Servers Role',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c20_u1',
@@ -2384,6 +2895,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'reactions. This diligence not only protects guests but also '
               'builds trust and loyalty, reinforcing the establishment\'s '
               'reputation for safety and care.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c20_u1.webp',
+              caption: 'Diagram: Allergy Protocols',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c20_u2',
@@ -2400,6 +2918,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'contamination. Servers are trained to use utensils and '
               'food-safe gloves whenever necessary, reinforcing the message '
               'that hygiene is non-negotiable.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c20_u2.webp',
+              caption: 'Diagram: Illness Prevention Protocol',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c20_u3',
@@ -2413,6 +2938,13 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'servers not only enhance their professional capabilities but '
               'also contribute to the overall success and safety of the '
               'establishment.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c20_u3.webp',
+              caption: 'Diagram: Handling Smallwares',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),

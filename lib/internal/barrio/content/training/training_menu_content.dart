@@ -32,6 +32,13 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               'Cod Aguachile - Red Onion, Cucumber, Jalapeño, Lime\n'
               '\n'
               'Vegan Ceviche - Mushroom, Corn Tigers Milk, Tangles',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c0_u0.webp',
+              caption: 'Diagram: Ceviches',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c0_u1',
@@ -55,6 +62,13 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               'Sauce\n'
               '\n'
               'Flautas - Salsa Jitomate, Queso , Onion, Cilantro',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c0_u1.webp',
+              caption: 'Diagram: Para Compartir',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c0_u2',
@@ -67,6 +81,13 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               '\n'
               'Vegan/Vegetarian Concept - Carrots, Aji Panca Marinade, '
               'Pumpkin Seed Dukkah',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c0_u2.webp',
+              caption: 'Diagram: Anticucho',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c0_u3',
@@ -88,6 +109,13 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               '\n'
               'Fajitas - Choice of Chicken or Vegetarian Served with Shredded '
               'Cheese, 6 or 8 Tortillas',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c0_u3.webp',
+              caption: 'Diagram: Mains',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c0_u4',
@@ -99,6 +127,13 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               'Steak - 20oz Rib Eye ,Chimichurri, Choice of two sides\n'
               '\n'
               'Half Chicken - Ancho Marinade',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c0_u4.webp',
+              caption: 'Diagram: Big Dish',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c0_u5',
@@ -113,6 +148,13 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               '\n'
               'Salad - Grilled Pineapple, Grilled Jalapeño , Cactus *, Vegan '
               'Green Goddess',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c0_u5.webp',
+              caption: 'Diagram: Sides',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -283,6 +325,13 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               '- Pork Belly ???????\n'
               '\n'
               '- Oyster Flight 9 piece - 3 of each flavor',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c3_u0.webp',
+              caption: 'Diagram: Slide 8',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c3_u1',
@@ -362,6 +411,13 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               '- Lomo = Beef loin\n'
               '\n'
               '- Saltado = Stir-fried',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c4_u0.webp',
+              caption: 'Diagram: Slide 11',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c4_u1',
@@ -393,6 +449,13 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               'potatoes, creating one of Peru\'s most celebrated fusion '
               'dishes. Today, it is widely recognized as a symbol of Peru\'s '
               'multicultural culinary heritage.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c4_u1.webp',
+              caption: 'Diagram: Slide 12',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c4_u2',
@@ -443,6 +506,13 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               'region as Masa\n'
               '\n'
               '- Crema -> Mexican table cream. Lighter than sour cream',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c4_u3.webp',
+              caption: 'Diagram: Slide 14',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c4_u4',
@@ -463,6 +533,13 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               'acclimatized to this technique adding local ingredients and '
               'Peru declared it a national cultural heritage and gave it its '
               'own holiday every 3rd Sunday of July',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c4_u4.webp',
+              caption: 'Diagram: Slide 15',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c4_u5',
@@ -514,6 +591,13 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               '- Gallo Pinto ( Red pepper, Onion, Black Bean)\n'
               '\n'
               '- Salad Has Cactus in it with Tequila Lime Vinagre',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c4_u6.webp',
+              caption: 'Diagram: Slide 17',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -561,6 +645,13 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
           body: '- BARRIO LEGADO\n'
               '\n'
               '- Continued Legacy, Fresh Chapter',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c6_u0.webp',
+              caption: 'Diagram: Slide 25',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),

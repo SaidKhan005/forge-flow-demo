@@ -109,6 +109,34 @@ class HandbookUnit {
   });
 }
 
+/// Photo vs. diagram classification for a unit's images.
+///
+/// House-style diagram pictograms (full-coverage pass 2026-07-30, so every
+/// reading card carries a visual) all carry a 'Diagram: ' caption. They are
+/// teaching visuals shown ONLY in the reading card body: never as a browse-row
+/// thumbnail, A-Z index photo, photo-grid tile, or flashcard front, where a
+/// real photograph of the actual dish/term is what earns recognition (Metric
+/// Honesty: a pictogram is not a photo of the thing). These helpers let the
+/// photo-only surfaces skip diagrams while the reading card keeps rendering
+/// every image in order.
+extension HandbookUnitPhotos on HandbookUnit {
+  /// Whether an image is a house-style diagram pictogram (vs. a photograph).
+  static bool isDiagram(HandbookUnitImage image) =>
+      image.caption?.startsWith('Diagram: ') ?? false;
+
+  /// The unit's real photographs, in source order (diagrams excluded).
+  Iterable<HandbookUnitImage> get photos => images.where((i) => !isDiagram(i));
+
+  /// The first real photograph, or null when the unit has only diagrams
+  /// (or no images at all).
+  HandbookUnitImage? get firstPhoto {
+    for (final image in images) {
+      if (!isDiagram(image)) return image;
+    }
+    return null;
+  }
+}
+
 /// A chapter in the handbook, containing multiple learning units.
 class HandbookChapter {
   final String id;
