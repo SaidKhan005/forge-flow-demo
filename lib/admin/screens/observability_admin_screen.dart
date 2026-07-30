@@ -1,34 +1,52 @@
-// Phase 11A.6 - Observability dashboard surface.
+// Phase 11A.6 - AI Metrics (observability) dashboard surface.
 //
 // Read-only operator-facing view of the cost-telemetry, dormancy,
-// margin, cap-event, graph, latency, and Cloud Run rows the
-// observability proxy assembles. Tabs:
+// margin, cap-event, graph, retry, latency, and Cloud Run rows the
+// observability proxy assembles. Redesigned to the approved AI Metrics
+// mockup (`docs/_mockups/ai_metrics_redesign/index.html`): four
+// plain-English tabs and four hero summary cards, consuming the same
+// `ObservabilityEnvelope` producers as before.
 //
-//   * Cost      - cost telemetry by axis, cache hit rate, model mix,
-//                 batch-mode share.
-//   * Top-N     - most-expensive operators / staff / workflows over
-//                 1d / 7d / 30d rolling windows.
-//   * Operators - dormancy + per-tier margin estimates.
-//   * Cap events - refused requests when usage_caps was reached.
-//   * Graph     - approved / inferred / rejected / isolated counts,
-//                 projection freshness, traversal p95.
-//   * Retries   - canonical projection retry queue and dead-letter rows.
-//   * Cloud Run - per-route latency p50/p95/p99 + error rate, plus
-//                 active Cloud Run instances by service.
+//   * Money       - cost-by-use-case donut (cost telemetry summed by
+//                   query_class), saved-answer reuse bars (cache hit
+//                   rates), and cost controls (model mix + batch share).
+//   * Customers   - top spenders bars (top expensive) and a "Needs
+//                   attention" list (losing money / limit hits /
+//                   inactive) with View account drill-downs.
+//   * Reliability - speed & uptime (links out to System health for
+//                   latency), background jobs (projection retries),
+//                   hosting (Cloud Run), and live sync (bridge
+//                   tripwires when wired).
+//   * Knowledge   - graph counts (approved / suggested / unlinked) and
+//                   freshness (projection age, lookup speed).
 //
 // The /health envelope (dependency probes, tier-1 / tier-2 / tier-3
-// metric tiers) is owned by the F.1 health surface. The header
-// includes a "View health envelope" link out so the F&F admin can
-// jump to it without duplicating chrome.
+// metric tiers) is owned by the F.1 health surface. The header keeps a
+// "Open System health" hint so the F&F admin can jump there for
+// dependency checks without duplicating chrome.
+//
+// MONTH SELECTOR: the "This month / Last month" control threads the
+// `ObservabilityFetchRequest.month` field into the fetch. Because
+// `usage_logs` is a monthly rollup, only `current` and `previous` are
+// honest choices (Metric Honesty Doctrine).
+//
+// METRIC HONESTY DOCTRINE: "Losing money" (margins) has no backend
+// pricing source yet (Plans & limits owns pricing) - it renders an
+// honest "Not available yet" empty state, never $0 / 0%. Cloud Run
+// counts that are unknown render "unknown", never 0. No real red/yellow
+// state is laundered to green.
 //
 // Performance posture (per docs/contracts/slice_runtime_acceptance_contract.md):
 // the cost / dormancy queries scan rolling windows on `usage_logs` and
 // can take seconds. The screen does NOT auto-poll. The first paint
-// renders a manual-run prompt; the operator confirms a "Run
-// observability check" before any fetch fires. Refresh is the same
+// renders a manual-run prompt; the operator confirms a "Run metrics
+// check" before any fetch fires. Refresh and month change use the same
 // path. Stacked in-flight requests are blocked by `_refreshing`.
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
@@ -37,6 +55,7 @@ import '../../theme/app_theme.dart';
 
 import '../admin_human_labels.dart';
 import '../admin_route_handoff.dart';
+import '../admin_routes.dart' show kAdminOperatorsRouteId;
 import '../models/observability_admin_models.dart';
 import '../services/observability_admin_gateway.dart';
 import '../services/realtime_tripwire_admin_gateway.dart';
@@ -44,20 +63,45 @@ import '../widgets/admin_run_check_controls.dart';
 import '../widgets/admin_scope_notice_adapter.dart';
 import 'package:forge_and_flow/operator_web/widgets/hierarchy_scope_notice.dart';
 
+/// One tab in the redesigned AI Metrics screen.
 class _TabSpec {
-  const _TabSpec({required this.label, required this.keySuffix});
+  const _TabSpec({
+    required this.label,
+    required this.keySuffix,
+    required this.icon,
+  });
   final String label;
   final String keySuffix;
+  final IconData icon;
 }
 
 const List<_TabSpec> _kTabs = <_TabSpec>[
-  _TabSpec(label: 'Cost', keySuffix: 'cost'),
-  _TabSpec(label: 'Highest spend', keySuffix: 'top'),
-  _TabSpec(label: 'Operators', keySuffix: 'operators'),
-  _TabSpec(label: 'Limit events', keySuffix: 'cap_events'),
-  _TabSpec(label: 'Knowledge graph', keySuffix: 'graph'),
-  _TabSpec(label: 'Projection retries', keySuffix: 'projection_retries'),
-  _TabSpec(label: 'Hosting', keySuffix: 'cloud_run'),
+  _TabSpec(label: 'Money', keySuffix: 'money', icon: Icons.payments_outlined),
+  _TabSpec(
+    label: 'Customers',
+    keySuffix: 'customers',
+    icon: Icons.storefront_outlined,
+  ),
+  _TabSpec(
+    label: 'Reliability',
+    keySuffix: 'reliability',
+    icon: Icons.speed_outlined,
+  ),
+  _TabSpec(
+    label: 'Knowledge',
+    keySuffix: 'knowledge',
+    icon: Icons.menu_book_outlined,
+  ),
+];
+
+/// Donut / legend accent palette for the cost-by-use-case chart. Drawn
+/// from the existing brand palette (no new theme tokens): sunset,
+/// peacock, ocean, redSand. A fifth+ slice cycles back through the list.
+const List<Color> _kUseCaseAccents = <Color>[
+  AppColors.sunset,
+  AppColors.peacock,
+  AppColors.ocean,
+  AppColors.redSand,
 ];
 
 class ObservabilityAdminScreen extends StatefulWidget {
@@ -74,11 +118,11 @@ class ObservabilityAdminScreen extends StatefulWidget {
   final AdminHierarchyScopeIntent? hierarchyScope;
   final Set<String> scopeLocationIds;
 
-  /// Phase 10a.4 — optional gateway for the Realtime bridge tripwire
-  /// section. When wired, the manual run-check refreshes both the
-  /// observability envelope AND the tripwire status; the section
-  /// renders above the existing tabs. When null, the section is
-  /// hidden and existing tests stay green without modification.
+  /// Phase 10a.4 - optional gateway for the Realtime bridge tripwire
+  /// (live sync) section. When wired, the manual run-check refreshes
+  /// both the observability envelope AND the tripwire status; the
+  /// section renders inside the Reliability tab. When null, the section
+  /// is hidden and existing tests stay green without modification.
   final RealtimeTripwireAdminGateway? tripwireGateway;
 
   /// Test-only clock injection so the "Last refreshed" timestamp is
@@ -93,19 +137,19 @@ class ObservabilityAdminScreen extends StatefulWidget {
 class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
-  final TextEditingController _queryClassFilterController =
-      TextEditingController();
 
   bool _loading = false;
   bool _refreshing = false;
   ObservabilityEnvelope? _envelope;
   String? _loadError;
   DateTime? _lastRefreshed;
-  String? _activeQueryClassFilter;
 
-  // Phase 10a.4 — bridge tripwire state. Loads alongside the
-  // observability envelope when [widget.tripwireGateway] is wired;
-  // section renders above the tabs.
+  /// Selected calendar-month bucket for the cost surfaces. Threaded into
+  /// the fetch request. Defaults to the current month.
+  ObservabilityMonth _month = ObservabilityMonth.current;
+
+  // Phase 10a.4 - bridge tripwire (live sync) state. Loads alongside the
+  // observability envelope when [widget.tripwireGateway] is wired.
   RealtimeTripwireSnapshot? _tripwires;
   String? _tripwireError;
 
@@ -120,7 +164,6 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
   @override
   void dispose() {
     _tabs.dispose();
-    _queryClassFilterController.dispose();
     super.dispose();
   }
 
@@ -134,13 +177,17 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
     await _refresh();
   }
 
-  /// Re-fetch using the current query_class filter. Skips the
-  /// confirmation dialog because narrowing the cost table in-place is
-  /// the runtime contract's "scope down" path; confirmation is for
-  /// the initial expensive run.
-  Future<void> _applyFilterAndRefetch() async {
-    if (_refreshing) return;
-    await _refresh();
+  /// Switch the active month bucket. When an envelope is already loaded,
+  /// re-fetch in place (the confirmation dialog is for the first
+  /// expensive run; re-scoping an already-loaded view is the runtime
+  /// contract's "scope down" path). Before the first run we only store
+  /// the selection so the eventual confirmed run uses it.
+  Future<void> _selectMonth(ObservabilityMonth month) async {
+    if (month == _month) return;
+    setState(() => _month = month);
+    if (_envelope != null && !_refreshing) {
+      await _refresh();
+    }
   }
 
   Future<void> _refresh() async {
@@ -152,18 +199,16 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
       _tripwireError = null;
     });
     try {
-      final filter = _queryClassFilterController.text.trim();
       final request = ObservabilityFetchRequest(
-        queryClassFilter: filter.isEmpty ? null : filter,
         operatorId: widget.hierarchyScope?.operatorId,
         locationId: widget.hierarchyScope?.locationId,
         locationIds: widget.scopeLocationIds,
+        month: _month,
       );
       final envelope = await widget.gateway.fetch(request);
       if (!mounted) return;
       setState(() {
         _envelope = envelope;
-        _activeQueryClassFilter = filter.isEmpty ? null : filter;
         _loading = false;
         _loadError = null;
         _lastRefreshed = _clockNow();
@@ -178,7 +223,7 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _loadError = 'Could not load observability envelope: $error';
+        _loadError = 'Could not load AI Metrics: $error';
         _loading = false;
         _lastRefreshed = _clockNow();
       });
@@ -189,9 +234,9 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
         _refreshing = false;
       }
     }
-    // Phase 10a.4 — refresh the tripwire envelope after the main
-    // fetch settles. Failure here does not poison the rest of the
-    // screen; the section renders an inline error chip instead.
+    // Phase 10a.4 - refresh the tripwire envelope after the main fetch
+    // settles. Failure here does not poison the rest of the screen; the
+    // live-sync section renders an inline error instead.
     final tripwireGateway = widget.tripwireGateway;
     if (tripwireGateway != null && mounted) {
       try {
@@ -207,7 +252,7 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
       } catch (error) {
         if (!mounted) return;
         setState(
-          () => _tripwireError = 'Could not load bridge tripwires: $error',
+          () => _tripwireError = 'Could not load live sync status: $error',
         );
       }
     }
@@ -215,12 +260,17 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
 
   @override
   Widget build(BuildContext context) {
+    // The TabBar requires a Material ancestor; keeping the root as
+    // Material satisfies that without depending on the outer shell.
+    // OperatorWebScreenFrame is a no-scroll wrapper so the fixed-height
+    // tabbed body (Expanded TabBarView) keeps its fill (mirrors the
+    // health screen frame).
     return Material(
       key: const Key('admin_observability_screen'),
       color: AppColors.backgroundDeep,
       type: MaterialType.canvas,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
+      child: OperatorWebScreenFrame(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
         child: Builder(
           builder: (context) {
             final showManualPrompt =
@@ -230,6 +280,8 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
                 lastRefreshed: _lastRefreshed,
                 onRunCheck: _confirmAndRefresh,
                 loading: _loading || _refreshing,
+                month: _month,
+                onSelectMonth: _selectMonth,
               ),
               const SizedBox(height: 12),
               if (widget.hierarchyScope != null)
@@ -240,10 +292,10 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
                   ),
                   scopeName: widget.hierarchyScope!.displayLabel,
                   effectiveValueSummary:
-                      'AI usage, cost, and reliability for the selected scope.',
+                      'AI cost, usage, and reliability for the selected scope.',
                   backendOnlyHelpTitle: 'What stays platform-wide',
                   backendOnlyExplainer:
-                      'Hosting and knowledge graph signals stay platform-wide when they are not stored per business.',
+                      'Hosting and the knowledge graph stay platform-wide. They are shared across every business, not stored per business.',
                 ),
               if (_loadError != null)
                 _ErrorBanner(
@@ -285,17 +337,10 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _AsOfStrip(envelope: envelope),
-          const SizedBox(height: 12),
-          if (widget.tripwireGateway != null) ...[
-            _BridgeTripwiresSection(
-              snapshot: _tripwires,
-              error: _tripwireError,
-            ),
-            const SizedBox(height: 12),
-          ],
-          const _MetricsKey(),
-          const SizedBox(height: 12),
+          _AsOfStrip(envelope: envelope, month: _month),
+          const SizedBox(height: 14),
+          _HeroCards(envelope: envelope),
+          const SizedBox(height: 18),
           TabBar(
             key: const Key('admin_observability_tabs'),
             controller: _tabs,
@@ -307,7 +352,14 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
               for (final tab in _kTabs)
                 Tab(
                   key: Key('admin_observability_tab_${tab.keySuffix}'),
-                  text: tab.label,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Icon(tab.icon, size: 16),
+                      const SizedBox(width: 8),
+                      Text(tab.label),
+                    ],
+                  ),
                 ),
             ],
           ),
@@ -316,38 +368,23 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
             child: TabBarView(
               controller: _tabs,
               children: <Widget>[
-                _CostTab(
-                  key: const Key('admin_observability_tab_body_cost'),
-                  envelope: envelope,
-                  filterController: _queryClassFilterController,
-                  activeFilter: _activeQueryClassFilter,
-                  onApplyFilter: _applyFilterAndRefetch,
-                  filterApplying: _refreshing,
-                ),
-                _TopNTab(
-                  key: const Key('admin_observability_tab_body_top'),
+                _MoneyTab(
+                  key: const Key('admin_observability_tab_body_money'),
                   envelope: envelope,
                 ),
-                _OperatorsTab(
-                  key: const Key('admin_observability_tab_body_operators'),
+                _CustomersTab(
+                  key: const Key('admin_observability_tab_body_customers'),
                   envelope: envelope,
                 ),
-                _CapEventsTab(
-                  key: const Key('admin_observability_tab_body_cap_events'),
+                _ReliabilityTab(
+                  key: const Key('admin_observability_tab_body_reliability'),
                   envelope: envelope,
+                  tripwireGateway: widget.tripwireGateway,
+                  tripwires: _tripwires,
+                  tripwireError: _tripwireError,
                 ),
-                _GraphTab(
-                  key: const Key('admin_observability_tab_body_graph'),
-                  envelope: envelope,
-                ),
-                _ProjectionRetriesTab(
-                  key: const Key(
-                    'admin_observability_tab_body_projection_retries',
-                  ),
-                  envelope: envelope,
-                ),
-                _CloudRunTab(
-                  key: const Key('admin_observability_tab_body_cloud_run'),
+                _KnowledgeTab(
+                  key: const Key('admin_observability_tab_body_knowledge'),
                   envelope: envelope,
                 ),
               ],
@@ -359,16 +396,22 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
   }
 }
 
+// ── Header ───────────────────────────────────────────────────────────
+
 class _Header extends StatelessWidget {
   const _Header({
     required this.lastRefreshed,
     required this.onRunCheck,
     required this.loading,
+    required this.month,
+    required this.onSelectMonth,
   });
 
   final DateTime? lastRefreshed;
   final Future<void> Function() onRunCheck;
   final bool loading;
+  final ObservabilityMonth month;
+  final ValueChanged<ObservabilityMonth> onSelectMonth;
 
   @override
   Widget build(BuildContext context) {
@@ -376,15 +419,21 @@ class _Header extends StatelessWidget {
       icon: Icons.insights_outlined,
       title: 'AI Metrics',
       subtitle:
-          'Review advisor usage, cost, limits, model activity, and hosting status.',
+          'What the AI advisor costs, who uses it, and whether it is healthy.',
       collapseBelowWidth: 720,
       actions: <Widget>[
         ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 360),
+          constraints: const BoxConstraints(maxWidth: 380),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisSize: MainAxisSize.min,
             children: [
+              _MonthSelector(
+                month: month,
+                onSelectMonth: onSelectMonth,
+                enabled: !loading,
+              ),
+              const SizedBox(height: 8),
               AdminRunCheckButton(
                 key: const Key('admin_observability_refresh_button'),
                 onPressed: () {
@@ -421,6 +470,93 @@ class _Header extends StatelessWidget {
   }
 }
 
+/// "This month / Last month" segmented control. Threads the
+/// [ObservabilityMonth] bucket into the fetch. Only current / previous
+/// are offered because `usage_logs` is a monthly rollup (Metric Honesty
+/// Doctrine; finer windows would be dishonest).
+class _MonthSelector extends StatelessWidget {
+  const _MonthSelector({
+    required this.month,
+    required this.onSelectMonth,
+    required this.enabled,
+  });
+
+  final ObservabilityMonth month;
+  final ValueChanged<ObservabilityMonth> onSelectMonth;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('admin_observability_month_selector'),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          _MonthSegment(
+            keyName: 'admin_observability_month_current',
+            label: 'This month',
+            selected: month == ObservabilityMonth.current,
+            enabled: enabled,
+            onTap: () => onSelectMonth(ObservabilityMonth.current),
+          ),
+          _MonthSegment(
+            keyName: 'admin_observability_month_previous',
+            label: 'Last month',
+            selected: month == ObservabilityMonth.previous,
+            enabled: enabled,
+            onTap: () => onSelectMonth(ObservabilityMonth.previous),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MonthSegment extends StatelessWidget {
+  const _MonthSegment({
+    required this.keyName,
+    required this.label,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final String keyName;
+  final String label;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      key: Key(keyName),
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.sunset : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          label,
+          style: AppTextStyles.body12(
+            color: selected
+                ? AppColors.backgroundSurface
+                : AppColors.textSecondary,
+          ).copyWith(fontWeight: selected ? FontWeight.w700 : FontWeight.w500),
+        ),
+      ),
+    );
+  }
+}
+
 class _ObservabilityConfirmDialog extends StatelessWidget {
   const _ObservabilityConfirmDialog();
 
@@ -444,7 +580,7 @@ class _ObservabilityConfirmDialog extends StatelessWidget {
         AdminRunCheckFact(
           icon: Icons.query_stats_outlined,
           label: 'Scope',
-          text: 'Cost, usage, operator activity, graph, and hosting rows.',
+          text: 'Cost, usage, customer activity, graph, and hosting rows.',
         ),
         AdminRunCheckFact(
           icon: Icons.schedule_outlined,
@@ -482,7 +618,7 @@ class _ManualRunPrompt extends StatelessWidget {
         AdminRunCheckFact(
           icon: Icons.query_stats_outlined,
           label: 'Scope',
-          text: 'Usage, cost, operator activity, graph, and hosting metrics.',
+          text: 'Usage, cost, customer activity, graph, and hosting metrics.',
         ),
         AdminRunCheckFact(
           icon: Icons.schedule_outlined,
@@ -494,64 +630,175 @@ class _ManualRunPrompt extends StatelessWidget {
   }
 }
 
+/// As-of strip: one line giving the data timestamp, the active month
+/// bucket, and the platform-wide reminder (mirrors the mockup's context
+/// line under the title).
 class _AsOfStrip extends StatelessWidget {
-  const _AsOfStrip({required this.envelope});
+  const _AsOfStrip({required this.envelope, required this.month});
 
   final ObservabilityEnvelope envelope;
+  final ObservabilityMonth month;
 
   @override
   Widget build(BuildContext context) {
-    final dormantCount = envelope.dormantOperators.length;
-    final underwaterCount = envelope.underwaterOperators.length;
-    final capEventCount = envelope.capEvents.length;
-    final retryDeadLetters =
-        envelope.projectionRetries.statusCounts.deadLettered;
+    final monthLabel = month == ObservabilityMonth.current
+        ? 'This month'
+        : 'Last month';
     return Container(
       key: const Key('admin_observability_as_of_strip'),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
       ),
-      child: Wrap(
-        spacing: 18,
-        runSpacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
+      child: Text(
+        'Showing $monthLabel. Hosting and the knowledge graph stay '
+        'platform-wide. Updated ${adminHumanDateTime(envelope.asOf)}.',
+        style: AppTextStyles.body12(color: AppColors.textMuted),
+      ),
+    );
+  }
+}
+
+// ── Hero cards ───────────────────────────────────────────────────────
+
+/// Four hero summary cards mirroring the mockup: AI spend, Businesses
+/// using AI, Speed & uptime, Advisor knowledge. Each card leads with a
+/// big number/word and an honest caption; honesty-critical cards (spend
+/// margin, speed) avoid laundering unknown state to green.
+class _HeroCards extends StatelessWidget {
+  const _HeroCards({required this.envelope});
+
+  final ObservabilityEnvelope envelope;
+
+  @override
+  Widget build(BuildContext context) {
+    final totalSpend = _totalSpend(envelope);
+    final usingAi = _businessesUsingAi(envelope);
+    final inactive = envelope.dormantOperators.length;
+    final underwater = envelope.underwaterOperators.length;
+    final speed = _speedSummary(envelope);
+    final graph = envelope.graph;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = 14.0;
+        final columns = constraints.maxWidth >= 900 ? 4 : 2;
+        final cardWidth =
+            (constraints.maxWidth - (gap * (columns - 1))) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: <Widget>[
+            _HeroCard(
+              keyName: 'admin_observability_hero_spend',
+              width: cardWidth,
+              accent: AppColors.sunset,
+              icon: Icons.payments_outlined,
+              label: 'AI spend',
+              value: '\$${_formatUsd(totalSpend)}',
+              caption: 'Across every use case this month.',
+            ),
+            _HeroCard(
+              keyName: 'admin_observability_hero_customers',
+              width: cardWidth,
+              accent: AppColors.peacock,
+              icon: Icons.storefront_outlined,
+              label: 'Businesses using AI',
+              value: usingAi == null ? '—' : '$usingAi',
+              caption: usingAi == null
+                  ? 'No customer activity reported yet.'
+                  : inactive == 0
+                  ? 'All reported businesses are active.'
+                  : '$inactive inactive.',
+              pill: underwater > 0
+                  ? _HeroPill(
+                      label: underwater == 1
+                          ? '1 losing money'
+                          : '$underwater losing money',
+                      tone: _HeroTone.bad,
+                    )
+                  : null,
+            ),
+            _HeroCard(
+              keyName: 'admin_observability_hero_speed',
+              width: cardWidth,
+              accent: AppColors.positive,
+              icon: Icons.speed_outlined,
+              label: 'Speed & uptime',
+              value: speed.headline,
+              caption: speed.caption,
+              pill: speed.pill,
+            ),
+            _HeroCard(
+              keyName: 'admin_observability_hero_knowledge',
+              width: cardWidth,
+              accent: AppColors.warning,
+              icon: Icons.menu_book_outlined,
+              label: 'Advisor knowledge',
+              value: graph.isolatedNodeCount > 0 ? 'Review' : 'Healthy',
+              caption: graph.isolatedNodeCount == 0
+                  ? 'Everything is linked.'
+                  : graph.isolatedNodeCount == 1
+                  ? '1 item not linked yet.'
+                  : '${graph.isolatedNodeCount} items not linked yet.',
+              pill: graph.isolatedNodeCount > 0
+                  ? const _HeroPill(label: 'Review suggested', tone: _HeroTone.watch)
+                  : const _HeroPill(label: 'Up to date', tone: _HeroTone.ok),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+enum _HeroTone { ok, watch, bad }
+
+class _HeroPill extends StatelessWidget {
+  const _HeroPill({required this.label, required this.tone});
+
+  final String label;
+  final _HeroTone tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color color;
+    switch (tone) {
+      case _HeroTone.ok:
+        color = AppColors.positive;
+        break;
+      case _HeroTone.watch:
+        color = AppColors.warning;
+        break;
+      case _HeroTone.bad:
+        color = AppColors.negative;
+        break;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        border: Border.all(color: color.withValues(alpha: 0.45), width: 1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Text(
-            'As of: ${adminHumanDateTime(envelope.asOf)}',
-            style: AppTextStyles.mono11(
-              color: AppColors.textPrimary,
-            ).copyWith(fontWeight: FontWeight.w600),
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
-          _SummaryChip(
-            label: 'Inactive',
-            value: '$dormantCount',
-            severity: dormantCount > 0
-                ? _SummarySeverity.warning
-                : _SummarySeverity.neutral,
-          ),
-          _SummaryChip(
-            label: 'Losing money',
-            value: '$underwaterCount',
-            severity: underwaterCount > 0
-                ? _SummarySeverity.negative
-                : _SummarySeverity.neutral,
-          ),
-          _SummaryChip(
-            label: 'Limit events',
-            value: '$capEventCount',
-            severity: capEventCount > 0
-                ? _SummarySeverity.warning
-                : _SummarySeverity.neutral,
-          ),
-          _SummaryChip(
-            label: 'Retry dead letters',
-            value: '$retryDeadLetters',
-            severity: retryDeadLetters > 0
-                ? _SummarySeverity.negative
-                : _SummarySeverity.neutral,
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.chipLabel(color: color),
+            ),
           ),
         ],
       ),
@@ -559,131 +806,101 @@ class _AsOfStrip extends StatelessWidget {
   }
 }
 
-class _MetricsKey extends StatelessWidget {
-  const _MetricsKey();
+class _HeroCard extends StatelessWidget {
+  const _HeroCard({
+    required this.keyName,
+    required this.width,
+    required this.accent,
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.caption,
+    this.pill,
+  });
 
-  static const List<_MetricsKeyItem> _items = <_MetricsKeyItem>[
-    _MetricsKeyItem(
-      label: 'Inactive',
-      meaning:
-          'An operator has no AI activity yet or has been quiet for about 30 days.',
-    ),
-    _MetricsKeyItem(
-      label: 'Losing money',
-      meaning:
-          'Estimated AI cost is higher than the operator plan revenue for the window.',
-    ),
-    _MetricsKeyItem(
-      label: 'Limit events',
-      meaning:
-          'A request was stopped because the operator reached a usage limit.',
-    ),
-    _MetricsKeyItem(
-      label: 'Highest spend',
-      meaning: 'The operators, staff, or workflows using the most AI budget.',
-    ),
-    _MetricsKeyItem(
-      label: 'Saved answer reuse',
-      meaning:
-          'How often the system reused a saved answer instead of paying for a new one.',
-    ),
-    _MetricsKeyItem(
-      label: '95th percentile',
-      meaning:
-          'Most requests were this fast or faster; a small slow group may be higher.',
-    ),
-    _MetricsKeyItem(
-      label: 'Unlinked items',
-      meaning:
-          'Knowledge graph items that are not connected to a confirmed relationship yet.',
-    ),
-    _MetricsKeyItem(
-      label: 'Projection retries',
-      meaning:
-          'Shift and open-period projection work waiting to replay, currently running, or dead-lettered.',
-    ),
-  ];
+  final String keyName;
+  final double width;
+  final Color accent;
+  final IconData icon;
+  final String label;
+  final String value;
+  final String caption;
+  final Widget? pill;
 
   @override
   Widget build(BuildContext context) {
+    // A non-uniform Border (accent top + subtle sides) cannot carry a
+    // borderRadius in Flutter. To get the mockup's coloured top edge on
+    // a rounded card, use a uniform border and clip a 3px accent strip
+    // above the body.
     return Container(
-      key: const Key('admin_observability_metrics_key'),
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      key: Key(keyName),
+      width: width,
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(10),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            'Metrics key',
-            style: AppTextStyles.body13(
-              color: AppColors.textPrimary,
-            ).copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 8),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              const gap = 10.0;
-              final columns = constraints.maxWidth >= 1040
-                  ? 3
-                  : constraints.maxWidth >= 680
-                  ? 2
-                  : 1;
-              final itemWidth =
-                  (constraints.maxWidth - (gap * (columns - 1))) / columns;
-              return Wrap(
-                spacing: gap,
-                runSpacing: 8,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(height: 3, color: accent),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  for (final item in _items)
-                    _MetricsKeyPill(item: item, width: itemWidth),
+                  Row(
+                    children: <Widget>[
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: accent.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        child: Icon(icon, size: 18, color: accent),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          label,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyles.uiLabel(
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.mono20(
+                      color: AppColors.textPrimary,
+                      weight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    caption,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.body12(color: AppColors.textSecondary),
+                  ),
+                  if (pill != null) ...<Widget>[
+                    const SizedBox(height: 9),
+                    pill!,
+                  ],
                 ],
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MetricsKeyItem {
-  const _MetricsKeyItem({required this.label, required this.meaning});
-
-  final String label;
-  final String meaning;
-}
-
-class _MetricsKeyPill extends StatelessWidget {
-  const _MetricsKeyPill({required this.item, required this.width});
-
-  final _MetricsKeyItem item;
-  final double width;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: width,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundDeep,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text.rich(
-        TextSpan(
-          text: item.label,
-          style: AppTextStyles.body12(
-            color: AppColors.textPrimary,
-          ).copyWith(fontWeight: FontWeight.w700),
-          children: <InlineSpan>[
-            TextSpan(
-              text: ' - ${item.meaning}',
-              style: AppTextStyles.body12(color: AppColors.textSecondary),
+              ),
             ),
           ],
         ),
@@ -692,119 +909,46 @@ class _MetricsKeyPill extends StatelessWidget {
   }
 }
 
-enum _SummarySeverity { neutral, warning, negative }
+// ── Money tab ────────────────────────────────────────────────────────
 
-class _SummaryChip extends StatelessWidget {
-  const _SummaryChip({
-    required this.label,
-    required this.value,
-    required this.severity,
-  });
-
-  final String label;
-  final String value;
-  final _SummarySeverity severity;
-
-  @override
-  Widget build(BuildContext context) {
-    final Color color;
-    switch (severity) {
-      case _SummarySeverity.neutral:
-        color = AppColors.neutral;
-        break;
-      case _SummarySeverity.warning:
-        color = AppColors.warning;
-        break;
-      case _SummarySeverity.negative:
-        color = AppColors.negative;
-        break;
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        border: Border.all(color: color, width: 1),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        '$label: $value',
-        style: AppTextStyles.mono10(
-          color: color,
-        ).copyWith(fontWeight: FontWeight.w600),
-      ),
-    );
-  }
-}
-
-// ── Tabs ─────────────────────────────────────────────────────────────
-
-class _CostTab extends StatelessWidget {
-  const _CostTab({
-    super.key,
-    required this.envelope,
-    required this.filterController,
-    required this.activeFilter,
-    required this.onApplyFilter,
-    required this.filterApplying,
-  });
+class _MoneyTab extends StatelessWidget {
+  const _MoneyTab({super.key, required this.envelope});
 
   final ObservabilityEnvelope envelope;
-  final TextEditingController filterController;
-  final String? activeFilter;
-  final Future<void> Function() onApplyFilter;
-  final bool filterApplying;
 
   @override
   Widget build(BuildContext context) {
+    final slices = _costByUseCase(envelope);
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          _SectionCard(
+          _Panel(
             keyName: 'admin_observability_section_cost_telemetry',
-            title: 'AI request cost by use case',
-            subtitle:
-                'Shows estimated cost by operator scope and readable request type. Advanced filters include backend request groups for support work.',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                _RequestGroupAdvancedPanel(
-                  filterController: filterController,
-                  activeFilter: activeFilter,
-                  onApplyFilter: onApplyFilter,
-                  filterApplying: filterApplying,
-                ),
-                const SizedBox(height: 8),
-                _CostTelemetryTruncationHint(envelope: envelope),
-                const SizedBox(height: 8),
-                if (envelope.costTelemetry.isEmpty)
-                  const _EmptyState(
-                    keyName: 'admin_observability_cost_telemetry_empty',
-                    label:
-                        'No cost rows in this window, or the advanced filter excluded every row.',
+            title: 'Where the money goes',
+            subtitle: 'Cost by kind of AI work this month.',
+            child: slices.isEmpty
+                ? const _EmptyState(
+                    keyName: 'admin_observability_cost_by_use_case_empty',
+                    label: 'No cost recorded in this month yet.',
                   )
-                else
-                  _CostTelemetryTable(rows: envelope.costTelemetry),
-              ],
-            ),
+                : _CostDonut(slices: slices),
           ),
-          _SectionCard(
+          _Panel(
             keyName: 'admin_observability_section_cache_hit_rates',
             title: 'Saved answer reuse',
-            subtitle:
-                'Shows how often the system can reuse a saved answer. Low reuse can increase cost.',
+            subtitle: 'Higher is cheaper. Reusing a saved answer avoids paying for a new one.',
             child: envelope.cacheHitRates.isEmpty
                 ? const _EmptyState(
                     keyName: 'admin_observability_cache_hit_rates_empty',
-                    label: 'No saved-answer data in this window.',
+                    label: 'No saved-answer data in this month.',
                   )
-                : Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
                       for (final entry in envelope.cacheHitRates)
-                        _HitRateTile(
+                        _ReuseBar(
                           key: Key(
                             'admin_observability_cache_hit_rate_'
                             '${entry.queryClass}',
@@ -814,422 +958,161 @@ class _CostTab extends StatelessWidget {
                     ],
                   ),
           ),
-          _SectionCard(
-            keyName: 'admin_observability_section_model_mix',
-            title: 'Model use by use case',
-            subtitle:
-                'Shows how much work is routed to fast, standard, or more detailed models. Higher detailed-model share can increase cost.',
-            child: envelope.modelMix.isEmpty
-                ? const _EmptyState(
+          _Panel(
+            keyName: 'admin_observability_section_cost_controls',
+            title: 'Cost controls',
+            subtitle: 'Levers that keep AI spend down.',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                _SubHead(
+                  text: 'Which model handled the work',
+                  hint: 'More of the cheaper, faster model is better.',
+                ),
+                const SizedBox(height: 8),
+                if (envelope.modelMix.isEmpty)
+                  const _EmptyState(
                     keyName: 'admin_observability_model_mix_empty',
-                    label: 'No model routing data in this window.',
+                    label: 'No model routing data in this month.',
                   )
-                : Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: <Widget>[
-                      for (final entry in envelope.modelMix)
-                        _ModelMixTile(
-                          key: Key(
-                            'admin_observability_model_mix_'
-                            '${entry.queryClass}',
-                          ),
-                          entry: entry,
-                        ),
-                    ],
-                  ),
-          ),
-          _SectionCard(
-            keyName: 'admin_observability_section_batch_mode_share',
-            title: 'Lower-cost batch work',
-            subtitle:
-                'Shows how much async work is using batch processing for lower-cost handling.',
-            child: envelope.batchModeShare.isEmpty
-                ? const _EmptyState(
+                else ...<Widget>[
+                  const _ModelMixLegend(),
+                  const SizedBox(height: 6),
+                  for (final entry in envelope.modelMix)
+                    _ModelMixBar(
+                      key: Key(
+                        'admin_observability_model_mix_${entry.queryClass}',
+                      ),
+                      entry: entry,
+                    ),
+                ],
+                const SizedBox(height: 18),
+                _SubHead(
+                  text: 'Lower-cost batch work',
+                  hint: 'Higher is cheaper. Batch work is billed at a lower rate.',
+                ),
+                const SizedBox(height: 8),
+                if (envelope.batchModeShare.isEmpty)
+                  const _EmptyState(
                     keyName: 'admin_observability_batch_mode_share_empty',
-                    label: 'No batch work in this window.',
+                    label: 'No batch work in this month.',
                   )
-                : Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: <Widget>[
-                      for (final entry in envelope.batchModeShare)
-                        _BatchModeShareTile(
-                          key: Key(
-                            'admin_observability_batch_mode_share_'
-                            '${entry.queryClass}',
-                          ),
-                          entry: entry,
-                        ),
-                    ],
+                else
+                  for (final entry in envelope.batchModeShare)
+                    _BatchShareBar(
+                      key: Key(
+                        'admin_observability_batch_mode_share_'
+                        '${entry.queryClass}',
+                      ),
+                      entry: entry,
+                    ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Cost-by-use-case donut + legend. Renders a custom-painted ring with a
+/// centered total and one legend row per use case (amount + percent).
+class _CostDonut extends StatelessWidget {
+  const _CostDonut({required this.slices});
+
+  final List<_CostSlice> slices;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = slices.fold<double>(0, (sum, s) => sum + s.amount);
+    return Wrap(
+      key: const Key('admin_observability_cost_donut'),
+      spacing: 30,
+      runSpacing: 20,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: <Widget>[
+        SizedBox(
+          width: 170,
+          height: 170,
+          child: CustomPaint(
+            painter: _DonutPainter(slices: slices, total: total),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(
+                    '\$${_formatUsd(total)}',
+                    style: AppTextStyles.mono20(
+                      color: AppColors.textPrimary,
+                      weight: FontWeight.w700,
+                    ),
                   ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RequestGroupAdvancedPanel extends StatelessWidget {
-  const _RequestGroupAdvancedPanel({
-    required this.filterController,
-    required this.activeFilter,
-    required this.onApplyFilter,
-    required this.filterApplying,
-  });
-
-  final TextEditingController filterController;
-  final String? activeFilter;
-  final Future<void> Function() onApplyFilter;
-  final bool filterApplying;
-
-  @override
-  Widget build(BuildContext context) {
-    return _AdvancedDetails(
-      keyName: 'admin_observability_request_group_advanced',
-      title: 'Advanced request group filters',
-      children: <Widget>[
-        _CostTelemetryFilterBar(
-          controller: filterController,
-          activeFilter: activeFilter,
-          onApply: onApplyFilter,
-          applying: filterApplying,
-        ),
-        const SizedBox(height: 8),
-        const _RequestGroupKey(),
-      ],
-    );
-  }
-}
-
-/// Advanced filter bar above the cost-telemetry table. The text field accepts
-/// a single backend request group value (for example `advisor_qa`); applying
-/// the filter re-fetches the envelope with the scope narrowed server-side.
-class _CostTelemetryFilterBar extends StatelessWidget {
-  const _CostTelemetryFilterBar({
-    required this.controller,
-    required this.activeFilter,
-    required this.onApply,
-    required this.applying,
-  });
-
-  final TextEditingController controller;
-  final String? activeFilter;
-  final Future<void> Function() onApply;
-  final bool applying;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: <Widget>[
-        Expanded(
-          child: TextField(
-            key: const Key('admin_observability_cost_query_class_filter'),
-            controller: controller,
-            enabled: !applying,
-            onSubmitted: (_) => applying ? null : onApply(),
-            style: AppTextStyles.mono11(color: AppColors.textPrimary),
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: 'Filter by backend request group, for example wf_pl',
-              hintStyle: AppTextStyles.mono10(color: AppColors.textMuted),
-              filled: true,
-              fillColor: AppColors.backgroundSurface,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 8,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-                borderSide: const BorderSide(
-                  color: AppColors.borderSubtle,
-                  width: 1,
-                ),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-                borderSide: const BorderSide(
-                  color: AppColors.borderSubtle,
-                  width: 1,
-                ),
+                  Text(
+                    'total',
+                    style: AppTextStyles.body12(color: AppColors.textMuted),
+                  ),
+                ],
               ),
             ),
           ),
         ),
-        const SizedBox(width: 8),
-        OutlinedButton.icon(
-          key: const Key('admin_observability_cost_query_class_filter_apply'),
-          onPressed: applying ? null : () => onApply(),
-          icon: applying
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.filter_alt_outlined, size: 14),
-          label: const Text('Apply'),
-        ),
-        if (activeFilter != null) ...<Widget>[
-          const SizedBox(width: 8),
-          Container(
-            key: const Key('admin_observability_cost_query_class_filter_chip'),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.shimmer,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              'Advanced filter active: $activeFilter',
-              style: AppTextStyles.mono10(
-                color: AppColors.textMuted,
-              ).copyWith(fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-/// "Showing N of M (truncated - refine the filter)" hint above the
-/// cost-telemetry table. Always rendered so the operator knows the
-/// surface count even when the result is exhaustive.
-class _RequestGroupKey extends StatelessWidget {
-  const _RequestGroupKey();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const Key('admin_observability_request_group_key'),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundDeep,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            'Backend request group key',
-            style: AppTextStyles.body13(
-              color: AppColors.textPrimary,
-            ).copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
+        ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 260, maxWidth: 360),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              for (final useCase in adminRequestUseCases)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
+              for (final slice in slices)
+                Padding(
+                  key: Key(
+                    'admin_observability_cost_legend_${slice.queryClass}',
                   ),
-                  decoration: BoxDecoration(
-                    color: AppColors.backgroundSurface,
-                    border: Border.all(color: AppColors.borderSubtle, width: 1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: RichText(
-                    text: TextSpan(
-                      children: <InlineSpan>[
-                        TextSpan(
-                          text: useCase.label,
-                          style: AppTextStyles.body12(
-                            color: AppColors.textPrimary,
-                          ),
+                  padding: const EdgeInsets.symmetric(vertical: 7),
+                  child: Row(
+                    children: <Widget>[
+                      Container(
+                        width: 11,
+                        height: 11,
+                        decoration: BoxDecoration(
+                          color: slice.color,
+                          borderRadius: BorderRadius.circular(3),
                         ),
-                        TextSpan(
-                          text: '  ${useCase.id}',
-                          style: AppTextStyles.mono10(
+                      ),
+                      const SizedBox(width: 11),
+                      Expanded(
+                        child: Text(
+                          slice.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyles.body13(
+                            color: AppColors.textPrimary,
+                          ).copyWith(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '\$${_formatUsd(slice.amount)}',
+                        style: AppTextStyles.mono12(
+                          color: AppColors.textPrimary,
+                          weight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      SizedBox(
+                        width: 42,
+                        child: Text(
+                          total <= 0
+                              ? '—'
+                              : '${((slice.amount / total) * 100).round()}%',
+                          textAlign: TextAlign.right,
+                          style: AppTextStyles.body12(
                             color: AppColors.textMuted,
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CostTelemetryTruncationHint extends StatelessWidget {
-  const _CostTelemetryTruncationHint({required this.envelope});
-
-  final ObservabilityEnvelope envelope;
-
-  @override
-  Widget build(BuildContext context) {
-    final shown = envelope.costTelemetry.length;
-    final total = envelope.costTelemetryTotalCount;
-    final truncated = envelope.costTelemetryTruncated;
-    final color = truncated ? AppColors.warning : AppColors.textMuted;
-    final label = truncated
-        ? 'Showing $shown of $total rows. Open advanced filters to narrow the scope.'
-        : 'Showing $shown of $total rows.';
-    return Container(
-      key: truncated
-          ? const Key('admin_observability_cost_truncated')
-          : const Key('admin_observability_cost_count'),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: Text(label, style: AppTextStyles.mono10(color: color)),
-    );
-  }
-}
-
-/// Bounded, virtualized cost-telemetry table. Uses
-/// [ListView.builder] inside a fixed-height container so an envelope
-/// at the [kObservabilityCostTelemetryLimit] cap renders only the
-/// visible rows. The wrapping `SingleChildScrollView` on the cost tab
-/// ensures the rest of the page (cache hit / model mix / batch tiles)
-/// scrolls past the table.
-class _CostTelemetryTable extends StatelessWidget {
-  const _CostTelemetryTable({required this.rows});
-
-  final List<CostTelemetryEntry> rows;
-
-  static const double _maxTableHeight = 360;
-  static const double _rowExtent = 68;
-
-  @override
-  Widget build(BuildContext context) {
-    final tableHeight = (rows.length * _rowExtent + 32).clamp(
-      120.0,
-      _maxTableHeight,
-    );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                flex: 4,
-                child: _HelpLabel(
-                  label: 'Operator scope',
-                  message:
-                      'Operator, location, staff, and workflow scope for this cost row.',
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: _HelpLabel(
-                  label: 'Use case',
-                  message:
-                      'Readable request type. Backend group values are in advanced filters.',
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: _HelpLabel(
-                  label: 'Cost / requests',
-                  message: 'Estimated AI cost and request count for this row.',
-                  textAlign: TextAlign.right,
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(
-          key: const Key('admin_observability_cost_table_viewport'),
-          height: tableHeight,
-          child: ListView.builder(
-            itemCount: rows.length,
-            itemExtent: _rowExtent,
-            itemBuilder: (context, index) {
-              final row = rows[index];
-              return Container(
-                key: Key(_costRowKey(row)),
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                decoration: const BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: AppColors.borderSubtle, width: 1),
-                  ),
-                ),
-                child: Row(
-                  children: <Widget>[
-                    Expanded(
-                      flex: 4,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: <Widget>[
-                          Text(
-                            row.businessName ?? 'Unnamed operator',
-                            style: AppTextStyles.mono11(
-                              color: AppColors.textPrimary,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          Text(
-                            _costScopeSummary(row),
-                            style: AppTextStyles.mono10(
-                              color: AppColors.textMuted,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: <Widget>[
-                          Text(
-                            adminRequestUseCaseLabel(row.queryClass),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyles.body13(
-                              color: AppColors.textPrimary,
-                            ).copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          Text(
-                            _requestGroupCaption(row),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyles.mono10(
-                              color: AppColors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: <Widget>[
-                          Text(
-                            '\$${row.totalUsd.toStringAsFixed(2)}',
-                            style: AppTextStyles.mono14(
-                              color: AppColors.textPrimary,
-                              weight: FontWeight.w700,
-                            ),
-                          ),
-                          Text(
-                            '${row.requestCount} requests',
-                            style: AppTextStyles.mono10(
-                              color: AppColors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
           ),
         ),
       ],
@@ -1237,8 +1120,52 @@ class _CostTelemetryTable extends StatelessWidget {
   }
 }
 
-class _HitRateTile extends StatelessWidget {
-  const _HitRateTile({super.key, required this.entry});
+class _DonutPainter extends CustomPainter {
+  _DonutPainter({required this.slices, required this.total});
+
+  final List<_CostSlice> slices;
+  final double total;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 24.0;
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (math.min(size.width, size.height) - stroke) / 2;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+
+    // Track.
+    final track = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..color = AppColors.shimmer;
+    canvas.drawCircle(center, radius, track);
+
+    if (total <= 0) return;
+
+    var startAngle = -math.pi / 2; // 12 o'clock.
+    for (final slice in slices) {
+      final sweep = (slice.amount / total) * 2 * math.pi;
+      if (sweep <= 0) continue;
+      final arc = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..strokeCap = StrokeCap.butt
+        ..color = slice.color;
+      canvas.drawArc(rect, startAngle, sweep, false, arc);
+      startAngle += sweep;
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DonutPainter oldDelegate) {
+    return oldDelegate.total != total || oldDelegate.slices != slices;
+  }
+}
+
+/// Saved-answer reuse horizontal bar. Colour follows the model's
+/// green/yellow/red severity so a low-reuse class reads as a cost risk.
+class _ReuseBar extends StatelessWidget {
+  const _ReuseBar({super.key, required this.entry});
 
   final CacheHitRateEntry entry;
 
@@ -1256,390 +1183,243 @@ class _HitRateTile extends StatelessWidget {
         color = AppColors.negative;
         break;
     }
-    return _MetricTileShell(
+    final pct = (entry.hitRate * 100);
+    return _LabeledBar(
       label: adminRequestUseCaseLabel(entry.queryClass),
-      labelHelp: 'Use case measured for saved answer reuse.',
-      value: '${(entry.hitRate * 100).toStringAsFixed(1)}%',
-      caption:
-          'Review below ${(entry.yellowThreshold * 100).toStringAsFixed(0)}% - '
-          'failing below ${(entry.redThreshold * 100).toStringAsFixed(0)}%',
-      accent: color,
+      fraction: entry.hitRate,
+      barColor: color,
+      valueText: '${pct.toStringAsFixed(0)}%',
+      valueColor: color,
     );
   }
 }
 
-class _ModelMixTile extends StatelessWidget {
-  const _ModelMixTile({super.key, required this.entry});
-
-  final ModelMixEntry entry;
+class _ModelMixLegend extends StatelessWidget {
+  const _ModelMixLegend();
 
   @override
   Widget build(BuildContext context) {
-    final color = entry.sonnetShareExceedsCeiling
-        ? AppColors.warning
-        : AppColors.positive;
-    return _MetricTileShell(
-      label: adminRequestUseCaseLabel(entry.queryClass),
-      labelHelp: 'Use case whose model routing mix is shown.',
-      value:
-          'Haiku ${(entry.haikuShare * 100).toStringAsFixed(0)}% - '
-          'Sonnet ${(entry.sonnetShare * 100).toStringAsFixed(0)}%',
-      caption:
-          'Detailed model target: ${(entry.sonnetShareCeiling * 100).toStringAsFixed(0)}%',
-      accent: color,
-    );
-  }
-}
-
-class _BatchModeShareTile extends StatelessWidget {
-  const _BatchModeShareTile({super.key, required this.entry});
-
-  final BatchModeShareEntry entry;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = entry.batchShare >= entry.targetShare
-        ? AppColors.positive
-        : AppColors.neutral;
-    return _MetricTileShell(
-      label: adminRequestUseCaseLabel(entry.queryClass),
-      labelHelp: 'Use case measured for batch-processing share.',
-      value: '${(entry.batchShare * 100).toStringAsFixed(0)}%',
-      caption: 'Target ${(entry.targetShare * 100).toStringAsFixed(0)}%',
-      accent: color,
-    );
-  }
-}
-
-class _TopNTab extends StatelessWidget {
-  const _TopNTab({super.key, required this.envelope});
-
-  final ObservabilityEnvelope envelope;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          for (final window in ObservabilityWindow.values)
-            _SectionCard(
-              keyName:
-                  'admin_observability_section_top_${observabilityWindowKey(window)}',
-              title: 'Highest spend - last ${observabilityWindowKey(window)}',
-              subtitle:
-                  'Highest-cost operators, staff, and workflows over the last '
-                  '${observabilityWindowKey(window)}.',
-              child: _TopExpensiveList(
-                window: window,
-                rows: envelope
-                    .topExpensiveForWindow(window)
-                    .toList(growable: false),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TopExpensiveList extends StatelessWidget {
-  const _TopExpensiveList({required this.window, required this.rows});
-
-  final ObservabilityWindow window;
-  final List<TopExpensiveEntry> rows;
-
-  @override
-  Widget build(BuildContext context) {
-    if (rows.isEmpty) {
-      return _EmptyState(
-        keyName:
-            'admin_observability_top_${observabilityWindowKey(window)}_empty',
-        label: 'No rows in this window.',
-      );
-    }
-    final sorted = [...rows]..sort((a, b) => b.totalUsd.compareTo(a.totalUsd));
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Wrap(
+      spacing: 18,
+      runSpacing: 6,
       children: <Widget>[
-        Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: Row(
-            children: const <Widget>[
-              SizedBox(
-                width: 84,
-                child: _HelpLabel(
-                  label: 'Scope',
-                  message:
-                      'Whether this row is an operator, staff member, or workflow.',
-                ),
-              ),
-              SizedBox(width: 10),
-              Expanded(
-                child: _HelpLabel(
-                  label: 'Name',
-                  message:
-                      'The operator, staff member, or workflow using the most AI budget.',
-                ),
-              ),
-              SizedBox(width: 10),
-              SizedBox(
-                width: 88,
-                child: _HelpLabel(
-                  label: 'Spend',
-                  message:
-                      'Estimated AI cost for this row during the selected window.',
-                  textAlign: TextAlign.right,
-                ),
-              ),
-              SizedBox(width: 6),
-              SizedBox(
-                width: 96,
-                child: _HelpLabel(
-                  label: 'Requests',
-                  message:
-                      'Request count for this row during the selected window.',
-                  textAlign: TextAlign.right,
-                ),
-              ),
-            ],
-          ),
+        _LegendSwatch(color: AppColors.positive, label: 'Fast model (cheaper)'),
+        _LegendSwatch(
+          color: AppColors.warning,
+          label: 'Detailed model (pricier)',
         ),
-        for (final row in sorted)
-          Container(
-            key: Key(
-              'admin_observability_top_row_'
-              '${observabilityWindowKey(window)}_${row.axis}_${row.label}',
-            ),
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            decoration: const BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: AppColors.borderSubtle, width: 1),
-              ),
-            ),
-            child: Row(
-              children: <Widget>[
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.shimmer,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    row.axis,
-                    style: AppTextStyles.mono10(color: AppColors.textMuted),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    row.label,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.mono11(color: AppColors.textPrimary),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  '\$${row.totalUsd.toStringAsFixed(2)}',
-                  style: AppTextStyles.mono14(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  '(${row.requestCount} requests)',
-                  style: AppTextStyles.mono10(color: AppColors.textMuted),
-                ),
-              ],
-            ),
-          ),
       ],
     );
   }
 }
 
-class _OperatorsTab extends StatelessWidget {
-  const _OperatorsTab({super.key, required this.envelope});
+class _LegendSwatch extends StatelessWidget {
+  const _LegendSwatch({required this.color, required this.label});
 
-  final ObservabilityEnvelope envelope;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          _SectionCard(
-            keyName: 'admin_observability_section_dormancy',
-            title: 'Inactive operators',
-            subtitle:
-                'Operators with no recent activity are flagged so support can follow up and background work can stay efficient.',
-            child: envelope.dormancy.isEmpty
-                ? const _EmptyState(
-                    keyName: 'admin_observability_dormancy_empty',
-                    label: 'No operators registered yet.',
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      const _DormancyHeader(),
-                      for (final entry in envelope.dormancy)
-                        _DormancyRow(
-                          key: Key(
-                            'admin_observability_dormancy_row_'
-                            '${entry.operatorId}',
-                          ),
-                          entry: entry,
-                        ),
-                    ],
-                  ),
-          ),
-          _SectionCard(
-            keyName: 'admin_observability_section_margin',
-            title: 'Plan margin estimate',
-            subtitle:
-                'Plan revenue minus recent cost. Operators below margin target appear in red.',
-            child: envelope.margins.isEmpty
-                ? const _EmptyState(
-                    keyName: 'admin_observability_margin_empty',
-                    label: 'No margin data in this window.',
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      const _MarginHeader(),
-                      for (final entry in envelope.margins)
-                        _MarginRow(
-                          key: Key(
-                            'admin_observability_margin_row_'
-                            '${entry.operatorId}',
-                          ),
-                          entry: entry,
-                        ),
-                    ],
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DormancyHeader extends StatelessWidget {
-  const _DormancyHeader();
+  final Color color;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: <Widget>[
-          Expanded(
-            child: _HelpLabel(
-              label: 'Operator',
-              message: 'Operator account being checked for recent AI activity.',
-            ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Container(
+          width: 11,
+          height: 11,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
           ),
-          SizedBox(width: 10),
-          SizedBox(
-            width: 150,
-            child: _HelpLabel(
-              label: 'Activity status',
-              message:
-                  'Whether the operator has been active recently or needs follow-up.',
-              textAlign: TextAlign.right,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DormancyRow extends StatelessWidget {
-  const _DormancyRow({super.key, required this.entry});
-
-  final OperatorDormancyEntry entry;
-
-  @override
-  Widget build(BuildContext context) {
-    final dormant = entry.isDormant;
-    final neverActive = entry.neverActive;
-    // Never-active is the strongest "skip-precompute" signal - render
-    // negative so the F&F admin can spot a row the producer has never
-    // had data for. Known-silent dormants (>= 30d) stay warning;
-    // active operators stay positive.
-    final Color color;
-    if (neverActive) {
-      color = AppColors.negative;
-    } else if (dormant) {
-      color = AppColors.warning;
-    } else {
-      color = AppColors.positive;
-    }
-    final lastActive = entry.lastActiveAt;
-    final silent = entry.daysSilent;
-    final String chipLabel;
-    if (neverActive) {
-      chipLabel = 'never active - inactive';
-    } else if (silent == null) {
-      chipLabel = 'silence unknown';
-    } else if (dormant) {
-      chipLabel = '${silent}d quiet - inactive';
-    } else {
-      chipLabel = '${silent}d silent';
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: AppColors.borderSubtle, width: 1),
         ),
-      ),
+        const SizedBox(width: 6),
+        Text(label, style: AppTextStyles.body12(color: AppColors.textSecondary)),
+      ],
+    );
+  }
+}
+
+/// Model-mix split bar: a single track split into cheaper (green) and
+/// pricier (amber) shares. An over-target detailed share carries an
+/// "Over target" tag.
+class _ModelMixBar extends StatelessWidget {
+  const _ModelMixBar({super.key, required this.entry});
+
+  final ModelMixEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final over = entry.sonnetShareExceedsCeiling;
+    final detailedPct = (entry.sonnetShare * 100).round();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
         children: <Widget>[
+          SizedBox(
+            width: 160,
+            child: Text(
+              adminRequestUseCaseLabel(entry.queryClass),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.body13(
+                color: AppColors.textPrimary,
+              ).copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+          const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                height: 14,
+                child: Row(
+                  children: <Widget>[
+                    Expanded(
+                      flex: math.max(0, (entry.haikuShare * 1000).round()),
+                      child: const ColoredBox(color: AppColors.positive),
+                    ),
+                    Expanded(
+                      flex: math.max(0, (entry.sonnetShare * 1000).round()),
+                      child: const ColoredBox(color: AppColors.warning),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 190,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
               children: <Widget>[
-                Text(
-                  entry.businessName,
-                  style: AppTextStyles.mono14(color: AppColors.textPrimary),
+                Flexible(
+                  child: Text(
+                    '$detailedPct% detailed',
+                    textAlign: TextAlign.right,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.body12(color: AppColors.textSecondary),
+                  ),
                 ),
-                Text(
-                  'AI plan: ${entry.subscriptionTier ?? 'Unknown'}',
-                  style: AppTextStyles.mono10(color: AppColors.textMuted),
-                ),
-                Text(
-                  lastActive == null
-                      ? 'Last active: no activity yet'
-                      : 'Last active: ${adminHumanDateTime(lastActive)}',
-                  style: AppTextStyles.mono10(color: AppColors.textMuted),
-                ),
+                if (over) ...<Widget>[
+                  const SizedBox(width: 6),
+                  Container(
+                    key: Key(
+                      'admin_observability_model_mix_over_${entry.queryClass}',
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: Text(
+                      'Over target',
+                      style: AppTextStyles.chipLabel(color: AppColors.warning),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
-          const SizedBox(width: 10),
-          Container(
-            key: dormant
-                ? Key('admin_observability_dormancy_flag_${entry.operatorId}')
-                : null,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              border: Border.all(color: color, width: 1),
-              borderRadius: BorderRadius.circular(20),
-            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Lower-cost batch-work bar. Green when at or above target, neutral
+/// otherwise; the caption states the target so the operator knows the
+/// goal.
+class _BatchShareBar extends StatelessWidget {
+  const _BatchShareBar({super.key, required this.entry});
+
+  final BatchModeShareEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final meetsTarget = entry.batchShare >= entry.targetShare;
+    final color = meetsTarget ? AppColors.positive : AppColors.warning;
+    final pct = (entry.batchShare * 100).round();
+    final targetPct = (entry.targetShare * 100).round();
+    return _LabeledBar(
+      label: adminRequestUseCaseLabel(entry.queryClass),
+      fraction: entry.batchShare,
+      barColor: color,
+      valueText: '$pct% · target $targetPct%',
+      valueColor: color,
+    );
+  }
+}
+
+/// Shared horizontal bar with a leading label, a track, and a trailing
+/// value. The bold value uses [valueColor]; the rest of the trailing
+/// caption stays muted.
+class _LabeledBar extends StatelessWidget {
+  const _LabeledBar({
+    required this.label,
+    required this.fraction,
+    required this.barColor,
+    required this.valueText,
+    required this.valueColor,
+  });
+
+  final String label;
+  final double fraction;
+  final Color barColor;
+  final String valueText;
+  final Color valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final clamped = fraction.clamp(0.0, 1.0);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        children: <Widget>[
+          SizedBox(
+            width: 168,
             child: Text(
-              chipLabel,
-              style: AppTextStyles.mono10(
-                color: color,
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.body13(
+                color: AppColors.textPrimary,
+              ).copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                height: 12,
+                child: Stack(
+                  children: <Widget>[
+                    const Positioned.fill(
+                      child: ColoredBox(color: AppColors.shimmer),
+                    ),
+                    FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: clamped == 0 ? 0.001 : clamped,
+                      child: ColoredBox(color: barColor),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 150,
+            child: Text(
+              valueText,
+              textAlign: TextAlign.right,
+              style: AppTextStyles.body12(
+                color: valueColor,
               ).copyWith(fontWeight: FontWeight.w700),
             ),
           ),
@@ -1649,112 +1429,10 @@ class _DormancyRow extends StatelessWidget {
   }
 }
 
-class _MarginHeader extends StatelessWidget {
-  const _MarginHeader();
+// ── Customers tab ────────────────────────────────────────────────────
 
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: <Widget>[
-          Expanded(
-            child: _HelpLabel(
-              label: 'Operator',
-              message: 'Operator plan being checked for AI cost coverage.',
-            ),
-          ),
-          SizedBox(width: 10),
-          SizedBox(
-            width: 190,
-            child: _HelpLabel(
-              label: 'Revenue / cost / margin',
-              message: 'Plan revenue minus estimated AI cost for this window.',
-              textAlign: TextAlign.right,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MarginRow extends StatelessWidget {
-  const _MarginRow({super.key, required this.entry});
-
-  final MarginEstimateEntry entry;
-
-  @override
-  Widget build(BuildContext context) {
-    final underwater = entry.isUnderwater;
-    final color = underwater ? AppColors.negative : AppColors.positive;
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: AppColors.borderSubtle, width: 1),
-        ),
-      ),
-      child: Row(
-        children: <Widget>[
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  entry.businessName,
-                  style: AppTextStyles.mono14(color: AppColors.textPrimary),
-                ),
-                Text(
-                  'AI plan: ${entry.subscriptionTier}',
-                  style: AppTextStyles.mono10(color: AppColors.textMuted),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: <Widget>[
-              Text(
-                'Revenue \$${entry.revenueUsd.toStringAsFixed(2)}',
-                style: AppTextStyles.mono10(color: AppColors.textMuted),
-              ),
-              Text(
-                'Cost \$${entry.costUsd.toStringAsFixed(2)}',
-                style: AppTextStyles.mono10(color: AppColors.textMuted),
-              ),
-              Container(
-                key: underwater
-                    ? Key(
-                        'admin_observability_margin_underwater_'
-                        '${entry.operatorId}',
-                      )
-                    : null,
-                margin: const EdgeInsets.only(top: 2),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  border: Border.all(color: color, width: 1),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'Margin \$${entry.marginUsd.toStringAsFixed(2)}',
-                  style: AppTextStyles.mono10(
-                    color: color,
-                  ).copyWith(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CapEventsTab extends StatelessWidget {
-  const _CapEventsTab({super.key, required this.envelope});
+class _CustomersTab extends StatelessWidget {
+  const _CustomersTab({super.key, required this.envelope});
 
   final ObservabilityEnvelope envelope;
 
@@ -1765,29 +1443,17 @@ class _CapEventsTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          _SectionCard(
-            keyName: 'admin_observability_section_cap_events',
-            title: 'Limit reached events',
-            subtitle:
-                'Requests refused because a usage limit was reached. Use this to explain when an operator hits a monthly or per-request limit.',
-            child: envelope.capEvents.isEmpty
-                ? const _EmptyState(
-                    keyName: 'admin_observability_cap_events_empty',
-                    label: 'No limit events in this window.',
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      const _CapEventsHeader(),
-                      for (final event in envelope.capEvents)
-                        _CapEventRow(
-                          key: Key(
-                            'admin_observability_cap_event_${event.eventId}',
-                          ),
-                          event: event,
-                        ),
-                    ],
-                  ),
+          _Panel(
+            keyName: 'admin_observability_section_top_spenders',
+            title: 'Top spenders',
+            subtitle: 'The businesses, staff, and workflows using the most AI budget.',
+            child: _TopSpenders(envelope: envelope),
+          ),
+          _Panel(
+            keyName: 'admin_observability_section_needs_attention',
+            title: 'Needs attention',
+            subtitle: 'Businesses to follow up with.',
+            child: _NeedsAttention(envelope: envelope),
           ),
         ],
       ),
@@ -1795,88 +1461,751 @@ class _CapEventsTab extends StatelessWidget {
   }
 }
 
-class _CapEventsHeader extends StatelessWidget {
-  const _CapEventsHeader();
+/// Top spenders with a rolling-window selector (24 hours / 7 days /
+/// 30 days). Bars are scaled to the largest spender in the window.
+class _TopSpenders extends StatefulWidget {
+  const _TopSpenders({required this.envelope});
+
+  final ObservabilityEnvelope envelope;
+
+  @override
+  State<_TopSpenders> createState() => _TopSpendersState();
+}
+
+class _TopSpendersState extends State<_TopSpenders> {
+  ObservabilityWindow _window = ObservabilityWindow.sevenDays;
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: <Widget>[
-          Expanded(
-            flex: 3,
-            child: _HelpLabel(
-              label: 'Operator / request / time',
-              message: 'Operator, use case, and time that hit a usage limit.',
-            ),
+    final rows =
+        widget.envelope.topExpensiveForWindow(_window).toList(growable: false)
+          ..sort((a, b) => b.totalUsd.compareTo(a.totalUsd));
+    final maxUsd = rows.isEmpty
+        ? 0.0
+        : rows.map((r) => r.totalUsd).reduce(math.max);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Align(
+          alignment: Alignment.centerRight,
+          child: _WindowSelector(
+            window: _window,
+            onSelect: (w) => setState(() => _window = w),
           ),
-          Expanded(
-            flex: 2,
-            child: _HelpLabel(
-              label: 'Limit / attempted',
-              message:
-                  'The allowed spend limit and the attempted request cost.',
-              textAlign: TextAlign.right,
+        ),
+        const SizedBox(height: 12),
+        if (rows.isEmpty)
+          _EmptyState(
+            keyName:
+                'admin_observability_top_${observabilityWindowKey(_window)}_empty',
+            label: 'No spending recorded in this window.',
+          )
+        else
+          for (final row in rows)
+            _SpenderRow(
+              key: Key(
+                'admin_observability_spender_'
+                '${observabilityWindowKey(_window)}_${row.axis}_${row.label}',
+              ),
+              row: row,
+              fraction: maxUsd <= 0 ? 0 : row.totalUsd / maxUsd,
             ),
-          ),
-        ],
-      ),
+      ],
     );
   }
 }
 
-class _CapEventRow extends StatelessWidget {
-  const _CapEventRow({super.key, required this.event});
+class _WindowSelector extends StatelessWidget {
+  const _WindowSelector({required this.window, required this.onSelect});
 
-  final CapEvent event;
+  final ObservabilityWindow window;
+  final ValueChanged<ObservabilityWindow> onSelect;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: AppColors.borderSubtle, width: 1),
-        ),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Expanded(
-            flex: 3,
+          for (final entry in const <(ObservabilityWindow, String)>[
+            (ObservabilityWindow.oneDay, '24 hours'),
+            (ObservabilityWindow.sevenDays, '7 days'),
+            (ObservabilityWindow.thirtyDays, '30 days'),
+          ])
+            InkWell(
+              key: Key(
+                'admin_observability_window_'
+                '${observabilityWindowKey(entry.$1)}',
+              ),
+              onTap: () => onSelect(entry.$1),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 13,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: window == entry.$1
+                      ? AppColors.sunset
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  entry.$2,
+                  style: AppTextStyles.body12(
+                    color: window == entry.$1
+                        ? AppColors.backgroundSurface
+                        : AppColors.textSecondary,
+                  ).copyWith(
+                    fontWeight: window == entry.$1
+                        ? FontWeight.w700
+                        : FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SpenderRow extends StatelessWidget {
+  const _SpenderRow({super.key, required this.row, required this.fraction});
+
+  final TopExpensiveEntry row;
+  final double fraction;
+
+  @override
+  Widget build(BuildContext context) {
+    final clamped = fraction.clamp(0.0, 1.0);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: <Widget>[
+          SizedBox(
+            width: 190,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  '${event.businessName} - '
-                  '${adminRequestUseCaseLabel(event.queryClass)}',
-                  style: AppTextStyles.mono11(color: AppColors.textPrimary),
+                  row.label.isEmpty ? 'Unnamed' : row.label,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.body13(
+                    color: AppColors.textPrimary,
+                  ).copyWith(fontWeight: FontWeight.w600),
                 ),
                 Text(
-                  adminHumanDateTime(event.occurredAt),
-                  style: AppTextStyles.mono10(color: AppColors.textMuted),
+                  _spenderAxisLabel(row.axis),
+                  style: AppTextStyles.body12(color: AppColors.textMuted),
                 ),
               ],
             ),
           ),
+          const SizedBox(width: 14),
           Expanded(
-            flex: 2,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                height: 14,
+                child: Stack(
+                  children: <Widget>[
+                    const Positioned.fill(
+                      child: ColoredBox(color: AppColors.shimmer),
+                    ),
+                    FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: clamped == 0 ? 0.001 : clamped,
+                      child: const DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: <Color>[
+                              AppColors.sunset,
+                              AppColors.redSand,
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          SizedBox(
+            width: 64,
+            child: Text(
+              '\$${_formatUsd(row.totalUsd)}',
+              textAlign: TextAlign.right,
+              style: AppTextStyles.mono12(
+                color: AppColors.textPrimary,
+                weight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          if (row.operatorId != null && row.operatorId!.isNotEmpty)
+            _ViewAccountLink(
+              keyName:
+                  'admin_observability_spender_view_'
+                  '${observabilityWindowKey(row.window)}_${row.axis}_${row.label}',
+              operatorId: row.operatorId!,
+              operatorName: row.label,
+            )
+          else
+            const SizedBox(width: 64),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Needs attention" list. Three honest sources:
+///   * Losing money (margins) - NO backend pricing source yet (Plans &
+///     limits owns pricing), so when no margin rows are present this
+///     renders an explicit "Not available yet" empty state, never $0.
+///   * Limit hits (cap events) - one row per business that hit a limit.
+///   * Inactive (dormancy) - businesses with no recent AI activity.
+class _NeedsAttention extends StatelessWidget {
+  const _NeedsAttention({required this.envelope});
+
+  final ObservabilityEnvelope envelope;
+
+  @override
+  Widget build(BuildContext context) {
+    final underwater = envelope.underwaterOperators.toList(growable: false);
+    final capByOperator = _capEventsByOperator(envelope);
+    final dormant = envelope.dormantOperators.toList(growable: false);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        // Losing money - honest empty state when pricing data is absent.
+        _SubHead(
+          text: 'Losing money',
+          hint: 'AI cost is higher than the plan brings in.',
+        ),
+        const SizedBox(height: 8),
+        if (envelope.margins.isEmpty)
+          const _EmptyState(
+            keyName: 'admin_observability_losing_money_unavailable',
+            label:
+                'Not available yet. Plan pricing is set in Plans and limits; '
+                'margin comparison turns on once it is connected.',
+          )
+        else if (underwater.isEmpty)
+          const _EmptyState(
+            keyName: 'admin_observability_losing_money_empty',
+            label: 'No businesses are losing money this month.',
+          )
+        else
+          for (final margin in underwater)
+            _AttentionRow(
+              key: Key(
+                'admin_observability_attention_losing_${margin.operatorId}',
+              ),
+              category: 'losing',
+              tone: _HeroTone.bad,
+              pillLabel: 'Losing money',
+              lead: margin.businessName,
+              why:
+                  'Costs \$${_formatUsd(margin.costUsd - margin.revenueUsd)} '
+                  'more than their plan brings in.',
+              operatorId: margin.operatorId,
+              operatorName: margin.businessName,
+            ),
+        const SizedBox(height: 18),
+        // Limit hits.
+        _SubHead(
+          text: 'Limit hits',
+          hint: 'A request was stopped because a usage limit was reached.',
+        ),
+        const SizedBox(height: 8),
+        if (capByOperator.isEmpty)
+          const _EmptyState(
+            keyName: 'admin_observability_limit_hits_empty',
+            label: 'No usage limits were reached this month.',
+          )
+        else
+          for (final event in capByOperator)
+            _AttentionRow(
+              key: Key(
+                'admin_observability_attention_limit_${event.operatorId}',
+              ),
+              category: 'limit',
+              tone: _HeroTone.watch,
+              pillLabel: 'Limit hit',
+              lead: event.businessName,
+              why:
+                  'Reached its limit during '
+                  '${adminRequestUseCaseLabel(event.queryClass)}.',
+              operatorId: event.operatorId,
+              operatorName: event.businessName,
+            ),
+        const SizedBox(height: 18),
+        // Inactive.
+        _SubHead(
+          text: 'Inactive',
+          hint: 'No recent AI activity. Support may want to follow up.',
+        ),
+        const SizedBox(height: 8),
+        if (dormant.isEmpty)
+          const _EmptyState(
+            keyName: 'admin_observability_inactive_empty',
+            label: 'Every business has been active recently.',
+          )
+        else
+          for (final entry in dormant)
+            _AttentionRow(
+              key: Key(
+                'admin_observability_attention_inactive_${entry.operatorId}',
+              ),
+              category: 'inactive',
+              tone: _HeroTone.watch,
+              pillLabel: 'Inactive',
+              lead: entry.businessName,
+              why: _dormancyWhy(entry),
+              operatorId: entry.operatorId,
+              operatorName: entry.businessName,
+            ),
+      ],
+    );
+  }
+}
+
+class _AttentionRow extends StatelessWidget {
+  const _AttentionRow({
+    super.key,
+    required this.category,
+    required this.tone,
+    required this.pillLabel,
+    required this.lead,
+    required this.why,
+    required this.operatorId,
+    required this.operatorName,
+  });
+
+  /// Category slug (`losing` / `limit` / `inactive`). Keeps the View
+  /// account link key unique when one operator surfaces in more than one
+  /// attention category.
+  final String category;
+  final _HeroTone tone;
+  final String pillLabel;
+  final String lead;
+  final String why;
+  final String operatorId;
+  final String operatorName;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: <Widget>[
+          SizedBox(
+            width: 104,
+            child: _HeroPill(label: pillLabel, tone: tone),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  'Limit \$${event.capUsd.toStringAsFixed(2)}',
-                  style: AppTextStyles.mono10(color: AppColors.textMuted),
+                  lead,
+                  style: AppTextStyles.body13(
+                    color: AppColors.textPrimary,
+                  ).copyWith(fontWeight: FontWeight.w600),
                 ),
                 Text(
-                  'Attempted \$${event.attemptedUsd.toStringAsFixed(2)}',
-                  style: AppTextStyles.mono14(
-                    color: AppColors.negative,
-                    weight: FontWeight.w700,
-                  ),
+                  why,
+                  style: AppTextStyles.body12(color: AppColors.textSecondary),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          _ViewAccountLink(
+            keyName:
+                'admin_observability_attention_view_${category}_$operatorId',
+            operatorId: operatorId,
+            operatorName: operatorName,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "View account" drill-down. Dispatches an [AdminRouteIntent] to the
+/// Business accounts route scoped to the chosen operator via the
+/// [AdminRouteHandoff]. When no handoff is in scope (e.g. a bare widget
+/// test pump) the link renders disabled so the screen never throws.
+class _ViewAccountLink extends StatelessWidget {
+  const _ViewAccountLink({
+    required this.keyName,
+    required this.operatorId,
+    required this.operatorName,
+  });
+
+  final String keyName;
+  final String operatorId;
+  final String operatorName;
+
+  @override
+  Widget build(BuildContext context) {
+    final handoff = AdminRouteHandoff.maybeOf(context);
+    return InkWell(
+      key: Key(keyName),
+      onTap: handoff == null
+          ? null
+          : () => handoff.onSelectRoute(
+              AdminRouteIntent(
+                routeId: kAdminOperatorsRouteId,
+                operatorLocationScope: AdminOperatorLocationScopeIntent(
+                  operatorId: operatorId,
+                  operatorName: operatorName.isEmpty ? null : operatorName,
+                ),
+              ),
+            ),
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(
+              'View account',
+              style: AppTextStyles.body12(
+                color: handoff == null
+                    ? AppColors.textMuted
+                    : AppColors.sunsetDark,
+              ).copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.arrow_forward,
+              size: 14,
+              color: handoff == null
+                  ? AppColors.textMuted
+                  : AppColors.sunsetDark,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Reliability tab ──────────────────────────────────────────────────
+
+class _ReliabilityTab extends StatelessWidget {
+  const _ReliabilityTab({
+    super.key,
+    required this.envelope,
+    required this.tripwireGateway,
+    required this.tripwires,
+    required this.tripwireError,
+  });
+
+  final ObservabilityEnvelope envelope;
+  final RealtimeTripwireAdminGateway? tripwireGateway;
+  final RealtimeTripwireSnapshot? tripwires;
+  final String? tripwireError;
+
+  @override
+  Widget build(BuildContext context) {
+    final counts = envelope.projectionRetries.statusCounts;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          _Panel(
+            keyName: 'admin_observability_section_speed',
+            title: 'Speed & uptime',
+            subtitle: 'Per-request response time lives in System health.',
+            child: _SpeedUptime(envelope: envelope),
+          ),
+          _Panel(
+            keyName: 'admin_observability_section_background_jobs',
+            title: 'Background jobs',
+            subtitle: 'Shift and open-period projection work waiting, running, or stuck.',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                _StatGrid(
+                  stats: <_Stat>[
+                    _Stat(
+                      keyName: 'admin_observability_jobs_pending',
+                      value: '${counts.pending}',
+                      label: 'Waiting',
+                      alert: false,
+                    ),
+                    _Stat(
+                      keyName: 'admin_observability_jobs_running',
+                      value: '${counts.running}',
+                      label: 'In progress',
+                      alert: false,
+                    ),
+                    _Stat(
+                      keyName: 'admin_observability_jobs_dead_lettered',
+                      value: '${counts.deadLettered}',
+                      label: 'Stuck',
+                      caption: counts.deadLettered > 0 ? 'Needs a person' : null,
+                      alert: counts.deadLettered > 0,
+                    ),
+                    _Stat(
+                      keyName: 'admin_observability_jobs_succeeded',
+                      value: '${counts.succeeded}',
+                      label: 'Done',
+                      alert: false,
+                    ),
+                  ],
+                ),
+                if (counts.deadLettered > 0) ...<Widget>[
+                  const SizedBox(height: 14),
+                  _InlineHint(
+                    keyName: 'admin_observability_jobs_stuck_hint',
+                    tone: _HeroTone.bad,
+                    message: counts.deadLettered == 1
+                        ? '1 job is stuck and needs support triage.'
+                        : '${counts.deadLettered} jobs are stuck and need support triage.',
+                  ),
+                ],
+              ],
+            ),
+          ),
+          _Panel(
+            keyName: 'admin_observability_section_cloud_run_instances',
+            title: 'Hosting capacity',
+            subtitle: 'Servers running each AI service. Platform-wide, not per business.',
+            child: envelope.cloudRun.isEmpty
+                ? const _EmptyState(
+                    keyName: 'admin_observability_cloud_run_empty',
+                    label: 'No hosting services reported in this window.',
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      for (final svc in envelope.cloudRun)
+                        _HostingRow(
+                          key: Key(
+                            'admin_observability_cloud_run_${svc.serviceName}',
+                          ),
+                          service: svc,
+                        ),
+                    ],
+                  ),
+          ),
+          if (tripwireGateway != null)
+            _Panel(
+              keyName: 'admin_observability_section_live_sync',
+              title: 'Live sync',
+              subtitle: 'Whether updates are flowing from the database to the apps.',
+              child: _LiveSync(snapshot: tripwires, error: tripwireError),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Speed & uptime block. Per-route latency is empty on this surface
+/// (owned by System health), so this links out honestly rather than
+/// inventing numbers.
+class _SpeedUptime extends StatelessWidget {
+  const _SpeedUptime({required this.envelope});
+
+  final ObservabilityEnvelope envelope;
+
+  @override
+  Widget build(BuildContext context) {
+    return _InlineHint(
+      keyName: 'admin_observability_speed_health_link',
+      tone: _HeroTone.watch,
+      message:
+          'Per-request response time and error rate live in System health. '
+          'Open it for typical reply time, slow-request percentiles, and uptime.',
+    );
+  }
+}
+
+class _StatGrid extends StatelessWidget {
+  const _StatGrid({required this.stats});
+
+  final List<_Stat> stats;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = 13.0;
+        final columns = constraints.maxWidth >= 520 ? 4 : 2;
+        final itemWidth =
+            (constraints.maxWidth - (gap * (columns - 1))) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: <Widget>[
+            for (final stat in stats)
+              SizedBox(width: itemWidth, child: _StatBlock(stat: stat)),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _Stat {
+  const _Stat({
+    required this.keyName,
+    required this.value,
+    required this.label,
+    required this.alert,
+    this.caption,
+  });
+
+  final String keyName;
+  final String value;
+  final String label;
+  final bool alert;
+  final String? caption;
+}
+
+class _StatBlock extends StatelessWidget {
+  const _StatBlock({required this.stat});
+
+  final _Stat stat;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: Key(stat.keyName),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 15),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        children: <Widget>[
+          Text(
+            stat.value,
+            style: AppTextStyles.mono20(
+              color: stat.alert ? AppColors.negative : AppColors.textPrimary,
+              weight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            stat.label,
+            textAlign: TextAlign.center,
+            style: AppTextStyles.body12(
+              color: AppColors.textSecondary,
+            ).copyWith(fontWeight: FontWeight.w600),
+          ),
+          if (stat.caption != null) ...<Widget>[
+            const SizedBox(height: 2),
+            Text(
+              stat.caption!,
+              textAlign: TextAlign.center,
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Hosting capacity row. The active instance count can legitimately be
+/// unknown; rather than implying zero servers, a missing count renders
+/// the "—" sentinel with an "unknown" caption (Metric Honesty Doctrine).
+class _HostingRow extends StatelessWidget {
+  const _HostingRow({super.key, required this.service});
+
+  final CloudRunInstanceMetric service;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasCount = service.instanceCount > 0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: <Widget>[
+          const Icon(
+            Icons.dns_outlined,
+            size: 20,
+            color: AppColors.textMuted,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              _hostingServiceLabel(service.serviceName),
+              style: AppTextStyles.body13(
+                color: AppColors.textPrimary,
+              ).copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+          const SizedBox(width: 12),
+          if (hasCount)
+            Text.rich(
+              TextSpan(
+                text: '${service.instanceCount}',
+                style: AppTextStyles.mono16(color: AppColors.textPrimary)
+                    .copyWith(fontWeight: FontWeight.w700),
+                children: <InlineSpan>[
+                  TextSpan(
+                    text: ' running',
+                    style: AppTextStyles.body12(color: AppColors.textMuted),
+                  ),
+                ],
+              ),
+            )
+          else
+            // Honest unknown count: a standalone '—' missing-value
+            // sentinel (the only sanctioned use of the glyph), then a
+            // plain-English "unknown" descriptor. NOT "— running" with
+            // the glyph as a separator (that would trip the no-em-dash
+            // law).
+            Row(
+              key: Key(
+                'admin_observability_cloud_run_unknown_${service.serviceName}',
+              ),
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  '—',
+                  style: AppTextStyles.mono16(color: AppColors.textMuted)
+                      .copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'running count unknown',
+                  style: AppTextStyles.body12(color: AppColors.textMuted),
+                ),
+              ],
+            ),
+          const SizedBox(width: 16),
+          SizedBox(
+            width: 220,
+            child: Text(
+              'Scales ${service.minInstances} to ${service.maxInstances} '
+              'servers automatically',
+              textAlign: TextAlign.right,
+              style: AppTextStyles.body12(color: AppColors.textMuted),
             ),
           ),
         ],
@@ -1885,8 +2214,105 @@ class _CapEventRow extends StatelessWidget {
   }
 }
 
-class _GraphTab extends StatelessWidget {
-  const _GraphTab({super.key, required this.envelope});
+/// Live sync (Realtime bridge tripwires). One row per Q22 metric with a
+/// value, the yellow/red thresholds, and a status pill; the panel header
+/// shows the worst-wins severity. Renders an inline error when the
+/// gateway failed and a quiet loading line until the first snapshot.
+class _LiveSync extends StatelessWidget {
+  const _LiveSync({required this.snapshot, required this.error});
+
+  final RealtimeTripwireSnapshot? snapshot;
+  final String? error;
+
+  @override
+  Widget build(BuildContext context) {
+    if (error != null) {
+      return Text(
+        error!,
+        key: const Key('admin_observability_live_sync_error'),
+        style: AppTextStyles.mono11(color: AppColors.negative),
+      );
+    }
+    final snap = snapshot;
+    if (snap == null) {
+      return Text(
+        'Loading live sync status...',
+        style: AppTextStyles.mono11(color: AppColors.textMuted),
+      );
+    }
+    return Column(
+      key: const Key('admin_observability_bridge_tripwires_section'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                _liveSyncHeadline(snap.status),
+                style: AppTextStyles.body13(
+                  color: _tripwireColor(snap.status),
+                ).copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+            _TripwirePill(status: snap.status),
+          ],
+        ),
+        const SizedBox(height: 10),
+        for (final row in snap.metrics)
+          Padding(
+            key: Key('admin_observability_bridge_tripwire_row_${row.key}'),
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: _LiveSyncRow(row: row),
+          ),
+      ],
+    );
+  }
+}
+
+class _LiveSyncRow extends StatelessWidget {
+  const _LiveSyncRow({required this.row});
+
+  final RealtimeTripwireMetricRow row;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: <Widget>[
+        SizedBox(
+          width: 180,
+          child: Text(
+            row.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.body13(color: AppColors.textPrimary),
+          ),
+        ),
+        SizedBox(
+          width: 96,
+          child: Text(
+            row.value == null ? '—' : _formatTripwireValue(row.metric, row.value!),
+            style: AppTextStyles.mono11(color: AppColors.textPrimary),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            'Warns at ${_formatTripwireThreshold(row.metric, row.yellow)}, '
+            'red at ${_formatTripwireThreshold(row.metric, row.red)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.body12(color: AppColors.textMuted),
+          ),
+        ),
+        _RowTripwirePill(status: row.status),
+      ],
+    );
+  }
+}
+
+// ── Knowledge tab ────────────────────────────────────────────────────
+
+class _KnowledgeTab extends StatelessWidget {
+  const _KnowledgeTab({super.key, required this.envelope});
 
   final ObservabilityEnvelope envelope;
 
@@ -1898,94 +2324,61 @@ class _GraphTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          _SectionCard(
+          _Panel(
             keyName: 'admin_observability_section_graph_counts',
-            title: 'Relationship approvals',
-            subtitle:
-                'Counts of approved, suggested, rejected, and isolated relationship records as of the latest refresh.',
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: <Widget>[
-                _MetricTileShell(
-                  key: const Key('admin_observability_graph_approved_nodes'),
-                  label: 'Approved items',
-                  labelHelp:
-                      'Knowledge items that have been confirmed by review.',
+            title: 'What the advisor knows',
+            subtitle: 'Approved facts and links, system suggestions, and anything not linked yet.',
+            child: _StatGrid(
+              stats: <_Stat>[
+                _Stat(
+                  keyName: 'admin_observability_graph_approved_nodes',
                   value: '${graph.approvedNodeCount}',
-                  caption: 'Approved item records',
-                  accent: AppColors.positive,
+                  label: 'Approved facts',
+                  alert: false,
                 ),
-                _MetricTileShell(
-                  key: const Key('admin_observability_graph_approved_edges'),
-                  label: 'Approved relationships',
-                  labelHelp: 'Confirmed links between knowledge items.',
+                _Stat(
+                  keyName: 'admin_observability_graph_approved_edges',
                   value: '${graph.approvedEdgeCount}',
-                  caption: 'Approved relationship records',
-                  accent: AppColors.positive,
+                  label: 'Approved links',
+                  alert: false,
                 ),
-                _MetricTileShell(
-                  key: const Key('admin_observability_graph_inferred_approved'),
-                  label: 'System-suggested approvals',
-                  labelHelp:
-                      'System-suggested relationships approved after review.',
+                _Stat(
+                  keyName: 'admin_observability_graph_inferred_approved',
                   value: '${graph.inferredApprovedCount}',
+                  label: 'System-suggested',
                   caption: 'Approved after review',
-                  accent: AppColors.warning,
+                  alert: false,
                 ),
-                _MetricTileShell(
-                  key: const Key('admin_observability_graph_rejected'),
-                  label: 'Rejected suggestions',
-                  labelHelp:
-                      'System-suggested relationships rejected during review.',
-                  value: '${graph.rejectedCandidateCount}',
-                  caption: 'Review history',
-                  accent: AppColors.neutral,
-                ),
-                _MetricTileShell(
-                  key: const Key('admin_observability_graph_isolated_nodes'),
-                  label: 'Unlinked items',
-                  labelHelp:
-                      'Knowledge items that are not connected to a confirmed relationship yet.',
+                _Stat(
+                  keyName: 'admin_observability_graph_isolated_nodes',
                   value: '${graph.isolatedNodeCount}',
-                  caption: 'No relationships yet',
-                  accent: graph.isolatedNodeCount > 0
-                      ? AppColors.warning
-                      : AppColors.positive,
+                  label: 'Not linked yet',
+                  alert: graph.isolatedNodeCount > 0,
                 ),
               ],
             ),
           ),
-          _SectionCard(
+          _Panel(
             keyName: 'admin_observability_section_graph_freshness',
-            title: 'Relationship search freshness',
-            subtitle:
-                'Shows how recently relationship search was rebuilt and how quickly it answers test lookups.',
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: <Widget>[
-                _MetricTileShell(
-                  key: const Key('admin_observability_graph_projection_age'),
-                  label: 'Projection age',
-                  labelHelp:
-                      'How long it has been since relationship search was rebuilt.',
-                  value: '${graph.projectionAgeSeconds}s',
-                  caption: 'Last search rebuild',
-                  accent: graph.projectionAgeSeconds > 3600
-                      ? AppColors.warning
-                      : AppColors.positive,
+            title: 'Knowledge freshness',
+            subtitle: 'How recently the advisor knowledge was rebuilt and how fast it answers.',
+            child: _StatGrid(
+              stats: <_Stat>[
+                _Stat(
+                  keyName: 'admin_observability_graph_projection_age',
+                  value: _ageLabel(graph.projectionAgeSeconds),
+                  label: 'Last rebuild',
+                  caption: graph.projectionAgeSeconds > 3600
+                      ? 'Getting stale'
+                      : 'Recent',
+                  alert: false,
                 ),
-                _MetricTileShell(
-                  key: const Key('admin_observability_graph_traversal_p95'),
-                  label: '95th percentile lookup',
-                  labelHelp:
-                      'Most relationship lookups were this fast or faster.',
+                _Stat(
+                  keyName: 'admin_observability_graph_traversal_p95',
                   value: '${graph.traversalP95Ms}ms',
-                  caption: 'Relationship search checks',
-                  accent: graph.traversalP95Ms > 250
-                      ? AppColors.warning
-                      : AppColors.positive,
+                  label: 'Lookup speed',
+                  caption: 'Most lookups this fast',
+                  alert: false,
                 ),
               ],
             ),
@@ -1996,722 +2389,15 @@ class _GraphTab extends StatelessWidget {
   }
 }
 
-class _ProjectionRetriesTab extends StatelessWidget {
-  const _ProjectionRetriesTab({super.key, required this.envelope});
+// ── Shared building blocks ───────────────────────────────────────────
 
-  final ObservabilityEnvelope envelope;
-
-  @override
-  Widget build(BuildContext context) {
-    final retries = envelope.projectionRetries;
-    final counts = retries.statusCounts;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          _SectionCard(
-            keyName: 'admin_observability_section_projection_retry_counts',
-            title: 'Projection retry queue',
-            subtitle:
-                'Shows canonical shift and open-period projection work that is waiting, running, completed, or dead-lettered.',
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: <Widget>[
-                _MetricTileShell(
-                  key: const Key(
-                    'admin_observability_projection_retry_pending',
-                  ),
-                  label: 'Pending',
-                  labelHelp:
-                      'Rows not completed yet. Row labels show Ready or Waiting.',
-                  value: '${counts.pending}',
-                  caption: 'Ready or waiting',
-                  accent: counts.pending > 0
-                      ? AppColors.warning
-                      : AppColors.positive,
-                ),
-                _MetricTileShell(
-                  key: const Key(
-                    'admin_observability_projection_retry_running',
-                  ),
-                  label: 'Claimed',
-                  labelHelp: 'Rows currently held by a retry worker.',
-                  value: '${counts.running}',
-                  caption: 'Worker-held rows',
-                  accent: counts.running > 0
-                      ? AppColors.warning
-                      : AppColors.neutral,
-                ),
-                _MetricTileShell(
-                  key: const Key(
-                    'admin_observability_projection_retry_dead_lettered',
-                  ),
-                  label: 'Dead-lettered',
-                  labelHelp:
-                      'Jobs that reached the retry limit or were recorded as non-replayable failures.',
-                  value: '${counts.deadLettered}',
-                  caption: 'Need support triage',
-                  accent: counts.deadLettered > 0
-                      ? AppColors.negative
-                      : AppColors.positive,
-                ),
-                _MetricTileShell(
-                  key: const Key(
-                    'admin_observability_projection_retry_succeeded',
-                  ),
-                  label: 'Completed',
-                  labelHelp: 'Retry jobs that replayed successfully.',
-                  value: '${counts.succeeded}',
-                  caption: 'Historical successes',
-                  accent: AppColors.neutral,
-                ),
-              ],
-            ),
-          ),
-          _SectionCard(
-            keyName: 'admin_observability_section_projection_retry_active',
-            title: 'Recent retry rows',
-            subtitle:
-                'Bounded list of pending, failed, or claimed rows. Each row shows Ready, Waiting, or Claimed.',
-            child: retries.recentActive.isEmpty
-                ? const _EmptyState(
-                    keyName:
-                        'admin_observability_projection_retry_active_empty',
-                    label: 'No pending or claimed projection retry rows.',
-                  )
-                : _ProjectionRetryRows(
-                    rows: retries.recentActive,
-                    keyPrefix: 'admin_observability_projection_retry_active',
-                    limit: retries.recentActiveLimit,
-                  ),
-          ),
-          _SectionCard(
-            keyName:
-                'admin_observability_section_projection_retry_dead_letters',
-            title: 'Dead-lettered projection jobs',
-            subtitle:
-                'Rows that need support triage. Some pre-input failures are intentionally not replayable until the failed source data is corrected.',
-            child: retries.deadLettered.isEmpty
-                ? const _EmptyState(
-                    keyName:
-                        'admin_observability_projection_retry_dead_letters_empty',
-                    label: 'No dead-lettered projection retry rows.',
-                  )
-                : _ProjectionRetryRows(
-                    rows: retries.deadLettered,
-                    keyPrefix:
-                        'admin_observability_projection_retry_dead_letter',
-                    limit: retries.deadLetteredLimit,
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProjectionRetryRows extends StatelessWidget {
-  const _ProjectionRetryRows({
-    required this.rows,
-    required this.keyPrefix,
-    required this.limit,
-  });
-
-  final List<ProjectionRetryRow> rows;
-  final String keyPrefix;
-  final int limit;
-
-  @override
-  Widget build(BuildContext context) {
-    final limitText = limit > 0
-        ? 'Showing ${rows.length} of up to $limit rows.'
-        : 'Showing ${rows.length} rows.';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Text(
-          limitText,
-          style: AppTextStyles.mono10(color: AppColors.textMuted),
-        ),
-        const SizedBox(height: 8),
-        for (final row in rows)
-          _ProjectionRetryRowCard(
-            key: Key('${keyPrefix}_${row.jobId}'),
-            row: row,
-          ),
-      ],
-    );
-  }
-}
-
-class _ProjectionRetryRowCard extends StatelessWidget {
-  const _ProjectionRetryRowCard({super.key, required this.row});
-
-  final ProjectionRetryRow row;
-
-  @override
-  Widget build(BuildContext context) {
-    final inputShape = _projectionRetryPayloadLabel(row);
-    final failurePoint = _projectionRetryFailurePointLabel(row.failureStage);
-    final statusColor = _projectionRetryClaimabilityColor(row);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundDeep,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Expanded(
-                flex: 3,
-                child: Text(
-                  _compactId(row.jobId),
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.mono12(
-                    color: AppColors.textPrimary,
-                  ).copyWith(fontWeight: FontWeight.w700),
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  row.claimabilityLabel,
-                  textAlign: TextAlign.right,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.mono11(
-                    color: statusColor,
-                  ).copyWith(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 10,
-            runSpacing: 6,
-            children: <Widget>[
-              _ProjectionRetryFact(label: 'Vendor', value: row.vendorId),
-              _ProjectionRetryFact(label: 'Category', value: row.category),
-              _ProjectionRetryFact(
-                label: 'Location',
-                value: _compactId(row.locationId),
-              ),
-              _ProjectionRetryFact(
-                label: 'Connection',
-                value: _compactId(row.connectionId),
-              ),
-              _ProjectionRetryFact(label: 'Failure point', value: failurePoint),
-              _ProjectionRetryFact(
-                label: 'Attempts',
-                value: '${row.attemptCount}',
-              ),
-              _ProjectionRetryFact(label: 'Input', value: inputShape),
-              if (row.nextAttemptAt != null)
-                _ProjectionRetryFact(
-                  label: 'Next attempt',
-                  value: adminHumanDateTime(row.nextAttemptAt!),
-                ),
-              if (row.deadLetteredAt != null)
-                _ProjectionRetryFact(
-                  label: 'Dead-lettered',
-                  value: adminHumanDateTime(row.deadLetteredAt!),
-                ),
-            ],
-          ),
-          if (row.lastErrorMessage.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 8),
-            Text(
-              '${row.lastErrorClass}: ${row.lastErrorMessage}',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.body12(color: AppColors.textSecondary),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _ProjectionRetryFact extends StatelessWidget {
-  const _ProjectionRetryFact({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      '$label: ${value.isEmpty ? '-' : value}',
-      style: AppTextStyles.mono10(color: AppColors.textMuted),
-    );
-  }
-}
-
-class _CloudRunTab extends StatelessWidget {
-  const _CloudRunTab({super.key, required this.envelope});
-
-  final ObservabilityEnvelope envelope;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          _SectionCard(
-            keyName: 'admin_observability_section_route_latency',
-            title: 'Service response time',
-            subtitle:
-                'Median, 95th percentile, and 99th percentile response time with server-error rate for each service area.',
-            child: envelope.routeLatency.isEmpty
-                ? const _EmptyState(
-                    keyName: 'admin_observability_route_latency_empty',
-                    label: 'No response-time data in this window.',
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Row(
-                          children: <Widget>[
-                            Expanded(
-                              flex: 4,
-                              child: _HelpLabel(
-                                label: 'Service area',
-                                message:
-                                    'Readable service area being measured. Route paths are in advanced details.',
-                              ),
-                            ),
-                            Expanded(
-                              child: _HelpLabel(
-                                label: 'Median',
-                                message:
-                                    'Typical response time; half of requests were faster.',
-                                textAlign: TextAlign.right,
-                              ),
-                            ),
-                            Expanded(
-                              child: _HelpLabel(
-                                label: '95th',
-                                message:
-                                    'Most requests were this fast or faster.',
-                                textAlign: TextAlign.right,
-                              ),
-                            ),
-                            Expanded(
-                              child: _HelpLabel(
-                                label: '99th',
-                                message:
-                                    'Nearly all requests were this fast or faster.',
-                                textAlign: TextAlign.right,
-                              ),
-                            ),
-                            Expanded(
-                              child: _HelpLabel(
-                                label: 'Errors',
-                                message:
-                                    'Percent of requests ending in server errors.',
-                                textAlign: TextAlign.right,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      for (final row in envelope.routeLatency)
-                        Container(
-                          key: Key(
-                            'admin_observability_route_latency_'
-                            '${_routeKey(row.route)}',
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          decoration: const BoxDecoration(
-                            border: Border(
-                              bottom: BorderSide(
-                                color: AppColors.borderSubtle,
-                                width: 1,
-                              ),
-                            ),
-                          ),
-                          child: Row(
-                            children: <Widget>[
-                              Expanded(
-                                flex: 4,
-                                child: Text(
-                                  _serviceRouteLabel(row.route),
-                                  overflow: TextOverflow.ellipsis,
-                                  style: AppTextStyles.body13(
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: Text(
-                                  '${row.p50Ms}ms',
-                                  textAlign: TextAlign.right,
-                                  style: AppTextStyles.mono11(
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: Text(
-                                  '${row.p95Ms}ms',
-                                  textAlign: TextAlign.right,
-                                  style: AppTextStyles.mono11(
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: Text(
-                                  '${row.p99Ms}ms',
-                                  textAlign: TextAlign.right,
-                                  style: AppTextStyles.mono11(
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: Text(
-                                  '${(row.errorRate * 100).toStringAsFixed(2)}%',
-                                  textAlign: TextAlign.right,
-                                  style: AppTextStyles.mono11(
-                                    color: row.errorRate > 0.01
-                                        ? AppColors.warning
-                                        : AppColors.textPrimary,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      _RouteLatencyAdvancedDetails(rows: envelope.routeLatency),
-                    ],
-                  ),
-          ),
-          _SectionCard(
-            keyName: 'admin_observability_section_cloud_run_instances',
-            title: 'Hosting capacity',
-            subtitle:
-                'Active hosting instance counts for each service area. Deployed versions are in advanced details.',
-            child: envelope.cloudRun.isEmpty
-                ? const _EmptyState(
-                    keyName: 'admin_observability_cloud_run_empty',
-                    label: 'No hosting services reported in this window.',
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      const _CloudRunHeader(),
-                      for (final svc in envelope.cloudRun)
-                        Container(
-                          key: Key(
-                            'admin_observability_cloud_run_'
-                            '${svc.serviceName}',
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          decoration: const BoxDecoration(
-                            border: Border(
-                              bottom: BorderSide(
-                                color: AppColors.borderSubtle,
-                                width: 1,
-                              ),
-                            ),
-                          ),
-                          child: Row(
-                            children: <Widget>[
-                              Expanded(
-                                flex: 3,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: <Widget>[
-                                    Text(
-                                      _hostingServiceLabel(svc.serviceName),
-                                      style: AppTextStyles.body14(
-                                        color: AppColors.textPrimary,
-                                      ).copyWith(fontWeight: FontWeight.w700),
-                                    ),
-                                    Text(
-                                      _hostingCapacityLabel(svc),
-                                      style: AppTextStyles.mono10(
-                                        color: AppColors.textMuted,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Expanded(
-                                flex: 2,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: <Widget>[
-                                    Text(
-                                      '${svc.instanceCount} active',
-                                      style: AppTextStyles.mono14(
-                                        color: AppColors.textPrimary,
-                                        weight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      _HostingAdvancedDetails(services: envelope.cloudRun),
-                    ],
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CloudRunHeader extends StatelessWidget {
-  const _CloudRunHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: <Widget>[
-          Expanded(
-            flex: 3,
-            child: _HelpLabel(
-              label: 'Service area',
-              message:
-                  'Readable hosting service area. Deployed versions are in advanced details.',
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: _HelpLabel(
-              label: 'Active',
-              message: 'Current active hosting instances.',
-              textAlign: TextAlign.right,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-String _routeKey(String route) =>
-    route.replaceAll(RegExp(r'[^a-zA-Z0-9]+'), '_');
-
-String _compactId(String value) {
-  if (value.length <= 12) return value;
-  return '${value.substring(0, 8)}...${value.substring(value.length - 4)}';
-}
-
-String _projectionRetryPayloadLabel(ProjectionRetryRow row) {
-  final closed = row.changedPeriodCount;
-  final open = row.openCurrentFactCount;
-  if (closed == null && open == null) {
-    return '${row.factCount} facts';
-  }
-  return '${closed ?? 0} closed / ${open ?? 0} open';
-}
-
-Color _projectionRetryClaimabilityColor(ProjectionRetryRow row) {
-  if (row.isClaimable) return AppColors.positive;
-  switch (row.claimabilityState) {
-    case 'dead_lettered':
-      return AppColors.negative;
-    case 'claimed':
-      return AppColors.warning;
-    case 'completed':
-      return AppColors.neutral;
-    case 'waiting':
-    default:
-      return AppColors.textPrimary;
-  }
-}
-
-String _projectionRetryFailurePointLabel(String failureStage) {
-  switch (failureStage) {
-    case 'pre_input':
-      return 'Before projector input';
-    case 'post_input':
-      return 'After projector input';
-    default:
-      return failureStage.replaceAll('_', ' ');
-  }
-}
-
-/// Stable cost-row key. Uses an explicit `none` placeholder when an
-/// axis (location, staff, workflow) is null so widget tests do not
-/// have to decode underscore counts.
-String _costRowKey(CostTelemetryEntry row) =>
-    'admin_observability_cost_row_'
-    '${row.operatorId}_'
-    '${row.locationId ?? 'none'}_'
-    '${row.staffId ?? 'none'}_'
-    '${row.workflowId ?? 'none'}_'
-    '${row.queryClass}';
-
-// ── Shared building blocks ──────────────────────────────────────────
-
-class _RouteLatencyAdvancedDetails extends StatelessWidget {
-  const _RouteLatencyAdvancedDetails({required this.rows});
-
-  final List<RouteLatencyEntry> rows;
-
-  @override
-  Widget build(BuildContext context) {
-    return _AdvancedDetails(
-      keyName: 'admin_observability_route_latency_advanced',
-      title: 'Advanced route details',
-      children: <Widget>[
-        for (final row in rows)
-          _AdvancedDetailRow(
-            label: _serviceRouteLabel(row.route),
-            value: row.route,
-          ),
-      ],
-    );
-  }
-}
-
-class _HostingAdvancedDetails extends StatelessWidget {
-  const _HostingAdvancedDetails({required this.services});
-
-  final List<CloudRunInstanceMetric> services;
-
-  @override
-  Widget build(BuildContext context) {
-    return _AdvancedDetails(
-      keyName: 'admin_observability_hosting_advanced',
-      title: 'Advanced hosting details',
-      children: <Widget>[
-        for (final svc in services)
-          _AdvancedDetailRow(
-            label: _hostingServiceLabel(svc.serviceName),
-            value:
-                '${svc.serviceName} - revision ${svc.revisionId} - min ${svc.minInstances} / max ${svc.maxInstances}',
-          ),
-      ],
-    );
-  }
-}
-
-class _AdvancedDetails extends StatelessWidget {
-  const _AdvancedDetails({
-    required this.keyName,
-    required this.title,
-    required this.children,
-  });
-
-  final String keyName;
-  final String title;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Theme(
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-      child: Material(
-        type: MaterialType.transparency,
-        child: ExpansionTile(
-          key: Key(keyName),
-          tilePadding: EdgeInsets.zero,
-          childrenPadding: const EdgeInsets.only(top: 8, bottom: 4),
-          title: Text(
-            title,
-            style: AppTextStyles.body12(
-              color: AppColors.textSecondary,
-            ).copyWith(fontWeight: FontWeight.w700),
-          ),
-          children: children,
-        ),
-      ),
-    );
-  }
-}
-
-class _AdvancedDetailRow extends StatelessWidget {
-  const _AdvancedDetailRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          SizedBox(
-            width: 180,
-            child: Text(
-              label,
-              style: AppTextStyles.mono10(color: AppColors.textMuted),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: AppTextStyles.mono10(color: AppColors.textSecondary),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-String _costScopeSummary(CostTelemetryEntry row) {
-  final parts = <String>[];
-  parts.add(row.locationId == null ? 'All locations' : 'One location');
-  parts.add(row.staffId == null ? 'All staff' : 'One staff member');
-  parts.add(row.workflowId == null ? 'All workflows' : 'One workflow');
-  return parts.join(' - ');
-}
-
-String _requestGroupCaption(CostTelemetryEntry row) {
-  return adminRequestUseCaseDescription(row.queryClass);
-}
-
-String _serviceRouteLabel(String route) {
-  final lower = route.toLowerCase();
-  if (lower.contains('advisor')) return 'Advisor answers';
-  if (lower.contains('coach')) return 'Coaching help';
-  if (lower.contains('workflow')) return 'Workflow service';
-  if (lower.contains('admin')) return 'Admin service';
-  return 'Service endpoint';
-}
-
-String _hostingServiceLabel(String serviceName) {
-  final lower = serviceName.toLowerCase();
-  if (lower.contains('advisor')) return 'Advisor service';
-  if (lower.contains('admin')) return 'Admin service';
-  return 'Hosting service';
-}
-
-String _hostingCapacityLabel(CloudRunInstanceMetric svc) =>
-    'Autoscaling range ${svc.minInstances}-${svc.maxInstances} instances';
-
-/// Dashboard section panel. Slice D7a routes every observability
-/// section through the shared [OperatorWebPanel] console widget so the
-/// AI Metrics surface matches the admin parity kit. The section [keyName]
-/// moves onto the panel so existing widget tests keep resolving it; the
-/// outer [Padding] preserves the inter-card vertical rhythm.
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({
+/// Dashboard section panel. Routes every section through the shared
+/// [OperatorWebPanel] console widget so the AI Metrics surface matches
+/// the admin parity kit. The section [keyName] moves onto the panel so
+/// widget tests resolve it; the outer [Padding] preserves inter-card
+/// rhythm.
+class _Panel extends StatelessWidget {
+  const _Panel({
     required this.keyName,
     required this.title,
     required this.subtitle,
@@ -2737,6 +2423,91 @@ class _SectionCard extends StatelessWidget {
   }
 }
 
+class _SubHead extends StatelessWidget {
+  const _SubHead({required this.text, required this.hint});
+
+  final String text;
+  final String hint;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: <Widget>[
+        Text(
+          text,
+          style: AppTextStyles.body13(
+            color: AppColors.textPrimary,
+          ).copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            hint,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.body12(color: AppColors.textMuted),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InlineHint extends StatelessWidget {
+  const _InlineHint({
+    required this.keyName,
+    required this.tone,
+    required this.message,
+  });
+
+  final String keyName;
+  final _HeroTone tone;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color color;
+    final IconData icon;
+    switch (tone) {
+      case _HeroTone.ok:
+        color = AppColors.positive;
+        icon = Icons.check_circle_outline;
+        break;
+      case _HeroTone.watch:
+        color = AppColors.warning;
+        icon = Icons.info_outline;
+        break;
+      case _HeroTone.bad:
+        color = AppColors.negative;
+        icon = Icons.error_outline;
+        break;
+    }
+    return Container(
+      key: Key(keyName),
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        border: Border.all(color: color.withValues(alpha: 0.32), width: 1),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(icon, size: 17, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTextStyles.body12(color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.keyName, required this.label});
 
@@ -2747,124 +2518,16 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       key: Key(keyName),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
       child: Text(
         label,
         style: AppTextStyles.body13(color: AppColors.textMuted),
-      ),
-    );
-  }
-}
-
-class _HelpLabel extends StatelessWidget {
-  const _HelpLabel({
-    required this.label,
-    required this.message,
-    this.textAlign = TextAlign.start,
-    this.style,
-  });
-
-  final String label;
-  final String message;
-  final TextAlign textAlign;
-  final TextStyle? style;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: message,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.help,
-        child: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: textAlign,
-          style: style ?? AppTextStyles.mono10(color: AppColors.textMuted),
-        ),
-      ),
-    );
-  }
-}
-
-class _MetricTileShell extends StatelessWidget {
-  const _MetricTileShell({
-    super.key,
-    required this.label,
-    this.labelHelp,
-    required this.value,
-    required this.caption,
-    required this.accent,
-  });
-
-  final String label;
-  final String? labelHelp;
-  final String value;
-  final String caption;
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 200, maxWidth: 280),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: AppColors.backgroundSurface,
-          border: Border.all(
-            color: AppColors.borderSubtle.withValues(alpha: 0.6),
-            width: 1,
-          ),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: labelHelp == null
-                      ? Text(
-                          label,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTextStyles.uiLabel(
-                            color: AppColors.textPrimary,
-                          ),
-                        )
-                      : _HelpLabel(
-                          label: label,
-                          message: labelHelp!,
-                          style: AppTextStyles.uiLabel(
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                ),
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: accent,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              value,
-              style: AppTextStyles.mono14(
-                color: AppColors.textPrimary,
-                weight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              caption,
-              style: AppTextStyles.body13(color: AppColors.textMuted),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -2883,7 +2546,7 @@ class _ErrorBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.negative, width: 1),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
         message,
@@ -2893,147 +2556,10 @@ class _ErrorBanner extends StatelessWidget {
   }
 }
 
-// ─── Phase 10a.4 — Realtime bridge tripwires section ─────────────────
-//
-// Sits above the observability tabs and renders one row per Q22
-// metric (bridge lag, undelivered count, publish error rate, NOTIFY
-// queue usage) with the current value, the yellow/red thresholds,
-// and a status pill. The header pill shows the worst-wins severity
-// across all four rows. When the gateway returns an error the
-// section renders an inline message; the rest of the screen still
-// works.
+// ── Tripwire pills (reused from the pre-redesign live-sync section) ───
 
-class _BridgeTripwiresSection extends StatelessWidget {
-  const _BridgeTripwiresSection({required this.snapshot, required this.error});
-
-  final RealtimeTripwireSnapshot? snapshot;
-  final String? error;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const Key('admin_observability_bridge_tripwires_section'),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Realtime bridge tripwires',
-                  style: AppTextStyles.display16(color: AppColors.textPrimary),
-                ),
-              ),
-              if (snapshot != null)
-                _BridgeTripwirePill(status: snapshot!.status),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Yellow or red means the event_outbox bridge is degraded. The sync badge shifts to "Degraded" when any metric fires red.',
-            style: AppTextStyles.mono11(color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 10),
-          if (error != null)
-            Text(
-              error!,
-              key: const Key('admin_observability_bridge_tripwires_error'),
-              style: AppTextStyles.mono11(color: AppColors.negative),
-            )
-          else if (snapshot == null)
-            Text(
-              'Loading...',
-              style: AppTextStyles.mono11(color: AppColors.textMuted),
-            )
-          else
-            Column(
-              children: [
-                for (final row in snapshot!.metrics)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: _BridgeTripwireRow(row: row),
-                  ),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BridgeTripwireRow extends StatelessWidget {
-  const _BridgeTripwireRow({required this.row});
-
-  final RealtimeTripwireMetricRow row;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      key: Key('admin_observability_bridge_tripwire_row_${row.key}'),
-      children: [
-        SizedBox(
-          width: 180,
-          child: Text(
-            row.label,
-            style: AppTextStyles.mono11(color: AppColors.textPrimary),
-          ),
-        ),
-        SizedBox(
-          width: 110,
-          child: Text(
-            // Hyphen-minus, not em dash, per the slice-level
-            // "no em dash in admin-facing string literals" rule.
-            row.value == null ? '-' : _formatValue(row.metric, row.value!),
-            style: AppTextStyles.mono11(color: AppColors.textPrimary),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            'Yellow at ${_formatThreshold(row.metric, row.yellow)}, '
-            'red at ${_formatThreshold(row.metric, row.red)}',
-            style: AppTextStyles.mono10(color: AppColors.textMuted),
-          ),
-        ),
-        _BridgeTripwireRowPill(status: row.status),
-      ],
-    );
-  }
-
-  String _formatValue(OutboxTripwireMetric metric, num value) {
-    switch (metric) {
-      case OutboxTripwireMetric.bridgeLagSeconds:
-        return '${value.toStringAsFixed(0)} s';
-      case OutboxTripwireMetric.undeliveredCount:
-        return value.toInt().toString();
-      case OutboxTripwireMetric.publishErrorRate:
-      case OutboxTripwireMetric.notifyQueueUsage:
-        final pct = (value * 100).toStringAsFixed(2);
-        return '$pct %';
-    }
-  }
-
-  String _formatThreshold(OutboxTripwireMetric metric, num value) {
-    switch (metric) {
-      case OutboxTripwireMetric.bridgeLagSeconds:
-        return '${value.toStringAsFixed(0)} s';
-      case OutboxTripwireMetric.undeliveredCount:
-        return value.toInt().toString();
-      case OutboxTripwireMetric.publishErrorRate:
-      case OutboxTripwireMetric.notifyQueueUsage:
-        final pct = (value * 100).toStringAsFixed(2);
-        return '$pct %';
-    }
-  }
-}
-
-class _BridgeTripwirePill extends StatelessWidget {
-  const _BridgeTripwirePill({required this.status});
+class _TripwirePill extends StatelessWidget {
+  const _TripwirePill({required this.status});
 
   final OutboxTripwireStatus status;
 
@@ -3051,21 +2577,13 @@ class _BridgeTripwirePill extends StatelessWidget {
         border: Border.all(color: palette.border, width: 1),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Text(
-        palette.label,
-        style: TextStyle(
-          color: palette.text,
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.2,
-        ),
-      ),
+      child: Text(palette.label, style: AppTextStyles.chipLabel(color: palette.text)),
     );
   }
 }
 
-class _BridgeTripwireRowPill extends StatelessWidget {
-  const _BridgeTripwireRowPill({required this.status});
+class _RowTripwirePill extends StatelessWidget {
+  const _RowTripwirePill({required this.status});
 
   final RealtimeTripwireRowStatus status;
 
@@ -3079,15 +2597,7 @@ class _BridgeTripwireRowPill extends StatelessWidget {
         border: Border.all(color: palette.border, width: 1),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Text(
-        palette.label,
-        style: TextStyle(
-          color: palette.text,
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.2,
-        ),
-      ),
+      child: Text(palette.label, style: AppTextStyles.chipLabel(color: palette.text)),
     );
   }
 }
@@ -3110,21 +2620,21 @@ _TripwirePalette _paletteFor(OutboxTripwireStatus status) {
   switch (status) {
     case OutboxTripwireStatus.green:
       return const _TripwirePalette(
-        label: 'Green',
+        label: 'Healthy',
         text: AppColors.positive,
         background: Color(0x26256B29),
         border: Color(0x66256B29),
       );
     case OutboxTripwireStatus.yellow:
       return const _TripwirePalette(
-        label: 'Yellow',
+        label: 'Needs attention',
         text: AppColors.warning,
         background: AppColors.warningBadgeBg,
         border: Color(0x66997000),
       );
     case OutboxTripwireStatus.red:
       return const _TripwirePalette(
-        label: 'Red',
+        label: 'Degraded',
         text: AppColors.negative,
         background: Color(0x26C62828),
         border: Color(0x66C62828),
@@ -3147,5 +2657,212 @@ _TripwirePalette _rowPaletteFor(RealtimeTripwireRowStatus status) {
         background: AppColors.backgroundDeep,
         border: AppColors.borderSubtle,
       );
+  }
+}
+
+Color _tripwireColor(OutboxTripwireStatus status) {
+  switch (status) {
+    case OutboxTripwireStatus.green:
+      return AppColors.positive;
+    case OutboxTripwireStatus.yellow:
+      return AppColors.warning;
+    case OutboxTripwireStatus.red:
+      return AppColors.negative;
+  }
+}
+
+String _liveSyncHeadline(OutboxTripwireStatus status) {
+  switch (status) {
+    case OutboxTripwireStatus.green:
+      return 'Updates are flowing with no delays.';
+    case OutboxTripwireStatus.yellow:
+      return 'Updates are flowing, but one signal needs attention.';
+    case OutboxTripwireStatus.red:
+      return 'Updates are delayed. The live sync bridge is degraded.';
+  }
+}
+
+// ── Derivations + formatting ─────────────────────────────────────────
+
+class _CostSlice {
+  const _CostSlice({
+    required this.queryClass,
+    required this.label,
+    required this.amount,
+    required this.color,
+  });
+
+  final String queryClass;
+  final String label;
+  final double amount;
+  final Color color;
+}
+
+class _SpeedSummary {
+  const _SpeedSummary({
+    required this.headline,
+    required this.caption,
+    required this.pill,
+  });
+
+  final String headline;
+  final String caption;
+  final Widget? pill;
+}
+
+/// Sums cost telemetry by `query_class` into donut slices, largest
+/// first. Each slice gets a stable accent from [_kUseCaseAccents].
+List<_CostSlice> _costByUseCase(ObservabilityEnvelope envelope) {
+  final totals = <String, double>{};
+  for (final row in envelope.costTelemetry) {
+    totals[row.queryClass] = (totals[row.queryClass] ?? 0) + row.totalUsd;
+  }
+  final entries = totals.entries.where((e) => e.value > 0).toList()
+    ..sort((a, b) => b.value.compareTo(a.value));
+  return <_CostSlice>[
+    for (var i = 0; i < entries.length; i++)
+      _CostSlice(
+        queryClass: entries[i].key,
+        label: adminRequestUseCaseLabel(entries[i].key),
+        amount: entries[i].value,
+        color: _kUseCaseAccents[i % _kUseCaseAccents.length],
+      ),
+  ];
+}
+
+double _totalSpend(ObservabilityEnvelope envelope) {
+  var sum = 0.0;
+  for (final row in envelope.costTelemetry) {
+    sum += row.totalUsd;
+  }
+  return sum;
+}
+
+/// Count of businesses with reported AI activity. Returns null (→ "—")
+/// when no dormancy/margin rows exist, so the hero card never implies a
+/// hard zero where the producer simply reported nothing.
+int? _businessesUsingAi(ObservabilityEnvelope envelope) {
+  if (envelope.dormancy.isEmpty && envelope.margins.isEmpty) return null;
+  if (envelope.dormancy.isNotEmpty) {
+    return envelope.dormancy.where((d) => !d.isDormant).length;
+  }
+  return envelope.margins.length;
+}
+
+/// Speed hero summary. Per-route latency is empty on this surface
+/// (owned by System health), so the headline avoids inventing a number
+/// and points the operator to System health instead of laundering an
+/// unknown to "Fast".
+_SpeedSummary _speedSummary(ObservabilityEnvelope envelope) {
+  final deadLettered = envelope.projectionRetries.statusCounts.deadLettered;
+  if (deadLettered > 0) {
+    return _SpeedSummary(
+      headline: 'Check',
+      caption: 'Background jobs are stuck. See Reliability.',
+      pill: const _HeroPill(label: 'Needs attention', tone: _HeroTone.watch),
+    );
+  }
+  return const _SpeedSummary(
+    headline: 'See health',
+    caption: 'Response time and uptime live in System health.',
+    pill: _HeroPill(label: 'In System health', tone: _HeroTone.ok),
+  );
+}
+
+/// One cap event per operator (most recent wins) for the "Limit hits"
+/// list, so a runaway operator does not flood the section with rows.
+List<CapEvent> _capEventsByOperator(ObservabilityEnvelope envelope) {
+  final byOperator = <String, CapEvent>{};
+  for (final event in envelope.capEvents) {
+    final existing = byOperator[event.operatorId];
+    if (existing == null || event.occurredAt.isAfter(existing.occurredAt)) {
+      byOperator[event.operatorId] = event;
+    }
+  }
+  return byOperator.values.toList(growable: false);
+}
+
+String _dormancyWhy(OperatorDormancyEntry entry) {
+  if (entry.neverActive) return 'No AI activity yet.';
+  final silent = entry.daysSilent;
+  if (silent == null) return 'No recent AI activity.';
+  return 'No AI activity for $silent days.';
+}
+
+String _spenderAxisLabel(String axis) {
+  switch (axis.trim().toLowerCase()) {
+    case 'operator':
+      return 'Business';
+    case 'staff':
+      return 'Staff member';
+    case 'workflow':
+      return 'Workflow';
+    default:
+      return axis.isEmpty ? 'Scope' : axis;
+  }
+}
+
+String _hostingServiceLabel(String serviceName) {
+  final lower = serviceName.toLowerCase();
+  if (lower.contains('advisor')) return 'Advisor service';
+  if (lower.contains('admin')) return 'Admin service';
+  return 'Hosting service';
+}
+
+/// Plain-English elapsed-time label for the knowledge-freshness card.
+String _ageLabel(int seconds) {
+  if (seconds <= 0) return 'just now';
+  if (seconds < 60) return '${seconds}s ago';
+  final minutes = (seconds / 60).round();
+  if (minutes < 60) return '${minutes}m ago';
+  final hours = (seconds / 3600).round();
+  if (hours < 24) return '${hours}h ago';
+  final days = (seconds / 86400).round();
+  return '${days}d ago';
+}
+
+/// Currency formatter: thousands separator, no cents above $100 so the
+/// hero numbers stay scannable; cents below for small figures.
+String _formatUsd(double value) {
+  final abs = value.abs();
+  final fixed = abs >= 100 ? value.roundToDouble() : value;
+  final hasCents = abs < 100;
+  final str = hasCents
+      ? fixed.toStringAsFixed(2)
+      : fixed.toStringAsFixed(0);
+  final parts = str.split('.');
+  final intPart = parts[0];
+  final buffer = StringBuffer();
+  final digits = intPart.replaceFirst('-', '');
+  final negative = intPart.startsWith('-');
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) buffer.write(',');
+    buffer.write(digits[i]);
+  }
+  final withCommas = '${negative ? '-' : ''}$buffer';
+  return hasCents ? '$withCommas.${parts[1]}' : withCommas;
+}
+
+String _formatTripwireValue(OutboxTripwireMetric metric, num value) {
+  switch (metric) {
+    case OutboxTripwireMetric.bridgeLagSeconds:
+      return '${value.toStringAsFixed(0)} s';
+    case OutboxTripwireMetric.undeliveredCount:
+      return value.toInt().toString();
+    case OutboxTripwireMetric.publishErrorRate:
+    case OutboxTripwireMetric.notifyQueueUsage:
+      return '${(value * 100).toStringAsFixed(2)} %';
+  }
+}
+
+String _formatTripwireThreshold(OutboxTripwireMetric metric, num value) {
+  switch (metric) {
+    case OutboxTripwireMetric.bridgeLagSeconds:
+      return '${value.toStringAsFixed(0)} s';
+    case OutboxTripwireMetric.undeliveredCount:
+      return value.toInt().toString();
+    case OutboxTripwireMetric.publishErrorRate:
+    case OutboxTripwireMetric.notifyQueueUsage:
+      return '${(value * 100).toStringAsFixed(2)} %';
   }
 }
