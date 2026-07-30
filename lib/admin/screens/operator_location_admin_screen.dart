@@ -3317,7 +3317,7 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
   final _adminEmail = TextEditingController();
   final _locationName = TextEditingController();
   String _locationTimezone = 'America/Toronto';
-  final String _subscriptionTier = 'launch';
+  final String _subscriptionTier = 'pilot';
   String _preferredCurrency = 'CAD';
 
   @override
@@ -3473,7 +3473,9 @@ class _EditOperatorDialogState extends State<_EditOperatorDialog> {
     _ownerEmail = TextEditingController(
       text: widget.bundle.operator.ownerEmail,
     );
-    _subscriptionTier = widget.bundle.operator.subscriptionTier;
+    _subscriptionTier = _normalizeAdminPlanTier(
+      widget.bundle.operator.subscriptionTier,
+    );
     _preferredCurrency = widget.bundle.operator.preferredCurrency;
     _primaryLocationId = widget.bundle.operator.primaryLocationId;
   }
@@ -3828,7 +3830,6 @@ class _SubscriptionTierDropdown extends StatelessWidget {
   final String value;
 
   static const List<String> _tiers = <String>[
-    'launch',
     'pilot',
     'starter',
     'premium',
@@ -3839,6 +3840,7 @@ class _SubscriptionTierDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final normalizedValue = _normalizeAdminPlanTier(value);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -3846,7 +3848,7 @@ class _SubscriptionTierDropdown extends StatelessWidget {
         const SizedBox(height: 6),
         DropdownButtonFormField<String>(
           key: const Key('admin_subscription_tier_dropdown'),
-          initialValue: value,
+          initialValue: normalizedValue,
           decoration: InputDecoration(
             labelText: 'Forge & Flow AI plan',
             labelStyle: AppTextStyles.uiLabel(color: AppColors.textMuted),
@@ -3860,13 +3862,55 @@ class _SubscriptionTierDropdown extends StatelessWidget {
           ),
           items: <DropdownMenuItem<String>>[
             for (final tier in _tiers)
-              DropdownMenuItem<String>(value: tier, child: Text(tier)),
+              DropdownMenuItem<String>(
+                value: tier,
+                child: Text(_adminPlanTierLabel(tier)),
+              ),
           ],
           onChanged: null,
         ),
       ],
     );
   }
+}
+
+String _normalizeAdminPlanTier(String? value) {
+  final normalized = value?.trim().toLowerCase();
+  if (normalized == null || normalized.isEmpty || normalized == 'launch') {
+    return 'pilot';
+  }
+  return normalized;
+}
+
+String _adminPlanTierLabel(String value) {
+  switch (value.trim().toLowerCase()) {
+    case 'pilot':
+      return 'Pilot';
+    case 'starter':
+      return 'Starter';
+    case 'premium':
+      return 'Premium';
+    case 'elite':
+      return 'Elite';
+    case 'pro':
+      return 'Pro';
+    case 'enterprise':
+      return 'Enterprise';
+  }
+  return _titleCase(value);
+}
+
+String _titleCase(String value) {
+  if (value.isEmpty) return value;
+  return value
+      .split(RegExp(r'[_\-\s]+'))
+      .where((part) => part.isNotEmpty)
+      .map(
+        (part) => part.length == 1
+            ? part.toUpperCase()
+            : '${part[0].toUpperCase()}${part.substring(1)}',
+      )
+      .join(' ');
 }
 
 class _CurrencyDropdown extends StatelessWidget {
