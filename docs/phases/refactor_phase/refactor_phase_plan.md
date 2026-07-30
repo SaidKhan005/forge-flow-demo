@@ -1,6 +1,9 @@
 # Refactor Phase Plan — Guardrails-First Structural Cleanup
 
-Status: **Planned (not started).** Created 2026-05-22.
+Status: **Phase A complete; Phase B pre-staging underway (A2 characterization
+started); Phase B execution still gated on the happy-state tag.** Created
+2026-05-22; inventory refreshed 2026-05-27 (#1424); **full code-audit
+2026-05-27 (this revision) — see Section 2.1.**
 Owner: orchestrator drives sequencing; worker agents execute per
 `CLAUDE.md` "Agent-led slices".
 
@@ -63,10 +66,10 @@ Phase A closes all four **before** a single file moves.
 
 | Target | Size / metric | Phase B slice | Gate |
 |---|---|---|---|
-| `admin/screens/operator_location_admin_screen.dart` | 4,308 lines | B2 | happy-state |
+| `admin/screens/operator_location_admin_screen.dart` | 4,362 lines (was 4,308 at capture; grew +54 via #3f5af324 — ceiling too loose, see 2.1c) | B2 | happy-state |
 | `admin/admin_routes.dart` | 3,313 lines | B2 | happy-state |
 | `admin/screens/roles_hierarchy_sessions_admin_screen.dart` | 1,610 lines (already nearly halved since the 2026-05-22 plan capture; remains a Phase B target) | B2 | happy-state |
-| `admin/screens/observability_admin_screen.dart` | 2,745 lines | B6 (after split) | happy-state |
+| `admin/screens/observability_admin_screen.dart` | 2,754 lines | B6 (after split) | happy-state |
 | `operator_web/router/operator_web_router.dart` | 2,949 lines; `_buildPostOnboardingShell` 478 SLOC / CC 57 | B2 | happy-state |
 | `operator_web/screens/my_account_screen.dart` | 1,884 lines; god-screen | B1 (R-1) | happy-state |
 | `operator_web/screens/account_screen.dart` | `build()` CC **67** (worst) | B2 | happy-state |
@@ -81,7 +84,86 @@ long methods (>80 SLOC), **261** complex (>CC 12), **123** over-param
 
 ---
 
+## 2.1 — 2026-05-27 full code-audit refresh (this revision)
+
+Full audit of this plan against `origin/master` — line counts, lint
+coverage, ratchet baseline, landed PRs. **Verdict: the guardrails-first
+strategy and the zero-behavior-change doctrine are right and unchanged. What
+drifted is the target inventory and the Phase-A status; both are corrected
+below.**
+
+**(a) Phase A is effectively complete** (was still labelled "not started").
+Landed on master: A1 test baseline + `tool/flake_counter.dart` (#1163); A3
+size-ceiling lint, folded into `tool/operator_web_size_lint.dart` as a
+multi-file ceiling map covering operator-web **and** the admin god-screens
+(no separate `screen_size_lint.dart` was needed) (#1162); A4
+`tool/metrics_ratchet_check.dart` + committed `metrics_ratchet_baseline.json`,
+now wired into pre-push (#1162/#1438); A5 `tool/skip_quarantine_lint.dart`
+(#1163); A6 gitignore (#1432). Only optional A7 (`todo_age_lint.dart`) is
+unbuilt. A2 characterization tests have **started ahead of happy-state**:
+A2(b) proxy dispatcher pins for B2.1/B11.2/C-4 (#1437) and A2(c)
+`operator_location_admin` (#1433); a B2-adjacent helper decompose in
+`admin_routes` also landed (#1434). Phase B is actively being pre-staged;
+only the happy-state tag still gates B execution.
+
+**(b) The target inventory (captured 2026-05-22) is missing several of the
+largest files.** Plans & Limits V1, the admin visual passes, and per-daypart
+all landed 2026-05-23 to 27 and added/grew files that now rank among the
+biggest in `lib/` but appear in no slice:
+
+| Newly-surfaced target | Lines | Recommended home |
+|---|---|---|
+| `admin/screens/pricing_tier_admin_screen.dart` | 3,823 | **B2** — 2nd-biggest file in `lib/` |
+| `admin/screens/my_account_admin_screen.dart` | 3,126 | **B1/B2** — admin twin of the operator-web `my_account` B1 target; split with the same pane pattern |
+| `admin/services/data_accuracy_admin_gateway.dart` | 3,095 | **B2** (gateway extraction) |
+| `admin/screens/vendor_applicability_admin_screen.dart` | 2,927 | **B2** |
+| `screens/shift_dashboard.dart` | 2,558 | evaluate (mobile; heavily reworked by per-daypart — pin behavior first) |
+| `services/data_alignment_audit_read_service.dart` | 2,523 | evaluate (pure read-service; lower-risk extraction) |
+
+**Decision needed (operator):** fold the four admin screens/gateway into
+B1/B2 scope (recommended — same debt class the phase already targets), or
+leave for a later pass. Excluding them leaves the job visibly half-done.
+
+**(c) The anti-regrowth ceilings sit above current size, so they are not
+freezing the targets** (A3's stated intent was "freeze at current size").
+On master: `roles_hierarchy_sessions_admin_screen` ceiling 3,255 vs current
+1,611 (1,644 lines of slack — the file was halved but the ceiling never
+followed down); `operator_location_admin` 5,162 vs 4,362 (already +54 since
+capture); `admin_routes` 4,078 vs 3,310. **Recommendation:** re-tighten every
+ceiling in `operator_web_size_lint.dart` to `current + small headroom`, and
+adopt the rule that a shrink ratchets the ceiling down with it (mirror the
+`metrics_ratchet_baseline.json` "only tightens" discipline). Otherwise the
+B1/B2 splits can silently regrow.
+
+**(d) A second proxy monolith is uncapped.** The proxy size lint guards only
+`tool/advisor_proxy/advisor_proxy.dart` (19,261 / ceiling 19,900), but
+`tool/advisor_proxy/proxy_bootstrap.dart` is **13,911 lines** and several
+route-group siblings exceed 1,000 (`integration_oauth_routes` 2,144,
+`health_registry_part` 2,018). "The monolith must shrink" is defeated if mass
+just shifts into uncapped siblings. **B3/B4 scope must include
+`proxy_bootstrap.dart` and add the large proxy siblings to the ceiling map**
+(or `proxy_split_plan.md` must account for them).
+
+**(e) A2-timing guidance updated.** The original note (Section 3) deferred
+characterization tests to each B slice's start because surfaces were still
+moving. With per-daypart code-complete and Plans & Limits shipped, the
+operator-web/admin surfaces have stabilized — hence A2(b)/A2(c) were written
+now without churn. New guidance: **write A2 for a surface once it is stable;
+re-pin only if that surface changes before its B slice runs.**
+
+**(f) Sequencing zoom-out.** Phase B is gated on the happy-state tag; the tag
+is gated on per-daypart V1 exit (now code-complete) + the Phase 2 walkthrough.
+So the refactor is **one walkthrough away** from being startable, which is why
+pre-staging (A2) is already underway. Run the walkthrough → tag → B can begin.
+
+---
+
 ## 3 — Phase A: Guardrails & safety net (DO NOW — not gated)
+
+**STATUS 2026-05-27: Phase A is essentially complete — A1/A3/A4/A5/A6 landed
+and A4 is wired into pre-push; only optional A7 remains. A2 is per-B-slice and
+has started ahead of happy-state (see 2.1a + 2.1e). The rows below are kept
+for the record.**
 
 All additive (tests + lints + gitignore). No behavior change, no file
 restructuring → **not** gated on surfaces-happy. This is the "now" work.
@@ -91,7 +173,7 @@ Each is an independent worker-agent slice; A1–A6 can fan out in parallel.
 |---|---|---|---|
 | **A1 — Test baseline + flake pin** | Capture the current full-suite result (10,449 pass / 0 fail / 2 error / 8 skipped on master @ 2026-05-22) as a committed regression reference. Multi-seed run of `test/operator_web` + `test/admin` widget tests to confirm only the one quarantined router test flakes. Build `tool/flake_counter.dart` (§8 gap) to parse multi-seed JSON. | S | `docs/_audits/code_health/test_baseline_2026_05_22.md` + `tool/flake_counter.dart` |
 | **A2 — Characterization tests for refactor targets** | **DEFERRED to each B slice's start (post-happy-state) — see "A2 timing" note below.** Add behavior-pinning tests **only where coverage is thin**, for the exact files Phase B moves: (a) `my_account_screen` panes (MFA / sessions / profile / security); (b) the 3 proxy hybrid dispatchers (B2.1, B11.2, C-4) — route tests pinning request/response envelope, auth guard, idempotency key, error shape **before** helper extraction; (c) `operator_location_admin`, `admin_routes`, `roles_hierarchy_sessions`, `operator_web_router` — smoke/widget tests pinning the key render + scope paths. Satisfies the contract's "Proof Required". | L | New `*_characterization_test.dart` files, per B slice |
-| **A3 — Size-ceiling lints (anti-regrowth)** | Build `tool/operator_web_size_lint.dart` (R-1 #1) mirroring `advisor_proxy_size_lint.dart`. Generalize to a per-file ceiling map covering the admin god-screens too (`tool/screen_size_lint.dart` or extend). Set each ceiling at **current** size (freeze — they cannot grow during the phase); lowered per file as B1/B2 land. | M | `tool/operator_web_size_lint.dart` (+ admin coverage); pre-push wire |
+| **A3 — Size-ceiling lints (anti-regrowth)** | Build `tool/operator_web_size_lint.dart` (R-1 #1) mirroring `advisor_proxy_size_lint.dart`. Generalize to a per-file ceiling map covering the admin god-screens too (`tool/screen_size_lint.dart` or extend). Set each ceiling at **current** size (freeze — they cannot grow during the phase); lowered per file as B1/B2 land. **LANDED #1162** — folded into `operator_web_size_lint.dart` as a multi-file (operator-web + admin) ceiling map; no separate `screen_size_lint.dart`. **Caveat: several ceilings now sit above current size — re-tighten per 2.1c.** | M | `tool/operator_web_size_lint.dart` (+ admin coverage); pre-push wire |
 | **A4 — Metrics ratchet check (core "do not regress" gate)** | `tool/metrics_ratchet_check.dart`: run `dart_code_linter` JSON, count warning/alarm per metric, compare to the committed baseline (324 / 261 / 123 / 4 per `tool/metrics_ratchet_baseline.json`), **fail if any count grows**. Wire into pre-push (advisory → ratchet). Per the runbook, per-metric promotion to *blocking* happens later (B5) once counts drop; this is the intermediate guardrail that guarantees cleanup only reduces debt. | M | `tool/metrics_ratchet_check.dart` + committed baseline JSON |
 | **A5 — Skip-quarantine lint** | `tool/skip_quarantine_lint.dart` (§8 gap): fail if any `skip:` / `.skip(` in `test/` lacks a matching row in `docs/KNOWN_FAILING_TESTS.md`. Stops silent test-skipping during the churn. | S | `tool/skip_quarantine_lint.dart` + pre-push wire |
 | **A6 — Test-output hygiene** | Gitignore the two tracked files that running the suite rewrites (`test/integration/pressure/p2c_spine_findings.jsonl`, `p2d_mobile_sync_findings_summary.txt`) so refactor PRs don't carry spurious diffs / dirty the worktree. | S | `.gitignore` patterns + force-keep the canonical committed copy if needed |
@@ -130,8 +212,8 @@ ratchet count strictly down (never up). Pure structural extraction —
 | **B2 — Item 4: top-3 screen splits + `operator_web_router`** | Verbatim-relocation `part`-file split (the proven `sqlite_database_seed` pattern, item 7) of `operator_location_admin_screen`, `admin_routes`, `roles_hierarchy_sessions_admin_screen`, and `operator_web_router` (`_buildPostOnboardingShell`). 4 independent PRs. | M each | happy-state | A2(c), A3 |
 | **B3 — R-2: proxy helper extraction + ceiling re-lock** | Promote envelope helpers to `tool/advisor_proxy/route_helpers.dart`; migrate the 3 hybrid dispatchers (B2.1, B11.2, C-4) to Pattern A (`router.tryHandle`); **lower** `kAdvisorProxyMaxLines` to new size + ~200 headroom. | M | **proxy** happy-state | A2(b) |
 | **B4 — Item 1: proxy 3-bounded-context decomposition** | The larger split per `docs/phases/proxy_split/proxy_split_plan.md` + `docs/_audits/code_health/a3_proxy_monolith_decomposition.md`. B3 is the enabling step (helpers must move first). | L | **proxy** happy-state | B3 |
-| **B5 — Metrics ratchet-down + per-metric promotion** | Per runbook order: **params + nesting first** (122 + 4, smallest/lowest-risk), then complexity (261), then SLOC (340). B1–B4 naturally drop SLOC/complexity; this slice captures the drop, lowers the A4 baseline, and promotes each metric to *blocking* (operator-approved, ceiling-raise gate). Never refactor + promote in the same PR. | M (per metric) | happy-state | B1–B4 land first |
-| **B6 — Item 8: HP #5 / HP #9 observability** | Surface AI cost telemetry + RAG retrieval status in `observability_admin_screen`. Sequence **after** that screen is split in B2 (it is a 3,152-line god-screen). Functional addition, so it carries its own tests + `Frontend Exposure` per HP #10. | L | happy-state | B2 (observability split) |
+| **B5 — Metrics ratchet-down + per-metric promotion** | Per runbook order: **params + nesting first** (123 + 4, smallest/lowest-risk), then complexity (261), then SLOC (324). B1–B4 naturally drop SLOC/complexity; this slice captures the drop, lowers the A4 baseline, and promotes each metric to *blocking* (operator-approved, ceiling-raise gate). Never refactor + promote in the same PR. | M (per metric) | happy-state | B1–B4 land first |
+| **B6 — Item 8: HP #5 / HP #9 observability** | Surface AI cost telemetry + RAG retrieval status in `observability_admin_screen`. Sequence **after** that screen is split in B2 (it is a 2,754-line god-screen). Functional addition, so it carries its own tests + `Frontend Exposure` per HP #10. | L | happy-state | B2 (observability split) |
 
 **Sequencing within B (after happy-state tag):** B0 anytime · B1 ∥ B2
 (independent files) · B3 → B4 (serial, proxy gate) · B5 after B1–B4 ·
