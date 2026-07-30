@@ -33,6 +33,13 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'narrative that elevates a simple outing into a cherished '
               'memory, illustrating that true hospitality thrives when food, '
               'service, and atmosphere harmoniously converge.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c0_u0.webp',
+              caption: 'Diagram: The Three Pillars Of Hospitality',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -54,6 +61,13 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'enveloped by an atmosphere that sets the stage for their '
               'experience, highlighting how the carefully curated ambiance '
               'serves as the heartbeat of the dining journey.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c1_u0.webp',
+              caption: 'Diagram: Atmosphere',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_three_pillars_c1_u1',
@@ -74,6 +88,13 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'the senses. Proper lighting not only sets the mood but a '
               'thoughtfully lit restaurant also enhances the overall dining '
               'experience.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c1_u1.webp',
+              caption: 'Diagram: Lighting',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_three_pillars_c1_u2',
@@ -93,6 +114,13 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'personal musical preferences. The focus should always remain '
               'on the guest experience, ensuring that the music enhances '
               'rather than distracts.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c1_u2.webp',
+              caption: 'Diagram: Music',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_three_pillars_c1_u3',
@@ -113,6 +141,13 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'establishment. Thus, investing in thoughtful decor is not just '
               'about aesthetics; it is a strategic approach to enhancing '
               'guest satisfaction and driving business success.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c1_u3.webp',
+              caption: 'Diagram: Decor',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_three_pillars_c1_u4',
@@ -138,6 +173,13 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'well-maintained restaurant not only upholds established '
               'standards but also cultivates a welcoming ambiance, where '
               'guests feel cared for and valued.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c1_u4.webp',
+              caption: 'Diagram: Cleanliness and Organization',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_three_pillars_c1_u5',
@@ -150,6 +192,13 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'it\'s a cozy winter evening or a warm summer afternoon, paying '
               'attention to this subtle yet impactful element can '
               'significantly enhance the overall enjoyment for the guest.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c1_u5.webp',
+              caption: 'Diagram: Temperature',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -177,6 +226,13 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'creating memorable experiences that leave a lasting impression '
               'on guests, ensuring they feel cherished and appreciated '
               'throughout their visit.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c2_u0.webp',
+              caption: 'Diagram: Service',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_three_pillars_c2_u1',
@@ -193,6 +249,13 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'meal feel curated and special. The ability of servers to '
               'convey the nuances of the menu not only enriches the meal but '
               'builds connection between the guest and the restaurant.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c2_u1.webp',
+              caption: 'Diagram: Menu Knowledge',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_three_pillars_c2_u2',
@@ -210,6 +273,13 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'helps with preventing mistakes while allowing the team to '
               'anticipate guests\' needs and swiftly address any hiccups that '
               'may arise during their dining experience.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c2_u2.webp',
+              caption: 'Diagram: Communication',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_three_pillars_c2_u3',
@@ -224,6 +294,13 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'attentive staff can gauge whether individuals are in a rush or '
               'looking to relax, enabling them to tailor their service pace '
               'accordingly.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c2_u3.webp',
+              caption: 'Diagram: Timing',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_three_pillars_c2_u4',
@@ -244,6 +321,13 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'attentive service. Additionally, the ability to gauge a '
               'table\'s mood and respond appropriately exceeds expectations, '
               'leaving a lasting impression on guests.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c2_u4.webp',
+              caption: 'Diagram: Attentiveness',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_three_pillars_c2_u5',
@@ -267,6 +351,13 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'thoughtful gestures can significantly impact a guest\'s '
               'experience. The art of true hospitality is a powerful tool, '
               'capable of making a significant impact on people\'s lives.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c2_u5.webp',
+              caption: 'Diagram: Hospitality',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -293,6 +384,13 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'a treat but also as a celebration of culture and creativity, '
               'enhancing the enjoyment of shared moments and enriching the '
               'fabric of everyday life.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c3_u0.webp',
+              caption: 'Diagram: Food',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_three_pillars_c3_u1',
@@ -308,6 +406,13 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'experience from the first bite to the last. By using '
               'high-quality produce and proteins, restaurants can '
               'significantly enhance taste and elevate guest perception.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c3_u1.webp',
+              caption: 'Diagram: Quality',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_three_pillars_c3_u2',
@@ -333,6 +438,13 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'dishes are more likely to be shared on social media, '
               'generating buzz and attracting new guests to the '
               'establishment.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c3_u2.webp',
+              caption: 'Diagram: Plating and Presentation',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_three_pillars_c3_u3',
@@ -349,6 +461,13 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'inconsistency can jeopardize guest loyalty, it is important '
               'that restaurants prioritize uniformity to maintain the strong '
               'relationships they have worked hard to establish.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c3_u3.webp',
+              caption: 'Diagram: Consistency',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_three_pillars_c3_u4',
@@ -365,6 +484,13 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'experience encompasses not just the taste, freshness, and '
               'presentation of each dish but also the emotional resonance it '
               'carries.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c3_u4.webp',
+              caption: 'Diagram: Emotion',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -387,6 +513,13 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'investing time and effort into ensuring that each of these '
               'pillars stands firm, restaurants unlock the potential for '
               'unforgettable culinary adventures for their guests.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c4_u0.webp',
+              caption: 'Diagram: Balancing Taste, Experience, and Environment',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),

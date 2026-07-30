@@ -336,6 +336,13 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'associated with this premium tequila class. As such, '
               'ultra-aged tequilas represent a luxurious experience appealing '
               'to those who seek refined and complex tasting experiences.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c2_u5.webp',
+              caption: 'Diagram: Extra Añejo',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),

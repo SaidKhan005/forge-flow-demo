@@ -25,6 +25,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: '86\'D',
           body: 'An item is no longer available/sold out.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c0_u0.webp',
+              caption: 'Diagram: 86\'D',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c0_u1',
@@ -32,6 +39,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: '911',
           body: 'Used when an item is needed urgently due to an error.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c0_u1.webp',
+              caption: 'Diagram: 911',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c0_u2',
@@ -41,6 +55,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           body: 'A menu featuring individually priced items allows customers to '
               'select and order each dish separately, rather than opting for '
               'a pre-set meal.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c0_u2.webp',
+              caption: 'Diagram: A LA CARTE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c0_u3',
@@ -49,6 +70,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'AGC',
           body: 'Average guest check. The average amount a guest spends in the '
               'restaurant.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c0_u3.webp',
+              caption: 'Diagram: AGC',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c0_u4',
@@ -60,6 +88,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'someone has a food allergy, their immune system mistakenly '
               'treats something in a particular food (most often, the '
               'protein) as if it\'s dangerous to them.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c0_u4.webp',
+              caption: 'Diagram: ALLERGY',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c0_u5',
@@ -68,6 +103,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'BANQUET TABLE',
           body: 'A collapsable long table typically used for large party '
               'dining.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c0_u5.webp',
+              caption: 'Diagram: BANQUET TABLE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c0_u6',
@@ -75,6 +117,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'BD (BUSINESS DECLINE)',
           body: 'This refers to when the restaurant starts to slow down.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c0_u6.webp',
+              caption: 'Diagram: BD (BUSINESS DECLINE)',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c0_u7',
@@ -83,6 +132,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'BEHIND',
           body: 'This is what employees call out to let their co-worker know '
               'they are behind them, often with full hands.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c0_u7.webp',
+              caption: 'Diagram: BEHIND',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c0_u8',
@@ -94,6 +150,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'event, including menus, setup arrangements, timelines, and '
               'guest lists, effectively serving as a roadmap for staff to '
               'ensure seamless execution of the occasion.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c0_u8.webp',
+              caption: 'Diagram: BEO (BANQUET EVENT ORDER)',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c0_u9',
@@ -101,6 +164,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'BOH (BACK OF HOUSE)',
           body: 'Refers to the kitchen team.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c0_u9.webp',
+              caption: 'Diagram: BOH (BACK OF HOUSE)',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c0_u10',
@@ -115,6 +185,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'reflects the company\'s values and reputation, ultimately '
               'communicating quality and lifestyle beyond mere physical '
               'attributes.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c0_u10.webp',
+              caption: 'Diagram: BRAND',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c0_u11',
@@ -123,6 +200,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'CAMPERS',
           body: 'Guests that stay seated for a long period of time after they '
               'have finished their dining experience.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c0_u11.webp',
+              caption: 'Diagram: CAMPERS',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -139,6 +223,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'CHIT',
           body: 'An order put into the POS prints on a slip of paper called a '
               'ticket or a chit.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c1_u0.webp',
+              caption: 'Diagram: CHIT',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c1_u1',
@@ -147,6 +238,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'CHIT STACKING',
           body: 'When a server takes multiple orders from different tables and '
               'then rings them in all at once.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c1_u1.webp',
+              caption: 'Diagram: CHIT STACKING',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c1_u2',
@@ -157,6 +255,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'This process focuses on emptying the table surface, which is '
               'distinct from the subsequent cleaning step that includes '
               'wiping or sanitizing the table.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c1_u2.webp',
+              caption: 'Diagram: CLEAR THE TABLE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c1_u3',
@@ -165,6 +270,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'CLOPEN',
           body: 'When an employee closes at night then comes in to open the '
               'next morning.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c1_u3.webp',
+              caption: 'Diagram: CLOPEN',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c1_u4',
@@ -172,6 +284,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'COMP',
           body: 'A complimentary item meaning to give an item away for free.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c1_u4.webp',
+              caption: 'Diagram: COMP',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c1_u5',
@@ -186,6 +305,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'ensuring purpose-driven growth and cultivating a unique '
               'identity that creates alignment, accountability, and a strong, '
               'consistent workplace environment.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c1_u5.webp',
+              caption: 'Diagram: CORE VALUES',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c1_u6',
@@ -195,6 +321,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           body: 'This is what employees call out when they are coming around a '
               'corner that they could potentially bump into another staff '
               'member.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c1_u6.webp',
+              caption: 'Diagram: CORNER',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c1_u7',
@@ -207,6 +340,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'pause in between, following a thoughtfully arranged '
               'progression from lighter to heavier fare, encompassing an '
               'appetizer, main dish, and dessert.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c1_u7.webp',
+              caption: 'Diagram: COURSE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c1_u8',
@@ -216,6 +356,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           body: 'Refers to the number of people reserved for the night. 50 '
               'covers is the amount of guests that you can expect to arrive '
               'for reservations.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c1_u8.webp',
+              caption: 'Diagram: COVERS',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c1_u9',
@@ -224,6 +371,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'CRUISER TABLE',
           body: 'A tall table used often in events and cocktail parties for '
               'guests to be able to stand around.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c1_u9.webp',
+              caption: 'Diagram: CRUISER TABLE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c1_u10',
@@ -238,6 +392,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'unwritten rules, which together create the collective energy '
               'of the environment, ultimately nurturing a sense of belonging '
               'or impeding it among employees.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c1_u10.webp',
+              caption: 'Diagram: CULTURE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c1_u11',
@@ -246,6 +407,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'CUT',
           body: 'When management takes someone out of their regular duties to '
               'do side duties and clock out.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c1_u11.webp',
+              caption: 'Diagram: CUT',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -262,6 +430,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'DEAD (BUSINESS LEVEL)',
           body: 'Refers to when the restaurant has little to no guests at a '
               'given time.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c2_u0.webp',
+              caption: 'Diagram: DEAD (BUSINESS LEVEL)',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c2_u1',
@@ -271,6 +446,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           body: 'When a dish has been sitting for too long without being '
               'delivered to the table causing its quality to be compromised, '
               'making it no longer servable.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c2_u1.webp',
+              caption: 'Diagram: DEAD PLATE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c2_u2',
@@ -281,6 +463,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'bartenders submit the cash owed to the restaurant. This amount '
               'is determined by taking their total sales and subtracting any '
               'credit card tips and payments received.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c2_u2.webp',
+              caption: 'Diagram: DEPOSIT',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c2_u3',
@@ -290,6 +479,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           body: 'when two tables (three tables for triple sat) are sat in a '
               'servers section back to back without allowing time in between '
               'for the server to greet the first table.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c2_u3.webp',
+              caption: 'Diagram: DOUBLE SAT/TRIPLE SAT',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c2_u4',
@@ -303,6 +499,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'As a result, employees may encounter chaotic conditions and '
               'heightened stress levels, often leading to feelings of '
               'helplessness or anxiety in managing their responsibilities.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c2_u4.webp',
+              caption: 'Diagram: DROWNING',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c2_u5',
@@ -311,6 +514,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'EXPO',
           body: 'The person in charge of prepping the plates, quality checking '
               'items, and ensuring accuracy before sending food to the guest.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c2_u5.webp',
+              caption: 'Diagram: EXPO',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c2_u6',
@@ -323,6 +533,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'serving style encourages interaction among guests and allows '
               'everyone to sample a variety of flavors, creating a relaxed '
               'and home-like environment.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c2_u6.webp',
+              caption: 'Diagram: FAMILY STYLE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c2_u7',
@@ -334,6 +551,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'should be used/consumed first (first out). Newer products '
               'should be stored at the back and product already stored should '
               'be moved to the front, following best by and expiry dates.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c2_u7.webp',
+              caption: 'Diagram: FIFO (FIRST IN FIRST OUT)',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c2_u8',
@@ -341,6 +565,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'FIRE',
           body: 'Order given to start preparing food for a table.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c2_u8.webp',
+              caption: 'Diagram: FIRE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c2_u9',
@@ -348,6 +579,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'FLIP (THE TABLE)',
           body: 'Means to clean and reset a table.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c2_u9.webp',
+              caption: 'Diagram: FLIP (THE TABLE)',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c2_u10',
@@ -355,6 +593,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'FLOOR',
           body: 'The dining area where guests are served.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c2_u10.webp',
+              caption: 'Diagram: FLOOR',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c2_u11',
@@ -362,6 +607,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'FOH (FRONT OF HOUSE)',
           body: 'Refers to the service team.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c2_u11.webp',
+              caption: 'Diagram: FOH (FRONT OF HOUSE)',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -379,6 +631,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           body: 'Added to a drink or dish after it\'s been made to either add '
               'something to the flavor profile or aroma or enhance the '
               'drink\'s appearance.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c3_u0.webp',
+              caption: 'Diagram: GARNISH',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c3_u1',
@@ -390,6 +649,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'experience for them. They are someone we would recognize if we '
               'saw them again. Therefore we do not refer to them as '
               'customers, they are our guests!',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c3_u1.webp',
+              caption: 'Diagram: GUEST',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c3_u2',
@@ -405,6 +671,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'issues, demonstrating empathy, delivering sincere apologies, '
               'taking immediate corrective action, and analyzing failures to '
               'prevent their recurrence.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c3_u2.webp',
+              caption: 'Diagram: GUEST RECOVERY',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c3_u3',
@@ -413,6 +686,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'HANDS',
           body: 'An order given by the expo or kitchen when the food is ready '
               'to be brought to the guest.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c3_u3.webp',
+              caption: 'Diagram: HANDS',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c3_u4',
@@ -421,6 +701,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'HEARD',
           body: 'Communicating that you heard the information that was relayed '
               'to you.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c3_u4.webp',
+              caption: 'Diagram: HEARD',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c3_u5',
@@ -428,6 +715,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'HIGH TOP',
           body: 'A bar height table.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c3_u5.webp',
+              caption: 'Diagram: HIGH TOP',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c3_u6',
@@ -440,6 +734,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'unspoken needs but also building relationships and weaving '
               'care into every interaction, ultimately transforming routine '
               'encounters into memorable experiences that cultivate loyalty.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c3_u6.webp',
+              caption: 'Diagram: HOSPITALITY',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c3_u7',
@@ -449,6 +750,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           body: 'A crucial safety alert indicating that individuals are '
               'navigating a busy area while carrying hot food, liquids, '
               'plates, or equipment.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c3_u7.webp',
+              caption: 'Diagram: HOT',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c3_u8',
@@ -458,6 +766,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           body: 'a term referring to being so busy that you have fallen behind '
               'and may not be able to catch up, often resulting in service '
               'quality taking a hit.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c3_u8.webp',
+              caption: 'Diagram: IN THE WEEDS',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c3_u9',
@@ -467,6 +782,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           body: 'The heated area located between the kitchen and the service '
               'area. This is where chefs place completed dishes, ready for '
               'servers to collect.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c3_u9.webp',
+              caption: 'Diagram: IN THE WINDOW',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c3_u10',
@@ -474,6 +796,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'LOW BOY',
           body: 'An under the counter refrigerator.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c3_u10.webp',
+              caption: 'Diagram: LOW BOY',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c3_u11',
@@ -484,6 +813,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'product into a single, full container can help reduce waste '
               'and maximize usage. This is done with items that have a long '
               'shelf life such as salt, ketchup, and spices.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c3_u11.webp',
+              caption: 'Diagram: MARRY',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -499,6 +835,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'MDR',
           body: 'Main Dining Room.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c4_u0.webp',
+              caption: 'Diagram: MDR',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c4_u1',
@@ -511,6 +854,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'cooking, as well as the thorough preparation and arrangement '
               'of the dining area and service stations prior to the arrival '
               'of guests.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c4_u1.webp',
+              caption: 'Diagram: MISE EN PLACE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c4_u2',
@@ -522,6 +872,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'it operates, thereby guiding decisions, motivating employees, '
               'and informing stakeholders about its core values, culture, and '
               'objectives.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c4_u2.webp',
+              caption: 'Diagram: MISSION STATEMENT',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c4_u3',
@@ -532,6 +889,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'often seen with seafood items. The market price is subject to '
               'change based on factors such as availability, seasonality and '
               'market fluctuations.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c4_u3.webp',
+              caption: 'Diagram: MP (MARKET PLACE)',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c4_u4',
@@ -539,6 +903,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'NO SHOW',
           body: 'When a reservation does not show up.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c4_u4.webp',
+              caption: 'Diagram: NO SHOW',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c4_u5',
@@ -554,6 +925,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'a feedback loop that empowers operators to enhance dining '
               'experiences, boost guest retention, and transform satisfied '
               'guests into enthusiastic advocates.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c4_u5.webp',
+              caption: 'Diagram: NPS (NET PROMOTER SCORE)',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c4_u6',
@@ -562,6 +940,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'OFF-PREMISE',
           body: 'An event that takes place at a location outside of the '
               'restaurant but is still managed by the restaurant team.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c4_u6.webp',
+              caption: 'Diagram: OFF-PREMISE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c4_u7',
@@ -571,6 +956,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           body: 'When a dish or drink is needed immediately, usually because '
               'the original order was wrong, unsatisfactory, or spilled, it\'s '
               'asked for "on the fly."',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c4_u7.webp',
+              caption: 'Diagram: ON THE FLY',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c4_u8',
@@ -579,6 +971,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'OPEN MENUS',
           body: 'The amount of guests that have a menu and have not ordered '
               'yet.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c4_u8.webp',
+              caption: 'Diagram: OPEN MENUS',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c4_u9',
@@ -587,6 +986,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'PARTY',
           body: 'This is another word for a table or group. A party of 4 is a '
               'table of 4 guests.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c4_u9.webp',
+              caption: 'Diagram: PARTY',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c4_u10',
@@ -597,6 +1003,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'everything is rang in under a party card instead of an '
               'individual server. This provides all servers taking care of '
               'the party access to ring in orders and take payments.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c4_u10.webp',
+              caption: 'Diagram: PARTY CARD',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c4_u11',
@@ -611,6 +1024,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'meticulously assembled for final plating, ensuring that each '
               'dish maintains the highest standards of consistency and '
               'quality before it is served to guests.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c4_u11.webp',
+              caption: 'Diagram: PASS',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -627,6 +1047,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'PATT',
           body: 'Pay At The Table. This is the machine used to process debit '
               'and credit card payments at the table.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c5_u0.webp',
+              caption: 'Diagram: PATT',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c5_u1',
@@ -634,6 +1061,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'PDR',
           body: 'Private Dining Room.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c5_u1.webp',
+              caption: 'Diagram: PDR',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c5_u2',
@@ -642,6 +1076,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'PICK UP',
           body: 'chefs often use the term "pick up" to communicate to their '
               'team that a dish is ready for completion.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c5_u2.webp',
+              caption: 'Diagram: PICK UP',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c5_u3',
@@ -651,6 +1092,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           body: 'A service charge when guests bring their own food, such as a '
               'birthday cake. This fee helps cover costs related to cleaning, '
               'providing tableware, and labour costs for staff efforts.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c5_u3.webp',
+              caption: 'Diagram: PLATING FEE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c5_u4',
@@ -662,6 +1110,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'fingerprints, and lint. Staff utilize linens or steam '
               'techniques to achieve a streak-free, sparkling finish that '
               'ensures a pristine and sanitary presentation.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c5_u4.webp',
+              caption: 'Diagram: POLISH',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c5_u5',
@@ -670,6 +1125,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'POS',
           body: 'Point of Sale. This is the machine where orders are rang in '
               'and staff clock in and out.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c5_u5.webp',
+              caption: 'Diagram: POS',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c5_u6',
@@ -683,6 +1145,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'structure not only enhances the dining experience but also '
               'elevates it, making prix fixe menus particularly popular '
               'during holidays and special occasions.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c5_u6.webp',
+              caption: 'Diagram: PRE-FIXE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c5_u7',
@@ -692,6 +1161,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           body: 'Quality Service Assurance. This is the code supervisors and '
               'management use when discounting a bill to ensure the guest '
               'leaves happy.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c5_u7.webp',
+              caption: 'Diagram: QSA',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c5_u8',
@@ -705,6 +1181,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'familiarity allows them to cultivate relationships with the '
               'front-of-house team, building a sense of community that '
               'transcends mere transactions.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c5_u8.webp',
+              caption: 'Diagram: REGULAR',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c5_u9',
@@ -714,6 +1197,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           body: 'The process of recreating a dish or beverage when the '
               'initially prepared item is found to be unsatisfactory, '
               'incorrect, or spoiled.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c5_u9.webp',
+              caption: 'Diagram: REMAKE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c5_u10',
@@ -724,6 +1214,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'interruption of earnings and is the primary document Service '
               'Canada uses to determine EI eligibility, benefit amounts, and '
               'duration.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c5_u10.webp',
+              caption: 'Diagram: ROE (RECORD OF EMPLOYMENT)',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c5_u11',
@@ -731,6 +1228,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'RUNNER',
           body: 'The person who helps the servers run the food to the table.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c5_u11.webp',
+              caption: 'Diagram: RUNNER',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -748,6 +1252,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           body: 'A designated section of tables assigned to a specific server '
               'during their shift. This system helps to streamline service, '
               'making it both organized and efficient.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c6_u0.webp',
+              caption: 'Diagram: SECTION',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c6_u1',
@@ -756,6 +1267,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'SHADOW',
           body: 'When a new employee follows a senior employee to receive '
               'training and see how the role is performed.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c6_u1.webp',
+              caption: 'Diagram: SHADOW',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c6_u2',
@@ -767,6 +1285,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'tools. This warning is frequently paired with the term '
               '"behind" (for example, "Sharp behind!") to help prevent '
               'accidents and injuries in a busy environment.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c6_u2.webp',
+              caption: 'Diagram: SHARP',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c6_u3',
@@ -775,6 +1300,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'SIDE DUTIES/SIDE WORK',
           body: 'All tasks that are secondary to the guest experience including '
               'cleaning, prep work, and stocking.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c6_u3.webp',
+              caption: 'Diagram: SIDE DUTIES/SIDE WORK',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c6_u4',
@@ -782,6 +1314,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'SOS',
           body: 'Sauce on the side.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c6_u4.webp',
+              caption: 'Diagram: SOS',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c6_u5',
@@ -790,6 +1329,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'SPILLAGE',
           body: 'Wasted items, which cannot be sold, encompasses products that '
               'are spilled, wasted, spoiled, or even returned.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c6_u5.webp',
+              caption: 'Diagram: SPILLAGE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c6_u6',
@@ -797,6 +1343,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'SPLIT SHIFT',
           body: 'When an employee works two separate shifts in a day.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c6_u6.webp',
+              caption: 'Diagram: SPLIT SHIFT',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c6_u7',
@@ -805,6 +1358,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'STEPS OF SERVICE',
           body: 'A series of actions and interactions servers perform to '
               'provide a seamless dining experience for guests.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c6_u7.webp',
+              caption: 'Diagram: STEPS OF SERVICE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c6_u8',
@@ -812,6 +1372,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'SUB',
           body: 'To substitute one item for another.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c6_u8.webp',
+              caption: 'Diagram: SUB',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c6_u9',
@@ -821,6 +1388,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           body: 'An official tax document detailing employment income and '
               'deductions for the year. The information from a T4 slip is '
               'used to accurately complete personal income tax returns.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c6_u9.webp',
+              caption: 'Diagram: T4',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c6_u10',
@@ -832,6 +1406,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'maximizing guest capacity and revenue during peak hours while '
               'carefully balancing the quality of the dining experience with '
               'operational speed.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c6_u10.webp',
+              caption: 'Diagram: TABLE TURNS',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c6_u11',
@@ -847,6 +1428,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'evolution of a single cash register, integrating multiple '
               'systems to enhance efficiency and improve the overall guest '
               'experience.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c6_u11.webp',
+              caption: 'Diagram: TECH STACK',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -866,6 +1454,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'degrees Fahrenheit and is the range you want to keep food out '
               'of. Best practice is to keep hot foods hot and cold foods '
               'cold.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c7_u0.webp',
+              caption: 'Diagram: TEMPERATURE DANGER ZONE',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c7_u1',
@@ -878,6 +1473,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'this approach is to promote teamwork and ensure that all team '
               'members who enhance the guest experience are fairly '
               'compensated.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c7_u1.webp',
+              caption: 'Diagram: TIP POOL',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c7_u2',
@@ -886,6 +1488,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'TOP',
           body: 'Refers to the amount of people on a table. For example a "4 '
               'top" would have 4 guests sat at the table.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c7_u2.webp',
+              caption: 'Diagram: TOP',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c7_u3',
@@ -900,6 +1509,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'disruptions, and potential declines in morale associated with '
               'high turnover rates, often resulting from factors such as '
               'demanding work environments and inadequate compensation.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c7_u3.webp',
+              caption: 'Diagram: TURNOVER',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c7_u4',
@@ -909,6 +1525,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           body: 'A tool used to manage and organize guest wait times when all '
               'tables are occupied and there are parties still waiting to be '
               'seated.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c7_u4.webp',
+              caption: 'Diagram: WAITLIST',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c7_u5',
@@ -918,6 +1541,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           body: 'A spacious, insulated storage facility built to commercial '
               'standards, expertly designed to maintain consistent and safe '
               'temperatures for perishable goods.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c7_u5.webp',
+              caption: 'Diagram: WALK IN (FRIDGE/FREEZER)',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c7_u6',
@@ -926,6 +1556,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           title: 'WALK IN (TABLE)',
           body: 'A group that has come into the restaurant without a '
               'reservation.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c7_u6.webp',
+              caption: 'Diagram: WALK IN (TABLE)',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_general_words_c7_u7',
@@ -933,6 +1570,13 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'WALK OUT',
           body: 'A table/guest leaves without paying.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c7_u7.webp',
+              caption: 'Diagram: WALK OUT',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),

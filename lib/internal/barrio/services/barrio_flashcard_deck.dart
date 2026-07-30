@@ -12,6 +12,7 @@
 
 import 'dart:math';
 
+import '../content/company_handbook_content.dart';
 import '../content/training/barrio_training_doc.dart';
 import '../content/training/training_docs.dart';
 
@@ -93,9 +94,10 @@ List<BarrioFlashcard> barrioFlashcardsFromDoc(BarrioTrainingDoc doc) {
           id: unit.id,
           term: unit.title,
           body: unit.body,
-          imageAssetPath:
-              unit.images.isEmpty ? null : unit.images.first.assetPath,
-          imageCaption: unit.images.isEmpty ? null : unit.images.first.caption,
+          // Photo-only: a diagram pictogram never becomes a flashcard front
+          // (those cards keep the branded definition front, FC-2).
+          imageAssetPath: unit.firstPhoto?.assetPath,
+          imageCaption: unit.firstPhoto?.caption,
         ),
   ];
 }

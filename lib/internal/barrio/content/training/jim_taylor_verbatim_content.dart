@@ -44,6 +44,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               '\n'
               'Bold Operations (c) 2024 Jim Taylor - benchmarksixty.com '
               'LinkedIn posts 2024-2025',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c0_u0.webp',
+              caption: 'Diagram: How the Metrics Actually Work',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -63,6 +70,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'Before any metric makes sense you need to know the four '
               'building blocks. Everything Jim teaches is assembled from '
               'these.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c1_u0.webp',
+              caption: 'Diagram: Chapter 01: The Foundation',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c1_u1',
@@ -72,6 +86,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
           body: 'A table of 4 = 4 covers. Jim uses covers not tables because a '
               'table of 2 and a table of 6 are completely different amounts '
               'of work. Covers are honest. Tables aren\'t.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c1_u1.webp',
+              caption: 'Diagram: Cover - one guest served',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c1_u2',
@@ -94,6 +115,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'Answer: Total labor hours: 42 hours\n'
               '\n'
               '---',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c1_u2.webp',
+              caption: 'Diagram: Labor Hour - one person working one hour',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c1_u3',
@@ -116,6 +144,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'a rushed experience caused guests not to order.\n'
               '\n'
               '---',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c1_u3.webp',
+              caption: 'Diagram: PPA - Per Person Average (average spend per guest)',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c1_u4',
@@ -158,6 +193,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'cook shift at \$20 instead of a dishwasher at \$16.50 and that '
               'number moves. Labor % moves with it - without a single cover '
               'or hour changing.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c1_u4.webp',
+              caption: 'Diagram: Wage Mix - blended average hourly rate across all roles',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -180,6 +222,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'productivity, and almost all of them measure labor costs, few '
               'actually understand the importance of understanding how the '
               'two work together."',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c2_u0.webp',
+              caption: 'Diagram: Chapter 02: Labor % - What It Is and Why It Lies',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c2_u1',
@@ -207,6 +256,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'Labor % = (Hours x Wage) / (Covers x PPA)',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c2_u1.webp',
+              caption: 'Diagram: What it calculates',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c2_u2',
@@ -233,6 +289,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'hands.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c2_u2.webp',
+              caption: 'Diagram: What it calculates',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c2_u3',
@@ -269,6 +332,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               '> Source: LinkedIn > > "Labor % is a scoreboard. Not a '
               'strategy. You can\'t schedule your way out of weak '
               'productivity. You can\'t cut your way to a better system."',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c2_u3.webp',
+              caption: 'Diagram: Why cutting labor % rarely fixes labor %',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -290,6 +360,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'guest count, average spend, hours worked, wage mix. Change the '
               'inputs, the output follows. Keep staring at the percentage, '
               'and you\'ll keep getting the same results."',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c3_u0.webp',
+              caption: 'Diagram: Chapter 03: The 4 Inputs',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c3_u1',
@@ -326,6 +403,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'wage',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c3_u1.webp',
+              caption: 'Diagram: Change one input - watch labor % move',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c3_u2',
@@ -340,6 +424,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'number they barely control.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c3_u2.webp',
+              caption: 'Diagram: Change one input - watch labor % move',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -383,6 +474,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               '8 guests. Whether that is good depends on the concept and your '
               'OPZ (Chapter 10). For upscale casual, 8+ likely means the team '
               'is stretched - see the OPZ ceiling.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c4_u0.webp',
+              caption: 'Diagram: Chapter 04: CPLH - Covers Per Labor Hour',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c4_u1',
@@ -427,6 +525,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'guest count',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c4_u1.webp',
+              caption: 'Diagram: Why CPLH is a better manager metric than labor %',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c4_u2',
@@ -449,6 +554,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'business."',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c4_u2.webp',
+              caption: 'Diagram: Why CPLH is a better manager metric than labor %',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c4_u3',
@@ -470,6 +582,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               '\n'
               'No universal correct CPLH. Your target comes from your OPZ '
               'data - Chapter 10.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c4_u3.webp',
+              caption: 'Diagram: CPLH ranges by concept type',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c4_u4',
@@ -506,6 +625,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'annualized.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c4_u4.webp',
+              caption: 'Diagram: What a 0.63 CPLH gap costs in real life',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c4_u5',
@@ -518,6 +644,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'never could.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c4_u5.webp',
+              caption: 'Diagram: What a 0.63 CPLH gap costs in real life',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -534,6 +667,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
           title: 'Chapter 05: CPLH In Action',
           body: 'How it is used to schedule - and what it reveals that labor % '
               'cannot',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c5_u0.webp',
+              caption: 'Diagram: Chapter 05: CPLH In Action',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c5_u1',
@@ -566,6 +706,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'the right answer every time.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c5_u1.webp',
+              caption: 'Diagram: Point 1 - Why scheduling to revenue fails',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c5_u2',
@@ -587,6 +734,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               '---',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c5_u2.webp',
+              caption: 'Diagram: Point 1 - Why scheduling to revenue fails',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c5_u3',
@@ -615,6 +769,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'came in accurately, the model held.',
           runIndex: 1,
           runLength: 4,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c5_u3.webp',
+              caption: 'Diagram: Point 2 - Same 28%, two completely different operations',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c5_u4',
@@ -652,6 +813,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               '- PPA: \$40 Sales: 480 x \$40 = \$19,200',
           runIndex: 2,
           runLength: 4,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c5_u4.webp',
+              caption: 'Diagram: Point 2 - Same 28%, two completely different operations',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c5_u5',
@@ -687,6 +855,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               '- Scheduled: 480 / 5.0 CPLH = 96 FOH hours - right number',
           runIndex: 3,
           runLength: 4,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c5_u5.webp',
+              caption: 'Diagram: Point 2 - Same 28%, two completely different operations',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c5_u6',
@@ -722,6 +897,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'design.',
           runIndex: 4,
           runLength: 4,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c5_u6.webp',
+              caption: 'Diagram: Point 2 - Same 28%, two completely different operations',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -765,6 +947,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'drag. A drop in SPLH with consistent covers means the kitchen '
               'is taking longer per ticket, remakes are climbing, or BOH was '
               'overstaffed for the volume.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c6_u0.webp',
+              caption: 'Diagram: Chapter 06: SPLH - Sales Per Labor Hour',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c6_u1',
@@ -781,6 +970,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'They are measuring the same concept - productivity per labor '
               'hour - applied to the part of the operation that makes most '
               'sense for each metric. Book p.66',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c6_u1.webp',
+              caption: 'Diagram: Why SPLH belongs in the kitchen',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -826,6 +1022,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'Example: Reading both metrics - Wednesday dinner',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c7_u0.webp',
+              caption: 'Diagram: Chapter 07: CPLH and SPLH Together',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c7_u1',
@@ -847,6 +1050,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'The team had a good night.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c7_u1.webp',
+              caption: 'Diagram: Chapter 07: CPLH and SPLH Together',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -868,6 +1078,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'Wage) / (Covers x Avg Spend). That\'s the number your manager '
               'should be measured against. Not a guess. Not a benchmark. Not '
               'last year."',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c8_u0.webp',
+              caption: 'Diagram: Chapter 08: Theoretical Labor',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c8_u1',
@@ -879,6 +1096,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'your actual wage rates and actual PPA - what would labor % be? '
               'This is your floor. The minimum achievable without '
               'compromising service.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c8_u1.webp',
+              caption: 'Diagram: What it is',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c8_u2',
@@ -919,6 +1143,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'at her wage rate.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c8_u2.webp',
+              caption: 'Diagram: Why it matters - the walk-in tears story',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c8_u3',
@@ -950,6 +1181,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'your restaurant? That is what Chapter 09 covers.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c8_u3.webp',
+              caption: 'Diagram: Why it matters - the walk-in tears story',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -973,6 +1211,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'without changing anything operationally yet, and without '
               'optimizing for anything yet. You are observing. You are '
               'building a picture of what your operation actually is.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c9_u0.webp',
+              caption: 'Diagram: Chapter 09: The 60-Day Tracking Discipline',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c9_u1',
@@ -1006,6 +1251,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'which shift is consistently off target. That is what makes '
               'your targets precise - and what makes variance actionable '
               'later in Chapter 10.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c9_u1.webp',
+              caption: 'Diagram: What you track - across dayparts, every shift',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c9_u2',
@@ -1040,6 +1292,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'at their best',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c9_u2.webp',
+              caption: 'Diagram: What you are looking for',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c9_u3',
@@ -1053,6 +1312,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'build your theoretical labor %.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c9_u3.webp',
+              caption: 'Diagram: What you are looking for',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c9_u4',
@@ -1077,6 +1343,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'not just what it does when everything goes right.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c9_u4.webp',
+              caption: 'Diagram: Why 60 days - the replication problem',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c9_u5',
@@ -1088,6 +1361,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'to see the full range. Your target lives somewhere inside it.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c9_u5.webp',
+              caption: 'Diagram: Why 60 days - the replication problem',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c9_u6',
@@ -1126,6 +1406,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'Your BOH inputs',
           runIndex: 1,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c9_u6.webp',
+              caption: 'Diagram: How it assembles into your theoretical labor %',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c9_u7',
@@ -1161,6 +1448,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'Total theoretical labor \$: \$4,405 + \$5,978 = \$10,383',
           runIndex: 2,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c9_u7.webp',
+              caption: 'Diagram: How it assembles into your theoretical labor %',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c9_u8',
@@ -1186,6 +1480,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'immediately which side of the house to look at first.',
           runIndex: 3,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c9_u8.webp',
+              caption: 'Diagram: How it assembles into your theoretical labor %',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c9_u9',
@@ -1207,6 +1508,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'Insert: SPLH Tracking Spreadsheet (Excel) Daily sales, BOH '
               'hours, SPLH per shift by daypart - 60 days. Target SPLH line. '
               'PPA column alongside.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c9_u9.webp',
+              caption: 'Diagram: What this looks like tracked across 60 days',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -1226,6 +1534,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               '\n'
               '> Source: LinkedIn > > "If you want to make more profit. '
               'Manage the variance. Not the %."',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c10_u0.webp',
+              caption: 'Diagram: Chapter 10: Variance - The Gap',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c10_u1',
@@ -1252,6 +1567,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               '+3 to 5 pts -> Meaningful. Find the cause this week.\n'
               '\n'
               '+5 pts+ -> Large. Significant money leaving the building.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c10_u1.webp',
+              caption: 'Diagram: The three-part model',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c10_u2',
@@ -1277,6 +1599,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'what actually got scheduled and deployed. That is a '
               'productivity management gap - not a cost problem. The fix is '
               'operational, not financial.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c10_u2.webp',
+              caption: 'Diagram: What a 4-point gap actually costs',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c10_u3',
@@ -1330,6 +1659,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'BOH labor \$: 290 x \$21.35 = \$6,192',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c10_u3.webp',
+              caption: 'Diagram: Full weekly variance - built from Chapter 09',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c10_u4',
@@ -1349,6 +1685,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'five levers moved, and why?',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c10_u4.webp',
+              caption: 'Diagram: Full weekly variance - built from Chapter 09',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c10_u5',
@@ -1393,6 +1736,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'hours in real time.',
           runIndex: 1,
           runLength: 6,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c10_u5.webp',
+              caption: 'Diagram: The diagnostic - tracing which input moved',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c10_u6',
@@ -1442,6 +1792,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'FOH 7.6% - BOH 11.9% - Total 19.5% down 1.1 pts',
           runIndex: 2,
           runLength: 6,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c10_u6.webp',
+              caption: 'Diagram: The diagnostic - tracing which input moved',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c10_u7',
@@ -1486,6 +1843,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'FOH 8.7% - BOH 11.9% - Total 20.6%',
           runIndex: 3,
           runLength: 6,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c10_u7.webp',
+              caption: 'Diagram: The diagnostic - tracing which input moved',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c10_u8',
@@ -1529,6 +1893,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'pattern and replicate it.',
           runIndex: 4,
           runLength: 6,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c10_u8.webp',
+              caption: 'Diagram: The diagnostic - tracing which input moved',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c10_u9',
@@ -1574,6 +1945,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'it."',
           runIndex: 5,
           runLength: 6,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c10_u9.webp',
+              caption: 'Diagram: The diagnostic - tracing which input moved',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c10_u10',
@@ -1589,6 +1967,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'cost layer drops in on top of a model that already works.',
           runIndex: 6,
           runLength: 6,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c10_u10.webp',
+              caption: 'Diagram: The diagnostic - tracing which input moved',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -1637,6 +2022,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'Service is smooth. Upsells happen. Guests feel attended to. '
               'CPLH is at target. Labor % lands where the model predicts. '
               'This is the only zone where profit is consistently designed.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c11_u0.webp',
+              caption: 'Diagram: Chapter 11: The Optimal Productivity Zone',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c11_u1',
@@ -1661,6 +2053,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               '\n'
               '8.0 | 6.6% | Ceiling | Team stressed. Service complaints '
               'rising.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c11_u1.webp',
+              caption: 'Diagram: Jim\'s real data - one restaurant tracked for 30 days',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c11_u2',
@@ -1677,6 +2076,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'staffed, upsells happen, PPA rises, revenue grows. Labor cost '
               'is slightly higher but the sales denominator grows faster. The '
               'ratio improves. That is the OPZ working as designed.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c11_u2.webp',
+              caption: 'Diagram: The counterintuitive result - add staff, drop labor %',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -1692,6 +2098,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Chapter 12: Reading the Full Story',
           body: 'Every metric, every formula, and the 90-second post-shift read',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c12_u0.webp',
+              caption: 'Diagram: Chapter 12: Reading the Full Story',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c12_u1',
@@ -1728,6 +2141,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'specific input. Fix that thing only.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c12_u1.webp',
+              caption: 'Diagram: How the metrics chain together',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c12_u2',
@@ -1741,6 +2161,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'Above it you are burning your team. Stay inside it.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c12_u2.webp',
+              caption: 'Diagram: How the metrics chain together',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c12_u3',
@@ -1774,6 +2201,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'Labor % = (Hours x Wage) / (Covers x PPA)\n'
               '\n'
               'Variance = Actual Labor % - Theoretical Labor %',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c12_u3.webp',
+              caption: 'Diagram: All formulas',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c12_u4',
@@ -1809,6 +2243,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'OPZ. That is the whole framework.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c12_u4.webp',
+              caption: 'Diagram: Reading a shift in 90 seconds',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c12_u5',
@@ -1820,6 +2261,13 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'BOH Hours, Theoretical Labor, Variance, OPZ',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c12_u5.webp',
+              caption: 'Diagram: Reading a shift in 90 seconds',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),

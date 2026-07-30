@@ -25,6 +25,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../content/quiz/barrio_quiz_models.dart';
+import '../../content/company_handbook_content.dart';
 import '../../content/training/barrio_training_doc.dart';
 import '../../content/training/training_docs.dart';
 import '../../routes/barrio_destination_visibility_resolver.dart';
@@ -553,8 +554,9 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
         bookmark: bookmark,
         destination: dest,
         cardTitle: savedUnit.title,
-        imageAsset:
-            savedUnit.images.isEmpty ? null : savedUnit.images.first.assetPath,
+        // Photo-only: a Saved row leads with a real photo, else the manual
+        // icon; a diagram pictogram never becomes a Saved thumbnail.
+        imageAsset: savedUnit.firstPhoto?.assetPath,
       ));
     }
     return rows;

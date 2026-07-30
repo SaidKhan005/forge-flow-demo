@@ -10,6 +10,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../content/company_handbook_content.dart';
 import '../services/barrio_term_links.dart';
 import 'barrio_destination_scaffold.dart';
 
@@ -60,15 +61,15 @@ class BarrioTermDefinitionSheet extends StatelessWidget {
                       color: BarrioColors.textPrimary,
                     ),
                   ),
-                  if (unit.images.isNotEmpty) ...[
+                  if (unit.firstPhoto != null) ...[
                     const SizedBox(height: 12),
                     // Screen-reader label (rec #12): the literal source
-                    // caption when present, else 'Photo: <term>'.
+                    // caption when present, else 'Photo: <term>'. Photo-only:
+                    // a diagram pictogram is never shown in the term sheet.
                     Semantics(
                       image: true,
-                      label: unit.images.first.caption ??
-                          'Photo: ${unit.title}',
-                      child: _termImage(unit.images.first.assetPath),
+                      label: unit.firstPhoto!.caption ?? 'Photo: ${unit.title}',
+                      child: _termImage(unit.firstPhoto!.assetPath),
                     ),
                   ],
                   const SizedBox(height: 12),

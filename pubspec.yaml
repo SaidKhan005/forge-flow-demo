@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+26
+version: 1.0.0+27
 
 environment:
   sdk: ^3.9.2
@@ -202,6 +202,25 @@ flutter:
     - assets/internal/barrio/training/drink_specs/
     - assets/internal/barrio/training/host_manual/
     - assets/internal/barrio/training/training_tequila_diagrams/
+    # Full diagram coverage (2026-07-30): a house-style line-icon pictogram
+    # on every previously text-only reading card, wired via the diagrams
+    # manifest. One folder per doc_id (asset dirs are not recursive).
+    - assets/internal/barrio/training/interview_playbook_diagrams/
+    - assets/internal/barrio/training/jim_taylor_labor_model_diagrams/
+    - assets/internal/barrio/training/training_bar_manual_diagrams/
+    - assets/internal/barrio/training/training_bold_by_design_diagrams/
+    - assets/internal/barrio/training/training_cheers_responsibility_diagrams/
+    - assets/internal/barrio/training/training_clover_sop_diagrams/
+    - assets/internal/barrio/training/training_drink_specs_diagrams/
+    - assets/internal/barrio/training/training_general_words_diagrams/
+    - assets/internal/barrio/training/training_host_manual_diagrams/
+    - assets/internal/barrio/training/training_labour_cost_diagrams/
+    - assets/internal/barrio/training/training_mastering_metrics_diagrams/
+    - assets/internal/barrio/training/training_menu_concept_diagrams/
+    - assets/internal/barrio/training/training_strong_foundation_diagrams/
+    - assets/internal/barrio/training/training_suggestive_selling_diagrams/
+    - assets/internal/barrio/training/training_table_manicuring_diagrams/
+    - assets/internal/barrio/training/training_three_pillars_diagrams/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

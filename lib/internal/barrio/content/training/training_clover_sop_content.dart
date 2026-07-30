@@ -26,6 +26,13 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           title: 'Log In to the Clover Station',
           body: 'Log in to the Clover station using either your assigned '
               'fingerprint or your assigned six-digit code.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_clover_sop_diagrams/training_clover_sop_c0_u0.webp',
+              caption: 'Diagram: Log In to the Clover Station',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_clover_sop_c0_u1',
@@ -48,6 +55,13 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'View the Floor Plan',
           body: 'The first screen displayed is the floor plan.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_clover_sop_diagrams/training_clover_sop_c0_u2.webp',
+              caption: 'Diagram: View the Floor Plan',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_clover_sop_c0_u3',
@@ -188,6 +202,13 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Fire the Order',
           body: 'Select Fire All to send the order.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_clover_sop_diagrams/training_clover_sop_c1_u7.webp',
+              caption: 'Diagram: Fire the Order',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_clover_sop_c1_u8',
@@ -395,6 +416,13 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
               '\n'
               '- Green indicates that the table has paid. Because payments '
               'are integrated, this status should not normally appear.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_clover_sop_diagrams/training_clover_sop_c3_u0.webp',
+              caption: 'Diagram: View the Table Status Legend',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_clover_sop_c3_u1',
@@ -763,6 +791,13 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           title: 'Void an Entire Item',
           body: 'Selecting Void while on an item deletes the entire item, '
               'including all quantities of it.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_clover_sop_diagrams/training_clover_sop_c6_u7.webp',
+              caption: 'Diagram: Void an Entire Item',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_clover_sop_c6_u8',
@@ -829,6 +864,13 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           title: 'Initiate a Payment',
           body: 'To initiate a payment on either a handheld or stationed '
               'device, select Pay or select Pay by Guest.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_clover_sop_diagrams/training_clover_sop_c7_u0.webp',
+              caption: 'Diagram: Initiate a Payment',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_clover_sop_c7_u1',
@@ -962,6 +1004,13 @@ const BarrioTrainingDoc kTrainingCloverSop = BarrioTrainingDoc(
           title: 'Add an Order-Level Discount',
           body: 'To add discounts to the entire order rather than a single '
               'item, use Add Order Discounts.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_clover_sop_diagrams/training_clover_sop_c8_u4.webp',
+              caption: 'Diagram: Add an Order-Level Discount',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_clover_sop_c8_u5',

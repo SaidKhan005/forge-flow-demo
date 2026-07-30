@@ -28,6 +28,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../content/company_handbook_content.dart';
 import '../content/training/barrio_training_doc.dart';
 import '../search/barrio_training_search.dart';
 import 'barrio_destination_scaffold.dart';
@@ -89,8 +90,11 @@ List<TrainingIndexGroup> buildTrainingIndexGroups(BarrioTrainingDoc doc) {
         final key = BarrioTrainingSearch.fold(base);
         titleByKey.putIfAbsent(key, () => base);
         pageByKey.putIfAbsent(key, () => page);
-        if (unit.images.isNotEmpty) {
-          assetByKey.putIfAbsent(key, () => unit.images.first.assetPath);
+        // Photo-only: the A-Z index and its photo grid show real photos, not
+        // diagram pictograms (a pictogram is not a photo of the term).
+        final photo = unit.firstPhoto;
+        if (photo != null) {
+          assetByKey.putIfAbsent(key, () => photo.assetPath);
         }
       }
       page++;
@@ -156,8 +160,11 @@ List<TrainingIndexPhotoEntry> buildTrainingIndexPhotoEntries(
         final key = BarrioTrainingSearch.fold(base);
         titleByKey.putIfAbsent(key, () => base);
         pageByKey.putIfAbsent(key, () => page);
-        if (unit.images.isNotEmpty) {
-          assetByKey.putIfAbsent(key, () => unit.images.first.assetPath);
+        // Photo-only: the A-Z index and its photo grid show real photos, not
+        // diagram pictograms (a pictogram is not a photo of the term).
+        final photo = unit.firstPhoto;
+        if (photo != null) {
+          assetByKey.putIfAbsent(key, () => photo.assetPath);
         }
       }
       page++;

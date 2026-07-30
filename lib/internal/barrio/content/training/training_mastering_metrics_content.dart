@@ -48,6 +48,13 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'behavior. This data empowers operators to assess staffing '
               'needs in real-time, allowing them to align labor with '
               'anticipated guest traffic and spending patterns.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_mastering_metrics_diagrams/training_mastering_metrics_c0_u0.webp',
+              caption: 'Diagram: Mastering The Metrics',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -85,6 +92,13 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'offering targeted insights for staff development.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_mastering_metrics_diagrams/training_mastering_metrics_c1_u0.webp',
+              caption: 'Diagram: Average Guest Check',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_mastering_metrics_c1_u1',
@@ -104,6 +118,13 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'indulging in a drink or two more than usual.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_mastering_metrics_diagrams/training_mastering_metrics_c1_u1.webp',
+              caption: 'Diagram: Average Guest Check',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -138,6 +159,13 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'maintaining an exceptional dining experience for our guests.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_mastering_metrics_diagrams/training_mastering_metrics_c2_u0.webp',
+              caption: 'Diagram: Covers',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_mastering_metrics_c2_u1',
@@ -164,6 +192,13 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'capacity.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_mastering_metrics_diagrams/training_mastering_metrics_c2_u1.webp',
+              caption: 'Diagram: Covers',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -199,6 +234,13 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'quality that suffers, impacting the overall guest experience.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_mastering_metrics_diagrams/training_mastering_metrics_c3_u0.webp',
+              caption: 'Diagram: Covers Per Labour Hour',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_mastering_metrics_c3_u1',
@@ -217,6 +259,13 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'quieter times.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_mastering_metrics_diagrams/training_mastering_metrics_c3_u1.webp',
+              caption: 'Diagram: Covers Per Labour Hour',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -244,6 +293,13 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'interactions. Every engagement presents an opportunity to '
               'elevate the check, turning a standard meal into a remarkable '
               'experience that encourages guests to indulge a little more.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_mastering_metrics_diagrams/training_mastering_metrics_c4_u0.webp',
+              caption: 'Diagram: Benefits of Servers Knowing Their AGC',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -278,6 +334,13 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'suggestive selling skills.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_mastering_metrics_diagrams/training_mastering_metrics_c5_u0.webp',
+              caption: 'Diagram: Increasing AGC',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_mastering_metrics_c5_u1',
@@ -300,6 +363,13 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'offer.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_mastering_metrics_diagrams/training_mastering_metrics_c5_u1.webp',
+              caption: 'Diagram: Increasing AGC',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -340,6 +410,13 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'and the AGC.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_mastering_metrics_diagrams/training_mastering_metrics_c6_u0.webp',
+              caption: 'Diagram: Factors That AGC',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_mastering_metrics_c6_u1',
@@ -355,6 +432,13 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'dropping potential future sales.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_mastering_metrics_diagrams/training_mastering_metrics_c6_u1.webp',
+              caption: 'Diagram: Factors That AGC',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -395,6 +479,13 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'contribute positively to their performance reviews and can '
               'have a tangible impact on their earnings, overall positively '
               'impacting the performance of the restaurant.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_mastering_metrics_diagrams/training_mastering_metrics_c7_u0.webp',
+              caption: 'Diagram: Set Goals',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
