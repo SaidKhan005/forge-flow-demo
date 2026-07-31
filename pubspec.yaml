@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+29
+version: 1.0.0+30
 
 environment:
   sdk: ^3.9.2
@@ -221,6 +221,16 @@ flutter:
     - assets/internal/barrio/training/training_suggestive_selling_diagrams/
     - assets/internal/barrio/training/training_table_manicuring_diagrams/
     - assets/internal/barrio/training/training_three_pillars_diagrams/
+    # Real accurate photos (2026-07-31) that replaced weak/repetitive icons on
+    # concrete cards (dishes, drinks, tools, equipment). One folder per doc.
+    - assets/internal/barrio/training/barrio_company_handbook_photos/
+    - assets/internal/barrio/training/food_safety_manual_photos/
+    - assets/internal/barrio/training/training_bar_manual_photos/
+    - assets/internal/barrio/training/training_bold_by_design_photos/
+    - assets/internal/barrio/training/training_drink_specs_photos/
+    - assets/internal/barrio/training/training_menu_concept_photos/
+    - assets/internal/barrio/training/training_strong_foundation_photos/
+    - assets/internal/barrio/training/training_three_pillars_photos/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -679,8 +679,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'announcements, reservation details, and our company goals.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c7_u7.webp',
-              caption: 'Diagram: COMMUNICATION BOARD',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c7_u7.webp',
+              caption: 'Staff communication board',
               afterParagraph: -1,
             ),
           ],
@@ -2763,8 +2763,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'alcohol swabs, and safety pins, for minor everyday incidents.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c16_u16.webp',
-              caption: 'Diagram: FIRST AID',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c16_u16.webp',
+              caption: 'First aid kit',
               afterParagraph: -1,
             ),
           ],
@@ -2923,8 +2923,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'health and safety manual and on the health and safety board.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c16_u23.webp',
-              caption: 'Diagram: FIRE ALARM SYSTEM',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c16_u23.webp',
+              caption: 'Fire alarm pull station',
               afterParagraph: -1,
             ),
           ],
@@ -2974,8 +2974,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'expels cooking vapours from the building.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c16_u25.webp',
-              caption: 'Diagram: KITCHEN FIRE SUPPRESSION SYSTEM AND KITCHEN EXHAUST',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c16_u25.webp',
+              caption: 'Kitchen exhaust hood',
               afterParagraph: -1,
             ),
           ],

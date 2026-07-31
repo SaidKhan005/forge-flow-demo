@@ -264,8 +264,8 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
               'multicultural culinary heritage.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c4_u1.webp',
-              caption: 'Diagram: Slide 12',
+              assetPath: 'assets/internal/barrio/training/training_menu_concept_photos/training_menu_concept_c4_u1.webp',
+              caption: 'Lomo Saltado',
               afterParagraph: -1,
             ),
           ],

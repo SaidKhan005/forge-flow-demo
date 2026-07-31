@@ -1770,8 +1770,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'Until that is recognized, the problem cannot be solved.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c8_u2.webp',
-              caption: 'Diagram: The Weight of Menu Design',
+              assetPath: 'assets/internal/barrio/training/training_bold_by_design_photos/training_bold_by_design_c8_u2.webp',
+              caption: 'Restaurant menu',
               afterParagraph: -1,
             ),
           ],

@@ -717,8 +717,8 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'the last.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c5_u6.webp',
-              caption: 'Diagram: Classic Cocktails',
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c5_u6.webp',
+              caption: 'Classic cocktail',
               afterParagraph: -1,
             ),
           ],
@@ -751,8 +751,8 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'experience at our venue.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c5_u7.webp',
-              caption: 'Diagram: Cocktail Creation',
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c5_u7.webp',
+              caption: 'Craft cocktail',
               afterParagraph: -1,
             ),
           ],
@@ -808,8 +808,8 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           runLength: 2,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c5_u9.webp',
-              caption: 'Diagram: Perfect Pour',
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c5_u9.webp',
+              caption: 'Draft beer',
               afterParagraph: -1,
             ),
           ],
@@ -826,8 +826,8 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           runLength: 2,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c5_u10.webp',
-              caption: 'Diagram: Perfect Pour',
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c5_u10.webp',
+              caption: 'Pint of beer',
               afterParagraph: -1,
             ),
           ],
@@ -1134,8 +1134,8 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'supervisors, and managers.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c6_u10.webp',
-              caption: 'Diagram: Liquor Room/Wine Cellar',
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c6_u10.webp',
+              caption: 'Wine cellar',
               afterParagraph: -1,
             ),
           ],

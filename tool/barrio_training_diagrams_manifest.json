@@ -184,8 +184,8 @@
   "company_handbook_c16_u16": [
     {
       "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c16_u16.webp",
-      "caption": "Diagram: FIRST AID"
+      "assetPath": "assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c16_u16.webp",
+      "caption": "First aid kit"
     }
   ],
   "company_handbook_c16_u19": [
@@ -205,8 +205,8 @@
   "company_handbook_c16_u23": [
     {
       "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c16_u23.webp",
-      "caption": "Diagram: FIRE ALARM SYSTEM"
+      "assetPath": "assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c16_u23.webp",
+      "caption": "Fire alarm pull station"
     }
   ],
   "company_handbook_c16_u24": [
@@ -219,8 +219,8 @@
   "company_handbook_c16_u25": [
     {
       "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c16_u25.webp",
-      "caption": "Diagram: KITCHEN FIRE SUPPRESSION SYSTEM AND KITCHEN EXHAUST"
+      "assetPath": "assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c16_u25.webp",
+      "caption": "Kitchen exhaust hood"
     }
   ],
   "company_handbook_c16_u28": [
@@ -373,8 +373,8 @@
   "company_handbook_c7_u7": [
     {
       "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c7_u7.webp",
-      "caption": "Diagram: COMMUNICATION BOARD"
+      "assetPath": "assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c7_u7.webp",
+      "caption": "Staff communication board"
     }
   ],
   "company_handbook_c8_u0": [
@@ -870,36 +870,36 @@
   "training_bar_manual_c5_u10": [
     {
       "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c5_u10.webp",
-      "caption": "Diagram: Perfect Pour"
+      "assetPath": "assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c5_u10.webp",
+      "caption": "Pint of beer"
     }
   ],
   "training_bar_manual_c5_u6": [
     {
       "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c5_u6.webp",
-      "caption": "Diagram: Classic Cocktails"
+      "assetPath": "assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c5_u6.webp",
+      "caption": "Classic cocktail"
     }
   ],
   "training_bar_manual_c5_u7": [
     {
       "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c5_u7.webp",
-      "caption": "Diagram: Cocktail Creation"
+      "assetPath": "assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c5_u7.webp",
+      "caption": "Craft cocktail"
     }
   ],
   "training_bar_manual_c5_u9": [
     {
       "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c5_u9.webp",
-      "caption": "Diagram: Perfect Pour"
+      "assetPath": "assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c5_u9.webp",
+      "caption": "Draft beer"
     }
   ],
   "training_bar_manual_c6_u10": [
     {
       "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c6_u10.webp",
-      "caption": "Diagram: Liquor Room/Wine Cellar"
+      "assetPath": "assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c6_u10.webp",
+      "caption": "Wine cellar"
     }
   ],
   "training_bar_manual_c6_u12": [
@@ -1710,8 +1710,8 @@
   "training_bold_by_design_c8_u2": [
     {
       "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c8_u2.webp",
-      "caption": "Diagram: The Weight of Menu Design"
+      "assetPath": "assets/internal/barrio/training/training_bold_by_design_photos/training_bold_by_design_c8_u2.webp",
+      "caption": "Restaurant menu"
     }
   ],
   "training_bold_by_design_c8_u3": [
@@ -1906,8 +1906,8 @@
   "training_drink_specs_c14_u0": [
     {
       "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_drink_specs_diagrams/training_drink_specs_c14_u0.webp",
-      "caption": "Diagram: Mimosa De Toronja"
+      "assetPath": "assets/internal/barrio/training/training_drink_specs_photos/training_drink_specs_c14_u0.webp",
+      "caption": "Grapefruit mimosa"
     }
   ],
   "training_food_safety_c0_u0": [
@@ -2060,8 +2060,8 @@
   "training_food_safety_c2_u3": [
     {
       "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c2_u3.webp",
-      "caption": "Diagram: Using Utensils"
+      "assetPath": "assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c2_u3.webp",
+      "caption": "Kitchen tongs"
     }
   ],
   "training_food_safety_c5_u0": [
@@ -3442,8 +3442,8 @@
   "training_menu_concept_c4_u1": [
     {
       "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c4_u1.webp",
-      "caption": "Diagram: Slide 12"
+      "assetPath": "assets/internal/barrio/training/training_menu_concept_photos/training_menu_concept_c4_u1.webp",
+      "caption": "Lomo Saltado"
     }
   ],
   "training_strong_foundation_c0_u0": [
@@ -3470,15 +3470,15 @@
   "training_strong_foundation_c4_u1": [
     {
       "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_strong_foundation_diagrams/training_strong_foundation_c4_u1.webp",
-      "caption": "Diagram: Food"
+      "assetPath": "assets/internal/barrio/training/training_strong_foundation_photos/training_strong_foundation_c4_u1.webp",
+      "caption": "Plated dish"
     }
   ],
   "training_strong_foundation_c4_u2": [
     {
       "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_strong_foundation_diagrams/training_strong_foundation_c4_u2.webp",
-      "caption": "Diagram: Food"
+      "assetPath": "assets/internal/barrio/training/training_strong_foundation_photos/training_strong_foundation_c4_u2.webp",
+      "caption": "Plated dish"
     }
   ],
   "training_strong_foundation_c4_u3": [
@@ -3729,8 +3729,8 @@
   "training_three_pillars_c1_u1": [
     {
       "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c1_u1.webp",
-      "caption": "Diagram: Lighting"
+      "assetPath": "assets/internal/barrio/training/training_three_pillars_photos/training_three_pillars_c1_u1.webp",
+      "caption": "Warm restaurant lighting"
     }
   ],
   "training_three_pillars_c1_u2": [
@@ -3743,8 +3743,8 @@
   "training_three_pillars_c1_u3": [
     {
       "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c1_u3.webp",
-      "caption": "Diagram: Decor"
+      "assetPath": "assets/internal/barrio/training/training_three_pillars_photos/training_three_pillars_c1_u3.webp",
+      "caption": "Restaurant decor"
     }
   ],
   "training_three_pillars_c1_u4": [
@@ -3799,8 +3799,8 @@
   "training_three_pillars_c3_u0": [
     {
       "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c3_u0.webp",
-      "caption": "Diagram: Food"
+      "assetPath": "assets/internal/barrio/training/training_three_pillars_photos/training_three_pillars_c3_u0.webp",
+      "caption": "Plated dish"
     }
   ],
   "training_three_pillars_c3_u1": [
