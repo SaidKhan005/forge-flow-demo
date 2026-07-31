@@ -82,13 +82,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'that promote responsible service and consumption.',
           runIndex: 1,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c0_u1.webp',
-              caption: 'Diagram: Governing Bodies',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_cheers_responsibility_c0_u2',
@@ -115,13 +108,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'everyone in the community.',
           runIndex: 2,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c0_u2.webp',
-              caption: 'Diagram: Governing Bodies',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_cheers_responsibility_c0_u3',
@@ -172,13 +158,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'available.',
           runIndex: 1,
           runLength: 3,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c0_u4.webp',
-              caption: 'Diagram: Licenses',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_cheers_responsibility_c0_u5',
@@ -204,13 +183,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'provided to the public in consideration of payment.',
           runIndex: 2,
           runLength: 3,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c0_u5.webp',
-              caption: 'Diagram: Licenses',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_cheers_responsibility_c0_u6',
@@ -225,13 +197,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'prescribed in the license.',
           runIndex: 3,
           runLength: 3,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c0_u6.webp',
-              caption: 'Diagram: Licenses',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_cheers_responsibility_c0_u7',
@@ -253,13 +218,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'Event that is sponsored by a supplier or sales representative '
               'at your licensed establishment, you may apply to NLC for '
               'permission.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c0_u7.webp',
-              caption: 'Diagram: Secondary Licenses',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -297,13 +255,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               '- 5oz Wine at 12% ABV\n'
               '\n'
               '- 1.5oz Liquor/Spirit at 40% ABV',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c1_u0.webp',
-              caption: 'Diagram: Standard Drink Size',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_cheers_responsibility_c1_u1',
@@ -384,13 +335,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               '- Obnoxious or mean',
           runIndex: 1,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c1_u2.webp',
-              caption: 'Diagram: Signs of Intoxication',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_cheers_responsibility_c1_u3',
@@ -460,13 +404,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               '- Repeated trips to the washroom or outside',
           runIndex: 2,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c1_u3.webp',
-              caption: 'Diagram: Signs of Intoxication',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_cheers_responsibility_c1_u4',
@@ -535,13 +472,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'Use the acronym FLAG when examining identification:',
           runIndex: 1,
           runLength: 3,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c1_u5.webp',
-              caption: 'Diagram: Valid Forms of ID',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_cheers_responsibility_c1_u6',
@@ -572,13 +502,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'can further enhance the confirmation process.',
           runIndex: 2,
           runLength: 3,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c1_u6.webp',
-              caption: 'Diagram: Valid Forms of ID',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_cheers_responsibility_c1_u7',
@@ -592,13 +515,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'authorized to confiscate fake IDs.',
           runIndex: 3,
           runLength: 3,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c1_u7.webp',
-              caption: 'Diagram: Valid Forms of ID',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -623,13 +539,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'experience and also demonstrates our commitment to their '
               'health, allowing us to create a welcoming atmosphere where '
               'everyone can have a good time responsibly.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c2_u0.webp',
-              caption: 'Diagram: Alcohol Combination',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_cheers_responsibility_c2_u1',
@@ -652,13 +561,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'metabolism, meaning it won\'t help sober you up. To prioritize '
               'your health and safety, it\'s wise to avoid mixing alcohol with '
               'energy drinks altogether and to enjoy each responsibly!',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c2_u1.webp',
-              caption: 'Diagram: Alcohol and Energy Drinks',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_cheers_responsibility_c2_u2',
@@ -685,13 +587,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'enjoyable experience, given that while cannabis is relatively '
               'safe on its own, mixing it with alcohol demands a more '
               'cautious approach.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c2_u2.webp',
-              caption: 'Diagram: Alcohol and Cannabis',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_cheers_responsibility_c2_u3',
@@ -719,13 +614,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'responsible choices, prioritizing health and safety when it '
               'comes to substance use. By being aware of these risks, we '
               'empower ourselves to make safer decisions.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c2_u3.webp',
-              caption: 'Diagram: Alcohol and Other Drugs',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_cheers_responsibility_c2_u4',
@@ -750,13 +638,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'and increases the likelihood of unsafe sexual behavior, '
               'alcohol-related injuries, and other potentially deadly '
               'consequences.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c2_u4.webp',
-              caption: 'Diagram: Binge Drinking',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -788,13 +669,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'they are likely to have an empty stomach. Try a "hungry hour" '
               'promotion with two-for-one snacks. Train your servers to '
               'market food: offer them incentives for increasing food sales.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c3_u0.webp',
-              caption: 'Diagram: Monitor Intoxication',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_cheers_responsibility_c3_u1',
@@ -939,13 +813,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'consumption.',
           runIndex: 1,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c3_u4.webp',
-              caption: 'Diagram: Liability',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_cheers_responsibility_c3_u5',
@@ -982,13 +849,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'not cover this exposure.',
           runIndex: 2,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c3_u5.webp',
-              caption: 'Diagram: Liability',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -1008,13 +868,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'allows an individual to remove alcoholic beverages from the '
               'licensed footprint, it would be considered in breach of the '
               'Licensing Regulations.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c4_u0.webp',
-              caption: 'Diagram: Alcohol Leaving the Premises',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_cheers_responsibility_c4_u1',
@@ -1025,13 +878,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'premises to which the license applies, including employees of '
               'the license holder, does not exceed the capacity of the '
               'licensed premises as stated on the capacity card.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c4_u1.webp',
-              caption: 'Diagram: Overcrowding',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_cheers_responsibility_c4_u2',
@@ -1062,13 +908,6 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'weekdays and 4:00 a.m. on weekends. Mandatory exit is not '
               'applicable to licensees that offer a full service food menu 24 '
               'hours a day on a regular basis.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c4_u3.webp',
-              caption: 'Diagram: Mandatory Exit',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_cheers_responsibility_c4_u4',

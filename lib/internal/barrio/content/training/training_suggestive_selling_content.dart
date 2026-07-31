@@ -81,13 +81,6 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'quality control.',
           runIndex: 1,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c1_u0.webp',
-              caption: 'Diagram: Selling Strategies',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c1_u1',
@@ -108,13 +101,6 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'loyalty, and ultimately drive sales.',
           runIndex: 2,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c1_u1.webp',
-              caption: 'Diagram: Selling Strategies',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -221,13 +207,6 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'practice not only benefits the guest by offering them a '
               'curated selection of items but also contributes to increased '
               'sales.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c2_u3.webp',
-              caption: 'Diagram: Cross-Selling',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -253,13 +232,6 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'their needs, it may lead to confusion and irritation.',
           runIndex: 1,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c3_u0.webp',
-              caption: 'Diagram: Managing Improper Execution',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c3_u1',
@@ -289,13 +261,6 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'guest experience.',
           runIndex: 2,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c3_u1.webp',
-              caption: 'Diagram: Managing Improper Execution',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -318,13 +283,6 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'quality and trust established through menu knowledge, personal '
               'connection, adaptability, and the strategic picking of '
               'moments.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c4_u0.webp',
-              caption: 'Diagram: Tools for Effective Strategies',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c4_u1',
@@ -411,13 +369,6 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'dining experience rather than selling techniques, servers can '
               'create lasting memories and enrich the guests\' dining '
               'experience.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c4_u3.webp',
-              caption: 'Diagram: Establishing Trust',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c4_u4',
@@ -442,13 +393,6 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'personalized approach stands in stark contrast to the '
               'one-size-fits-all script, allowing for a more genuine '
               'connection with guests.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c4_u4.webp',
-              caption: 'Diagram: Adaptability',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c4_u5',
@@ -533,13 +477,6 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'authentic invitations to explore the menu. This approach not '
               'only increases average check but also increases guest loyalty, '
               'reinforcing the importance of thoughtful communication.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c4_u7.webp',
-              caption: 'Diagram: Power of Language',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c4_u8',
@@ -565,13 +502,6 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'restaurants can elevate the value and satisfaction of each '
               'meal, leaving a lasting impression that encourages repeat '
               'visits.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c4_u8.webp',
-              caption: 'Diagram: Use in Combination',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),

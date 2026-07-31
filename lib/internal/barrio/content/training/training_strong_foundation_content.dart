@@ -79,13 +79,6 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'community of enthusiastic fans who return regularly to create '
               'new memories, ultimately distinguishing the brand in a '
               'competitive landscape where consistency is key.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_strong_foundation_diagrams/training_strong_foundation_c1_u0.webp',
-              caption: 'Diagram: Building Trust and Loyalty',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -188,13 +181,6 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'and effective staff training becomes feasible in such a '
               'consistent environment, accelerating the onboarding process '
               'for new staff.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_strong_foundation_diagrams/training_strong_foundation_c3_u0.webp',
-              caption: 'Diagram: Improve Operations',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -213,13 +199,6 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'and management should concentrate on these key areas to ensure '
               'each visit delivers a reliable and enjoyable dining '
               'experience.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_strong_foundation_diagrams/training_strong_foundation_c4_u0.webp',
-              caption: 'Diagram: Key Areas',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_strong_foundation_c4_u1',
@@ -338,13 +317,6 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'experience that guests will appreciate. By paying meticulous '
               'attention to both cleanliness and atmosphere, restaurants can '
               'ensure that every detail feels intentional.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_strong_foundation_diagrams/training_strong_foundation_c4_u4.webp',
-              caption: 'Diagram: Atmosphere',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_strong_foundation_c4_u5',
@@ -440,13 +412,6 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'expectations.',
           runIndex: 1,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_strong_foundation_diagrams/training_strong_foundation_c6_u0.webp',
-              caption: 'Diagram: Buy In',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_strong_foundation_c6_u1',
@@ -468,13 +433,6 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'harmonious and successful atmosphere.',
           runIndex: 2,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_strong_foundation_diagrams/training_strong_foundation_c6_u1.webp',
-              caption: 'Diagram: Buy In',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_strong_foundation_c6_u2',
@@ -552,13 +510,6 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'significantly enhance the work environment, empowering '
               'everyone to bring their best selves to the table and '
               'contribute meaningfully to collective success.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_strong_foundation_diagrams/training_strong_foundation_c6_u4.webp',
-              caption: 'Diagram: Team Success Through Defined Expectations',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),

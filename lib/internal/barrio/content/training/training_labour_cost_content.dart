@@ -133,13 +133,6 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               '\n'
               'LABOUR PERCENTAGE = (EMPLOYEE HOURS X WAGE) / (COVERS X GUEST '
               'SPEND)',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c3_u0.webp',
-              caption: 'Diagram: True Labour Percentage Formula',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -590,13 +583,6 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'supportive workplace atmosphere, management can mitigate '
               'stress, allowing staff to focus on providing exceptional '
               'service to guests.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c8_u3.webp',
-              caption: 'Diagram: Staff Engagement',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_labour_cost_c8_u4',
@@ -642,13 +628,6 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'financial health and operational efficiency of the business. '
               'Addressing these issues is critical for ensuring fair '
               'compensation and maintaining a productive work environment.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c8_u5.webp',
-              caption: 'Diagram: Time Theft',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_labour_cost_c8_u6',
@@ -668,13 +647,6 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'some employees may contribute to this issue by working more '
               'slowly in order to extend their hours, creating a cycle that '
               'amplifies labor expenses.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c8_u6.webp',
-              caption: 'Diagram: Overtime',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_labour_cost_c8_u7',
@@ -698,13 +670,6 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'restaurant volume in relation to anticipated covers, alongside '
               'a keen awareness of required duties, can help achieve a better '
               'balance in staffing levels.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c8_u7.webp',
-              caption: 'Diagram: Staff Cuts',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_labour_cost_c8_u8',
@@ -749,13 +714,6 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'promptly, guests are ultimately waiting longer for their '
               'orders potentially opting to decline the item or to extend '
               'their service.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c8_u9.webp',
-              caption: 'Diagram: Supplies',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_labour_cost_c8_u10',
@@ -802,13 +760,6 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'maintenance plays in the overall dining experience, equipping '
               'them with the skills to effectively manage table upkeep '
               'without interrupting guest enjoyment.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c8_u11.webp',
-              caption: 'Diagram: Table Maintenance',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_labour_cost_c8_u12',
@@ -852,13 +803,6 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'Thoughtful planning not only increases the number of guests '
               'served but also streamlines operations, leading to a more '
               'productive restaurant environment.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c8_u13.webp',
-              caption: 'Diagram: Reservation Planning',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_labour_cost_c8_u14',
@@ -879,13 +823,6 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'prep list and incoming prep staff do not thoroughly verify it, '
               'critical items may be overlooked, further exacerbating the '
               'issue, negatively impacting productivity.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c8_u14.webp',
-              caption: 'Diagram: Preparation',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_labour_cost_c8_u15',
@@ -955,13 +892,6 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'allows restaurants to implement targeted strategies, '
               'minimizing errors while still maintaining a gesture of '
               'goodwill towards guests.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c8_u17.webp',
-              caption: 'Diagram: Discounts',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_labour_cost_c8_u18',
@@ -980,13 +910,6 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'guests with offers for additional drinks, thereby missing '
               'opportunities to enhance the dining experience and increase '
               'revenue.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c8_u18.webp',
-              caption: 'Diagram: Alcohol Sales',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_labour_cost_c8_u19',
@@ -1001,13 +924,6 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'satisfaction and revenue. Extended wait times for food orders '
               'can lead to impatience among guests, making them less inclined '
               'to consider dessert once their meal concludes.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c8_u19.webp',
-              caption: 'Diagram: Dessert Sales',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_labour_cost_c8_u20',
@@ -1114,13 +1030,6 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'performance outcomes. They can pivot swiftly to maintain '
               'equilibrium, ensuring that both employee well-being and '
               'organizational goals are effectively aligned.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c9_u2.webp',
-              caption: 'Diagram: Understand How the System Will Respond',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_labour_cost_c9_u3',
@@ -1141,13 +1050,6 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'operations aligned with its capabilities, ensuring that the '
               'system functions efficiently and remains resilient amidst the '
               'constant changes of the environment.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c9_u3.webp',
-              caption: 'Diagram: Anchor the System',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_labour_cost_c9_u4',
@@ -1328,13 +1230,6 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'is not to eliminate inefficiencies immediately, but rather to '
               'restore equilibrium within the system, ensuring sustainable '
               'and effective operations in the long run.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c11_u0.webp',
-              caption: 'Diagram: Diagnosing Not Reacting',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_labour_cost_c11_u1',
@@ -1354,13 +1249,6 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'remain on enhancing operational harmony rather than winning '
               'arguments, as the ultimate goal is to realign the system for '
               'the benefit of the staff and the restaurant.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c11_u1.webp',
-              caption: 'Diagram: Collaborative Effort',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_labour_cost_c11_u2',
@@ -1379,13 +1267,6 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'implement adjustments thoughtfully and assess their impact, '
               'managers can avoid reactive decisions that might introduce '
               'volatility, maintaining a more stable and efficient workplace.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c11_u2.webp',
-              caption: 'Diagram: Adjusting Appropriately',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
