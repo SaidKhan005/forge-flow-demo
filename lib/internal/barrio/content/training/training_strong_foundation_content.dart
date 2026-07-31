@@ -220,8 +220,8 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
           runLength: 2,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_strong_foundation_diagrams/training_strong_foundation_c4_u1.webp',
-              caption: 'Diagram: Food',
+              assetPath: 'assets/internal/barrio/training/training_strong_foundation_photos/training_strong_foundation_c4_u1.webp',
+              caption: 'Plated dish',
               afterParagraph: -1,
             ),
           ],
@@ -249,8 +249,8 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
           runLength: 2,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_strong_foundation_diagrams/training_strong_foundation_c4_u2.webp',
-              caption: 'Diagram: Food',
+              assetPath: 'assets/internal/barrio/training/training_strong_foundation_photos/training_strong_foundation_c4_u2.webp',
+              caption: 'Plated dish',
               afterParagraph: -1,
             ),
           ],

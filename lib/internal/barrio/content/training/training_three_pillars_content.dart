@@ -83,8 +83,8 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'experience.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c1_u1.webp',
-              caption: 'Diagram: Lighting',
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_photos/training_three_pillars_c1_u1.webp',
+              caption: 'Warm restaurant lighting',
               afterParagraph: -1,
             ),
           ],
@@ -136,8 +136,8 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'guest satisfaction and driving business success.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c1_u3.webp',
-              caption: 'Diagram: Decor',
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_photos/training_three_pillars_c1_u3.webp',
+              caption: 'Restaurant decor',
               afterParagraph: -1,
             ),
           ],
@@ -372,8 +372,8 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'fabric of everyday life.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c3_u0.webp',
-              caption: 'Diagram: Food',
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_photos/training_three_pillars_c3_u0.webp',
+              caption: 'Plated dish',
               afterParagraph: -1,
             ),
           ],

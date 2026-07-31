@@ -307,8 +307,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'especially ready-to-eat items.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c2_u3.webp',
-              caption: 'Diagram: Using Utensils',
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c2_u3.webp',
+              caption: 'Kitchen tongs',
               afterParagraph: -1,
             ),
           ],

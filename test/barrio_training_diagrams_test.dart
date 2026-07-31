@@ -8,7 +8,7 @@
 // Diagram coverage after the accuracy cull (2026-07-31): forced/nonsensical
 // auto-icons were removed (566 of 977 across all manuals), leaving only the
 // illustrations that clearly fit their card. The guarded counts are now
-// 67 Company Handbook + 42 Food Safety = 109 diagrams. If a diagram is
+// 63 Company Handbook + 41 Food Safety = 104 diagrams. If a diagram is
 // intentionally added or cut, update these numbers deliberately (that is
 // the point of the guard).
 
@@ -41,18 +41,18 @@ void main() {
               if (_isDiagram(image)) image,
       ];
 
-  test('Company Handbook carries exactly its 67 approved diagrams', () {
+  test('Company Handbook carries exactly its 63 approved diagrams', () {
     final diagrams = diagramsIn(handbook);
-    expect(diagrams, hasLength(67));
+    expect(diagrams, hasLength(63));
     for (final image in diagrams) {
       expect(image.assetPath, startsWith(_kHandbookDiagramDir));
       expect(image.assetPath, endsWith('.webp'));
     }
   });
 
-  test('Food Safety carries exactly its 42 approved diagrams', () {
+  test('Food Safety carries exactly its 41 approved diagrams', () {
     final diagrams = diagramsIn(foodSafety);
-    expect(diagrams, hasLength(42));
+    expect(diagrams, hasLength(41));
     for (final image in diagrams) {
       expect(image.assetPath, startsWith(_kFoodSafetyDiagramDir));
       expect(image.assetPath, endsWith('.webp'));
@@ -61,7 +61,7 @@ void main() {
 
   test('every diagram leads its card and carries an honest alt caption', () {
     final all = [...diagramsIn(handbook), ...diagramsIn(foodSafety)];
-    expect(all, hasLength(109));
+    expect(all, hasLength(104));
     for (final image in all) {
       // afterParagraph -1 renders the diagram before the first paragraph:
       // the picture sets context, then the verbatim text follows.

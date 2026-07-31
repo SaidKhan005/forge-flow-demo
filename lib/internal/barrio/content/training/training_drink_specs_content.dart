@@ -727,8 +727,8 @@ const BarrioTrainingDoc kTrainingDrinkSpecs = BarrioTrainingDoc(
               '2. Add grapefruit slice to side of glass.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_drink_specs_diagrams/training_drink_specs_c14_u0.webp',
-              caption: 'Diagram: Mimosa De Toronja',
+              assetPath: 'assets/internal/barrio/training/training_drink_specs_photos/training_drink_specs_c14_u0.webp',
+              caption: 'Grapefruit mimosa',
               afterParagraph: -1,
             ),
           ],
