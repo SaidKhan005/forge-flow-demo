@@ -29,11 +29,11 @@ class BarrioAccessIntentBanner extends StatelessWidget {
 
     final borderColor = isIntended
         ? accentColor.withValues(alpha: 0.25)
-        : const Color(0xFFF39C12).withValues(alpha: 0.20);
+        : BarrioColors.warning.withValues(alpha: 0.20);
 
     final iconColor = isIntended
         ? accentColor
-        : const Color(0xFFF39C12);
+        : BarrioColors.warning;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 4, 20, 20),

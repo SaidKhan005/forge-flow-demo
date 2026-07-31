@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'barrio_destination_scaffold.dart';
+
 /// Premium horizontal PageView carousel for learning content.
 ///
 /// Learning-screen v2 gesture ownership (2026-07-23, operator-approved
@@ -410,7 +412,7 @@ class _CardScrollViewState extends State<_CardScrollView> {
                           // Fade to the white card surface (light theme)
                           // so the "more below" cue dissolves cleanly.
                           Color(0x00FFFFFF),
-                          Color(0xF2FFFFFF),
+                          BarrioColors.glassFill,
                         ],
                       ),
                     ),

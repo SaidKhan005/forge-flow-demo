@@ -101,7 +101,7 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
         child: Container(
           margin: carousel ? EdgeInsets.zero : const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
-            color: const Color(0xF2FFFFFF), // premium white glass fill
+            color: BarrioColors.glassFill, // premium white glass fill
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: widget.badgeColor.withValues(alpha: 0.35),
@@ -297,8 +297,8 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
                     border = const Color(0xFF2ECC71).withValues(alpha: 0.55);
                     bg = const Color(0xFF2ECC71).withValues(alpha: 0.10);
                   } else if (showWrong) {
-                    border = const Color(0xFFE74C3C).withValues(alpha: 0.55);
-                    bg = const Color(0xFFE74C3C).withValues(alpha: 0.10);
+                    border = BarrioColors.error.withValues(alpha: 0.55);
+                    bg = BarrioColors.error.withValues(alpha: 0.10);
                   } else {
                     border = const Color(0x2216243B);
                     bg = const Color(0x0A16243B);
@@ -358,7 +358,7 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
                                 ],
                                 if (showWrong)
                                   const Icon(Icons.cancel,
-                                      size: 18, color: Color(0xFFE74C3C)),
+                                      size: 18, color: BarrioColors.error),
                               ]),
                               if (isSelected) ...[
                                 const SizedBox(height: 8),

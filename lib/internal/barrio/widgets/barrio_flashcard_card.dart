@@ -137,15 +137,11 @@ class _FlashcardShell extends StatelessWidget {
       height: double.infinity,
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: BarrioColors.shellMid.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(22),
+        color: BarrioColors.glassFill,
+        borderRadius: BorderRadius.circular(BarrioRadii.card),
         border: Border.all(color: accent.withValues(alpha: 0.35)),
-        boxShadow: [
-          BoxShadow(
-            color: accent.withValues(alpha: 0.14),
-            blurRadius: 24,
-          ),
-        ],
+        // Neutral lift (no accent glow) to match the reading card it flips to.
+        boxShadow: barrioSoftShadow(),
       ),
       child: child,
     );

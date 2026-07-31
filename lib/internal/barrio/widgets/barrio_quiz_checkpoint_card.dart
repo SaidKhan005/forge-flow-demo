@@ -27,14 +27,14 @@ import 'barrio_chapter_icons.dart';
 import 'barrio_destination_scaffold.dart';
 
 /// Amber accent shared with the handbook card family's CHECK badge.
-const Color _kQuizAccent = Color(0xFFF39C12);
+const Color _kQuizAccent = BarrioColors.warning;
 
 /// Calm confirmation green shared with the card family's correct state.
-const Color _kCorrectGreen = Color(0xFF2ECC71);
+const Color _kCorrectGreen = BarrioColors.success;
 
 /// Soft wrong-pick red (lower alphas than the handbook decision cards:
 /// marked clearly, never punishingly).
-const Color _kWrongRed = Color(0xFFE74C3C);
+const Color _kWrongRed = BarrioColors.error;
 
 /// One tap-to-answer quick-check card. Stateless: the owning screen
 /// holds the session's first pick so the reveal survives paging away
@@ -152,23 +152,11 @@ class _QuizGlassShell extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xF2FFFFFF), // premium white glass fill
-        borderRadius: BorderRadius.circular(16),
+        color: BarrioColors.glassFill,
+        borderRadius: BorderRadius.circular(BarrioRadii.card),
         border: Border.all(color: _kQuizAccent.withValues(alpha: 0.35)),
-        boxShadow: const [
-          // Inner accent glow
-          BoxShadow(
-            color: Color(0x1AF39C12),
-            blurRadius: 20,
-            spreadRadius: -4,
-          ),
-          // Outer soft lift (navy-tinted, light UI)
-          BoxShadow(
-            color: Color(0x1416243B),
-            blurRadius: 28,
-            spreadRadius: -2,
-          ),
-        ],
+        // Neutral lift, no colored glow — consistent with the other cards.
+        boxShadow: barrioSoftShadow(),
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(

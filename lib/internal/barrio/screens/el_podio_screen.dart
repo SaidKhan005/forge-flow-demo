@@ -19,7 +19,7 @@ class ElPodioScreen extends StatefulWidget {
 
 class _ElPodioScreenState extends State<ElPodioScreen>
     with TickerProviderStateMixin {
-  static const _gold = Color(0xFFD4AF37);
+  static const _gold = BarrioColors.trophyGold;
   static const _silver = Color(0xFFC0C0C0);
   static const _bronze = Color(0xFFCD7F32);
 
@@ -443,7 +443,7 @@ class _RankTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: const Color(0xF2FFFFFF),
+        color: BarrioColors.glassFill,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isNegative
