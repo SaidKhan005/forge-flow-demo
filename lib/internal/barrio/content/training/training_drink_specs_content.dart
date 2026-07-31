@@ -553,13 +553,6 @@ const BarrioTrainingDoc kTrainingDrinkSpecs = BarrioTrainingDoc(
               '\n'
               '2. Place lime wedge on side of drink. Add dehydrated pineapple '
               'to center and frond down the side. Add straw.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_drink_specs_diagrams/training_drink_specs_c10_u0.webp',
-              caption: 'Diagram: Pina Colada Spritz',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -598,13 +591,6 @@ const BarrioTrainingDoc kTrainingDrinkSpecs = BarrioTrainingDoc(
               '2. Put lemon wheel on side of glass.\n'
               '\n'
               '3. Add a straw.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_drink_specs_diagrams/training_drink_specs_c11_u0.webp',
-              caption: 'Diagram: Té Borracho',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -706,13 +692,6 @@ const BarrioTrainingDoc kTrainingDrinkSpecs = BarrioTrainingDoc(
               '\n'
               '3. Add lime wedge to side of glass and skewered pickled '
               'pepper.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_drink_specs_diagrams/training_drink_specs_c13_u0.webp',
-              caption: 'Diagram: Legado Caesar',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),

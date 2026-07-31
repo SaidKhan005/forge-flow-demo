@@ -32,13 +32,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'Create Predictable Margin\n'
               '\n'
               'Author: Jim Taylor',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c0_u0.webp',
-              caption: 'Diagram: BOLD By Design',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -84,13 +77,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'margin without damaging the team or the guest experience.',
           runIndex: 1,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c1_u0.webp',
-              caption: 'Diagram: Why Most Restaurants Are Chasing the Wrong Number',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c1_u1',
@@ -113,13 +99,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'It is a book about designing a system that works.',
           runIndex: 2,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c1_u1.webp',
-              caption: 'Diagram: Why Most Restaurants Are Chasing the Wrong Number',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -275,13 +254,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'is noise created by how these three variables interact.\n'
               '\n'
               'Once this becomes clear, labor management changes permanently.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c3_u0.webp',
-              caption: 'Diagram: Chapter 2: The Three Levers of Labor Performance',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c3_u1',
@@ -314,13 +286,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'on one side, and covers and guest spend on the other.',
           runIndex: 1,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c3_u1.webp',
-              caption: 'Diagram: The Equation Beneath the Business',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c3_u2',
@@ -344,13 +309,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'This is the operating engine of the restaurant.',
           runIndex: 2,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c3_u2.webp',
-              caption: 'Diagram: The Equation Beneath the Business',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c3_u3',
@@ -376,13 +334,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'percentage becomes far more predictable. It stops feeling '
               'volatile and starts behaving like a system that can be '
               'diagnosed.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c3_u3.webp',
-              caption: 'Diagram: Why This Changes How You Manage',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c3_u4',
@@ -541,13 +492,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'When operators begin asking these questions consistently, '
               'labor management becomes disciplined instead of emotional.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c3_u7.webp',
-              caption: 'Diagram: How the Levers Interact',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c3_u8',
@@ -571,13 +515,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'And once the system is understood, the business becomes far '
               'easier to control.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c3_u8.webp',
-              caption: 'Diagram: The Foundation for Everything That Follows',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -623,13 +560,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'start asking what is normal for the industry.\n'
               '\n'
               'That shift carries a cost.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c4_u0.webp',
-              caption: 'Diagram: Chapter 3: Best Version vs. Convergence',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c4_u1',
@@ -772,13 +702,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'The role of management is not to force the restaurant into an '
               'external model. It is to uncover and stabilize the best '
               'version of the system that is already there.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c4_u4.webp',
-              caption: 'Diagram: The Best Version of the Business',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c4_u5',
@@ -816,13 +739,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'This is why copying targets rarely works. You can replicate '
               'the numbers you are aiming for, but you cannot replicate the '
               'underlying system that produced them.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c4_u5.webp',
-              caption: 'Diagram: Why Identical Concepts Produce Different Results',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c4_u6',
@@ -852,13 +768,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'And once it is identified, it becomes one of the most valuable '
               'insights an operator can have.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c4_u6.webp',
-              caption: 'Diagram: Discovering Your Performance Range',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c4_u7',
@@ -889,13 +798,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'Meanwhile, operators who continue chasing industry averages '
               'remain reactive. They adjust constantly, but rarely move '
               'forward.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c4_u7.webp',
-              caption: 'Diagram: The Advantage of Not Following the Crowd',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c4_u8',
@@ -1037,13 +939,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'Sometimes these actions help in the short term. Often, they do '
               'not address the root cause. The system remains unchanged, and '
               'the gap persists.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c5_u2.webp',
-              caption: 'Diagram: Why Most Operators Never See It Clearly',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c5_u3',
@@ -1074,13 +969,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '"good enough" and asking a more precise question.\n'
               '\n'
               'What is this business capable of?',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c5_u3.webp',
-              caption: 'Diagram: The Illusion of "Good Enough"',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c5_u4',
@@ -1109,13 +997,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'Clarity about how labor economics actually work. Clarity about '
               'which variables drive profitability. Clarity about how those '
               'variables interact inside the operation.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c5_u4.webp',
-              caption: 'Diagram: The Opportunity Inside the Existing System',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c5_u5',
@@ -1147,13 +1028,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'The goal is not to use less labor. The goal is to use labor '
               'more effectively, in a way that supports both productivity and '
               'the guest experience.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c5_u5.webp',
-              caption: 'Diagram: Why Cutting Is Not a Strategy',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c5_u6',
@@ -1183,13 +1057,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'When these questions are asked consistently, the Profit Gap '
               'becomes visible. And once it is visible, it can be add ressed '
               'systematically.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c5_u6.webp',
-              caption: 'Diagram: Seeing the System Instead of the Symptoms',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c5_u7',
@@ -1215,13 +1082,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'closely at how productivity is created inside the restaurant.\n'
               '\n'
               'That is where we are going next.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c5_u7.webp',
-              caption: 'Diagram: The Beginning of Operational Clarity',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -1334,13 +1194,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'Wage. Productivity. Guest spend.\n'
               '\n'
               'At this point, the system becomes much easier to read.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c6_u2.webp',
-              caption: 'Diagram: Seeing the Full Structure',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c6_u3',
@@ -1428,13 +1281,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'Labor management becomes less about control and more about '
               'understanding.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c6_u5.webp',
-              caption: 'Diagram: The Shift from Reaction to Analysis',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c6_u6',
@@ -1460,13 +1306,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'The equation forces these relationships to be considered '
               'together.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c6_u6.webp',
-              caption: 'Diagram: Connecting the Equation to Daily Operations',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c6_u7',
@@ -1489,13 +1328,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'Instead of reacting after the fact, the business can be '
               'managed proactively.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c6_u7.webp',
-              caption: 'Diagram: Building Predictability into the Business',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c6_u8',
@@ -1559,13 +1391,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'To understand it properly, we need to move beyond the metric '
               'and examine what is actually happening inside the system.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c7_u0.webp',
-              caption: 'Diagram: Chapter 6: Understanding Productivity (Front of House)',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c7_u1',
@@ -1638,13 +1463,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'hour can realistically handle.\n'
               '\n'
               'CPLH is the output of this structure, not the cause of it.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c7_u2.webp',
-              caption: 'Diagram: The Structure Behind the Number',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c7_u3',
@@ -1744,13 +1562,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'What began as an attempt to increase efficiency creates '
               'instability.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c7_u5.webp',
-              caption: 'Diagram: The Hidden Cost of Overloading the Floor',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c7_u6',
@@ -1814,13 +1625,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'These patterns are signals. They point toward the natural '
               'limits of the system.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c7_u7.webp',
-              caption: 'Diagram: Recognizing Your Operating Range',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c7_u8',
@@ -1937,13 +1741,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'capture the difficulty of achieving it. Without understanding '
               'that difference, operators can easily misread what the number '
               'is telling them.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c8_u1.webp',
-              caption: 'Diagram: What the Number Hides',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c8_u2',
@@ -2046,13 +1843,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'system is beginning to break.\n'
               '\n'
               'Recognizing this moment is critical.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c8_u4.webp',
-              caption: 'Diagram: Where the System Begins to Strain',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c8_u5',
@@ -2081,13 +1871,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'What initially looked like improved efficiency becomes a '
               'source of long-term instability.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c8_u5.webp',
-              caption: 'Diagram: The Cost of Pushing Too Far',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c8_u6',
@@ -2152,13 +1935,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'At even higher levels, breakdowns become consistent.\n'
               '\n'
               'These patterns reveal the limits of the system.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c8_u7.webp',
-              caption: 'Diagram: Understanding Capacity',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c8_u8',
@@ -2183,13 +1959,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'When the system is stable, these elements reinforce each '
               'other.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c8_u8.webp',
-              caption: 'Diagram: From Efficiency to Stability',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c8_u9',
@@ -2265,13 +2034,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'The Employee Workload Factor exists to connect those two '
               'realities.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c9_u0.webp',
-              caption: 'Diagram: Chapter 8: The Employee Workload Factor',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c9_u1',
@@ -2303,13 +2065,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'Understanding this distinction is critical. Productivity is '
               'not just about how much is produced. It is about how that '
               'production is achieved.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c9_u1.webp',
-              caption: 'Diagram: From Output to Experience',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c9_u2',
@@ -2342,13 +2097,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'This threshold is rarely identified directly. It is felt long '
               'before it is measured.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c9_u2.webp',
-              caption: 'Diagram: The Invisible Threshold',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c9_u3',
@@ -2416,13 +2164,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'What began as an effort to improve efficiency creates a series '
               'of secondary effects that are far more difficult to manage.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c9_u4.webp',
-              caption: 'Diagram: The Compounding Effect on the Business',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c9_u5',
@@ -2449,13 +2190,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'These are not abstract questions. They are indicators of where '
               'the system is operating relative to its limits.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c9_u5.webp',
-              caption: 'Diagram: Why Workload Must Be Managed, Not Ignored',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c9_u6',
@@ -2489,13 +2223,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'Because at that point, productivity is no longer being chased.\n'
               '\n'
               'It is being controlled.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c9_u6.webp',
-              caption: 'Diagram: The Beginning of a Different Approach',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -2678,13 +2405,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'Understanding this curve is one of the most important insights '
               'an operator can develop. It replaces the idea of maximizing '
               'output with the goal of maintaining balance.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c10_u4.webp',
-              caption: 'Diagram: The Shape of the Curve',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c10_u5',
@@ -2784,13 +2504,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'Not control through reaction, but control through '
               'understanding.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c10_u7.webp',
-              caption: 'Diagram: The Shift From Reaction to Control',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c10_u8',
@@ -2822,13 +2535,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'it.\n'
               '\n'
               'From observation to execution.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c10_u8.webp',
-              caption: 'Diagram: The Foundation of Sustainable Performance',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -2906,13 +2612,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'At this stage, the system is still functioning, but it is '
               'operating with less stability than the numbers suggest.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c11_u1.webp',
-              caption: 'Diagram: The Illusion of Strong Performance',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c11_u2',
@@ -2940,13 +2639,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'Managers notice that shifts feel tighter. Employees begin to '
               'move more quickly, but with less control. The system becomes '
               'more dependent on everything going right.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c11_u2.webp',
-              caption: 'Diagram: The Compression of the System',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c11_u3',
@@ -2979,13 +2671,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'not to return as frequently.\n'
               '\n'
               'These changes are subtle, but they compound.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c11_u3.webp',
-              caption: 'Diagram: The Erosion of the Guest Experience',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c11_u4',
@@ -3045,13 +2730,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'productivity so difficult to manage. By the time the impact '
               'becomes visible in the numbers, the system has already been '
               'under strain for some time.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c11_u5.webp',
-              caption: 'Diagram: Why the Numbers Don\'t Warn You',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c11_u6',
@@ -3074,13 +2752,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'When these patterns appear consistently, it is a sign that '
               'productivity is no longer supporting the operation. It is '
               'working against it.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c11_u6.webp',
-              caption: 'Diagram: Recognizing the Early Signals',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c11_u7',
@@ -3247,13 +2918,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'These decisions are understandable. In isolation, they rarely '
               'seem problematic. But over time, they create a system where '
               'labor is consistently ahead of demand.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c12_u1.webp',
-              caption: 'Diagram: The Nature of Underutilization',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c12_u2',
@@ -3284,13 +2948,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'This is the defining characteristic of low productivity. It is '
               'expensive, but not disruptive.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c12_u2.webp',
-              caption: 'Diagram: Why It Often Goes Unchecked',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c12_u3',
@@ -3348,13 +3005,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'execution.\n'
               '\n'
               'The system becomes less sharp.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c12_u4.webp',
-              caption: 'Diagram: The Hidden Impact on Performance',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c12_u5',
@@ -3380,13 +3030,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'Without identifying the source, attempts to correct '
               'productivity often fall short.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c12_u5.webp',
-              caption: 'Diagram: Diagnosing the Cause',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c12_u6',
@@ -3416,13 +3059,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'both productivity and experience should be evaluated.\n'
               '\n'
               'This process takes discipline, but it produces stability.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c12_u6.webp',
-              caption: 'Diagram: Adjusting Without Overcorrecting',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c12_u7',
@@ -3480,13 +3116,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'And with that foundation established, the focus can shift from '
               'diagnosing the system to designing it.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c12_u8.webp',
-              caption: 'Diagram: Completing the Picture',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -3777,13 +3406,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'human system can comfortably sustain. When that threshold is '
               'crossed, performance begins to deteriorate. This threshold is '
               'what we call the Employee Workload Factor.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c14_u0.webp',
-              caption: 'Diagram: Chapter 13: The Employee Workload Factor',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c14_u1',
@@ -3850,13 +3472,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'All of this begins when workload quietly exceeds the '
               'sustainable capacity of the team.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c14_u2.webp',
-              caption: 'Diagram: What Happens When Workload Exceeds Capacity',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c14_u3',
@@ -3883,13 +3498,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'When this pattern continues, the restaurant begins to lose one '
               'of its most valuable assets: experienced employees.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c14_u3.webp',
-              caption: 'Diagram: The Psychological Cost of Overload',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c14_u4',
@@ -4267,13 +3875,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'But building systems that sustain it is what turns that '
               'understanding into results.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c15_u8.webp',
-              caption: 'Diagram: The Transition to System Design',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -4344,13 +3945,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'The result is a system that consistently carries more labor '
               'than it needs.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c16_u1.webp',
-              caption: 'Diagram: The Comfort of Underutilization',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c16_u2',
@@ -4375,13 +3969,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'that the system is misaligned.\n'
               '\n'
               'This is how inefficiency becomes permanent.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c16_u2.webp',
-              caption: 'Diagram: The Financial Impact',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c16_u3',
@@ -4408,13 +3995,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'When the system does not require strong performance, strong '
               'performance becomes less common.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c16_u3.webp',
-              caption: 'Diagram: The Operational Impact',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c16_u4',
@@ -4438,13 +4018,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'Because the operation continues to function, the inefficiency '
               'is not immediately corrected.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c16_u4.webp',
-              caption: 'Diagram: Why It Persists',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c16_u5',
@@ -4469,13 +4042,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'Without identifying the cause, reducing labor alone will not '
               'solve the problem. It may temporarily improve the numbers, but '
               'it will not create a stable system.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c16_u5.webp',
-              caption: 'Diagram: Diagnosing the Problem',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c16_u6',
@@ -4504,13 +4070,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'further changes are made.\n'
               '\n'
               'This process takes discipline, but it leads to stability.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c16_u6.webp',
-              caption: 'Diagram: Adjusting Without Overcorrecting',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c16_u7',
@@ -4562,13 +4121,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'But to keep the system operating within the range where it '
               'performs best.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c16_u8.webp',
-              caption: 'Diagram: Understanding the Left Side of the Curve',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -4632,13 +4184,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'At this point, the system is no longer simply efficient. It is '
               'operating under pressure.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c17_u1.webp',
-              caption: 'Diagram: The Shift From Efficiency to Pressure',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c17_u2',
@@ -4666,13 +4211,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'At this stage, productivity may still appear strong in the '
               'numbers, but the foundation of the operation is beginning to '
               'weaken.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c17_u2.webp',
-              caption: 'Diagram: The Beginning of Instability',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c17_u3',
@@ -4704,13 +4242,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'What began as an effort to improve efficiency creates '
               'long-term operational weakness.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c17_u3.webp',
-              caption: 'Diagram: The Human Impact',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c17_u4',
@@ -4733,13 +4264,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'The initial gains from higher productivity are gradually '
               'offset by the cost of instability.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c17_u4.webp',
-              caption: 'Diagram: The Illusion of Strong Numbers',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c17_u5',
@@ -4763,13 +4287,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'Eventually, the instability created by this environment begins '
               'to damage both culture and profitability.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c17_u5.webp',
-              caption: 'Diagram: The Right Side of the Curve',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c17_u6',
@@ -4850,13 +4367,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'It is to operate within the range where the system performs at '
               'its best.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c17_u8.webp',
-              caption: 'Diagram: Understanding the Right Side of the Curve',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -4933,13 +4443,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'The numbers may improve temporarily, but the system becomes '
               'less stable.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c18_u1.webp',
-              caption: 'Diagram: The Illusion of Isolated Performance',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c18_u2',
@@ -4965,13 +4468,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'This constant interaction means that productivity must be '
               'balanced across both systems at the same time.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c18_u2.webp',
-              caption: 'Diagram: How the Systems Interact',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c18_u3',
@@ -4997,13 +4493,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'This is why departmental metrics must always be viewed within '
               'the context of the full operation.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c18_u3.webp',
-              caption: 'Diagram: Misalignment and Its Consequences',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c18_u4',
@@ -5031,13 +4520,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'Balance is not achieved through a single decision. It is '
               'maintained through alignment across multiple parts of the '
               'operation.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c18_u4.webp',
-              caption: 'Diagram: The Role of Coordination',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c18_u5',
@@ -5057,13 +4539,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'Decisions are no longer made based on individual metrics. They '
               'are made based on how those metrics interact.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c18_u5.webp',
-              caption: 'Diagram: Seeing the System as a Whole',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c18_u6',
@@ -5093,13 +4568,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'The goal is not to optimize each department independently. It '
               'is to align them within a shared operating range.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c18_u6.webp',
-              caption: 'Diagram: The Unified Operating Range',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c18_u7',
@@ -5131,13 +4599,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'Not understanding productivity, but designing operations that '
               'protect it.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c18_u7.webp',
-              caption: 'Diagram: The Foundation for What Comes Next',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -5331,13 +4792,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'Instead of reacting to labor percentage after the fact, they '
               'begin managing the system in real time.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c19_u4.webp',
-              caption: 'Diagram: Maintaining the Optimal Range',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c19_u5',
@@ -5362,13 +4816,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'Instead of chasing numbers each week, the restaurant begins '
               'operating within a stable performance range.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c19_u5.webp',
-              caption: 'Diagram: The Stability Advantage',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c19_u6',
@@ -5402,13 +4849,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'Guests receive a strong experience.\n'
               '\n'
               'And the business becomes far more stable over time.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c19_u6.webp',
-              caption: 'Diagram: The Operator\'s Responsibility',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -5490,13 +4930,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'This is how overstaffing quietly reshapes the culture of a '
               'restaurant.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c20_u1.webp',
-              caption: 'Diagram: The Comfort Trap',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c20_u2',
@@ -5526,13 +4959,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'The business is working harder than necessary to produce the '
               'same result.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c20_u2.webp',
-              caption: 'Diagram: The Financial Consequences',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c20_u3',
@@ -5557,13 +4983,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'demanding enough. This can lead to a different kind of '
               'turnover, where employees leave in search of a more engaging '
               'environment.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c20_u3.webp',
-              caption: 'Diagram: The Long-Term Impact on the Team',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c20_u4',
@@ -5618,13 +5037,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'This does not mean pushing the team into overload. It means '
               'operating within a range where employees are engaged, '
               'productive, and supported by the structure of the operation.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c20_u5.webp',
-              caption: 'Diagram: Moving Toward Discipline',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c20_u6',
@@ -5958,13 +5370,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'Understanding these relationships is what allows operators to '
               'see the restau rant clearly.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c22_u1.webp',
-              caption: 'Diagram: Seeing the System Clearly',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c22_u2',
@@ -5988,13 +5393,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'system. Staffing decisions are tied to demand. Operational '
               'adjustments are tied to workload. Management becomes proactive '
               'rather than reactive.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c22_u2.webp',
-              caption: 'Diagram: Moving Beyond Reaction',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c22_u3',
@@ -6016,13 +5414,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'This is what separates controlled operations from reactive '
               'ones.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c22_u3.webp',
-              caption: 'Diagram: The Role of the Operator',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c22_u4',
@@ -6043,13 +5434,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'a range the system can sustain.\n'
               '\n'
               'This is the purpose of the Optimal Productivity Zone.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c22_u4.webp',
-              caption: 'Diagram: Stability as the Objective',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c22_u5',
@@ -6070,13 +5454,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'Productivity is no longer an abstract idea. It is a '
               'measurable, observable, and manageable system.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c22_u5.webp',
-              caption: 'Diagram: Bringing It All Together',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c22_u6',
@@ -6157,13 +5534,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'consistently managed.',
           runIndex: 1,
           runLength: 4,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c23_u0.webp',
-              caption: 'Diagram: Chapter 22: From Understanding to Execution',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c23_u1',
@@ -6195,13 +5565,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'keeping the restaurant within its optimal range.',
           runIndex: 2,
           runLength: 4,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c23_u1.webp',
-              caption: 'Diagram: Chapter 22: From Understanding to Execution',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c23_u2',
@@ -6230,13 +5593,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'managers are able to lead rather than constantly react.',
           runIndex: 3,
           runLength: 4,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c23_u2.webp',
-              caption: 'Diagram: Chapter 22: From Understanding to Execution',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c23_u3',
@@ -6266,13 +5622,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'turns that clarity into results.',
           runIndex: 4,
           runLength: 4,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c23_u3.webp',
-              caption: 'Diagram: Chapter 22: From Understanding to Execution',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -6486,13 +5835,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'In an unstable system, improvements are temporary. In a stable '
               'system, improvements compound.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c25_u0.webp',
-              caption: 'Diagram: Chapter 24: Optimization',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c25_u1',
@@ -6517,13 +5859,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'This level of precision is only possible when the system is '
               'stable.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c25_u1.webp',
-              caption: 'Diagram: Refining the System',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c25_u2',
@@ -6551,13 +5886,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'Optimization is not about extracting more from the system. It '
               'is about allowing the system to perform at a higher level.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c25_u2.webp',
-              caption: 'Diagram: Strengthening the Guest Experience',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c25_u3',
@@ -6610,13 +5938,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'This is how high-performing restaurants separate themselves '
               'from average ones.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c25_u4.webp',
-              caption: 'Diagram: Small Changes, Compounding Results',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c25_u5',
@@ -6639,13 +5960,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'refine it within those limits. When this balance is '
               'maintained, improvement can continue without introducing '
               'instability.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c25_u5.webp',
-              caption: 'Diagram: Avoiding the Trap of Over-Optimization',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c25_u6',
@@ -6694,13 +6008,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'Sustaining the system requires a different mindset than '
               'building it.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c26_u0.webp',
-              caption: 'Diagram: Chapter 25: Sustaining the System',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c26_u1',
@@ -6725,13 +6032,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'is no longer aligned.\n'
               '\n'
               'This is how stability is lost.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c26_u1.webp',
-              caption: 'Diagram: The Nature of Drift',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c26_u2',
@@ -6755,13 +6055,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'productivity consistently moves outside the optimal range. '
               'These signals provide an opportunity to make adjustments '
               'before the system becomes unstable.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c26_u2.webp',
-              caption: 'Diagram: The Role of Awareness',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c26_u3',
@@ -6786,13 +6079,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'Maintaining discipline ensures that the system continues to '
               'function as designed.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c26_u3.webp',
-              caption: 'Diagram: Maintaining Discipline',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c26_u4',
@@ -6819,13 +6105,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'adjustments should be made deliberately, with a clear '
               'understanding of how they will affect productivity and '
               'workload.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c26_u4.webp',
-              caption: 'Diagram: Adapting to Change',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c26_u5',
@@ -6846,13 +6125,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'rather than reacting to problems.\n'
               '\n'
               'Protecting this culture is part of sustaining the system.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c26_u5.webp',
-              caption: 'Diagram: Reinforcing the Culture',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c26_u6',
@@ -6872,13 +6144,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'Over time, the restaurant becomes easier to operate because '
               'the structure supports performance.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c26_u6.webp',
-              caption: 'Diagram: Long-Term Stability',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c26_u7',
@@ -6904,13 +6169,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'And durability is what allows the business to perform, not '
               'just in the short term, but over the long term.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c26_u7.webp',
-              caption: 'Diagram: The Final Perspective',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -6940,13 +6198,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'Because no matter how well designed the operation is, it does '
               'not run itself.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c27_u0.webp',
-              caption: 'Diagram: Chapter 26: The Operator\'s Role',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c27_u1',
@@ -6971,13 +6222,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'To move beyond this, the operator must shift from reaction to '
               'management of the system.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c27_u1.webp',
-              caption: 'Diagram: Moving Beyond Daily Reaction',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c27_u2',
@@ -7006,13 +6250,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'The operator must be able to recognize these patterns as they '
               'develop.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c27_u2.webp',
-              caption: 'Diagram: Seeing the System in Real Time',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c27_u3',
@@ -7066,13 +6303,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'Processes are followed as designed. Adjustments are made '
               'deliberately. This creates an environment where the system is '
               'respected and maintained.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c27_u4.webp',
-              caption: 'Diagram: Leading Through Structure',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c27_u5',
@@ -7147,13 +6377,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'When this perspective is applied consistently, the operation '
               'becomes more stable.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c27_u7.webp',
-              caption: 'Diagram: The Long-Term Perspective',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c27_u8',
@@ -7178,13 +6401,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'by how hard the team works.\n'
               '\n'
               'It is determined by how well the system is managed.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c27_u8.webp',
-              caption: 'Diagram: The Final Shift',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -7214,13 +6430,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'What becomes clear over time is that this way of operating '
               'does not just improve individual shifts. It changes the '
               'trajectory of the business.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c28_u0.webp',
-              caption: 'Diagram: Chapter 27: The Long-Term Impact',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c28_u1',
@@ -7244,13 +6453,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'Each shift reinforces the next. Patterns become clearer. '
               'Adjustments become smaller and more precise. The operation '
               'begins to move forward rather than constantly recovering.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c28_u1.webp',
-              caption: 'Diagram: Stability Creates Momentum',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c28_u2',
@@ -7274,13 +6476,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'insignificant. Over time, they create meaningful results.\n'
               '\n'
               'This is how high-performing operations separate themselves.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c28_u2.webp',
-              caption: 'Diagram: The Compounding Effect of Consistency',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c28_u3',
@@ -7334,13 +6529,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'The experience is not defined by occasional standout moments. '
               'It is defined by reliable quality.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c28_u4.webp',
-              caption: 'Diagram: The Impact on the Guest Experience',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c28_u5',
@@ -7362,13 +6550,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'Performance does not depend on a single strong week or a '
               'single strong manager. Instead, it is supported by a system '
               'that produces results consistently.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c28_u5.webp',
-              caption: 'Diagram: Financial Performance Over Time',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c28_u6',
@@ -7389,13 +6570,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'execution. Instead of managing chaos, managers are improving '
               'performance. The energy of the operation shifts from recovery '
               'to progression.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c28_u6.webp',
-              caption: 'Diagram: Reducing Operational Friction',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c28_u7',
@@ -7417,13 +6591,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'intention. Decisions are made with a clear understanding of '
               'their impact. The business is no longer something that happens '
               'to the operator. It is something the operator controls.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c28_u7.webp',
-              caption: 'Diagram: The Shift in Perspective',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c28_u8',
@@ -7442,13 +6609,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'It is not just about improving efficiency. It is about '
               'building a business that performs consistently over time.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c28_u8.webp',
-              caption: 'Diagram: The Result',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -7556,13 +6716,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'on performing well rather than simply managing pressure.\n'
               '\n'
               'When stress is reduced, engagement improves.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c29_u2.webp',
-              caption: 'Diagram: Removing Unnecessary Stress',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c29_u3',
@@ -7587,13 +6740,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'It creates a foundation where relationships can strengthen, '
               'communication can improve, and performance can grow.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c29_u3.webp',
-              caption: 'Diagram: Creating a Consistent Experience for the Team',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c29_u4',
@@ -7644,13 +6790,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'and ensure that changes are made without disrupting balance. '
               'Culture is not maintained by avoiding structure. It is '
               'maintained by applying structure thoughtfully.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c29_u5.webp',
-              caption: 'Diagram: The Role of Leadership',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c29_u6',
@@ -7764,13 +6903,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'the business is not something that is created once.\n'
               '\n'
               'It is something that must be sustained.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c30_u0.webp',
-              caption: 'Diagram: Chapter 29: Sustaining the Best Version of Your Business',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c30_u1',
@@ -7791,13 +6923,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'The challenge is not reaching it.\n'
               '\n'
               'The challenge is keeping it.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c30_u1.webp',
-              caption: 'Diagram: The Nature of the "Best Version"',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c30_u2',
@@ -7821,13 +6946,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'optimal range.\n'
               '\n'
               'Because the process is gradual, it is easy to miss.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c30_u2.webp',
-              caption: 'Diagram: Why the System Drifts',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c30_u3',
@@ -7850,13 +6968,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'Recognizing these signals early allows the operator to respond '
               'before the system becomes unstable.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c30_u3.webp',
-              caption: 'Diagram: Recognizing the Shift',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c30_u4',
@@ -7877,13 +6988,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'The objective is not to fix symptoms.\n'
               '\n'
               'It is to restore alignment.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c30_u4.webp',
-              caption: 'Diagram: Returning to the System',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c30_u5',
@@ -7903,13 +7007,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'It means that the foundation remains stable, even as the '
               'operation adapts to changing conditions. It allows the '
               'business to evolve without losing alignment.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c30_u5.webp',
-              caption: 'Diagram: Consistency Over Time',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c30_u6',
@@ -7931,13 +7028,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'supports their ability to perform.\n'
               '\n'
               'This is what keeps the system intact.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c30_u6.webp',
-              caption: 'Diagram: The Role of Leadership',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c30_u7',
@@ -7958,13 +7048,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'changes made do not disrupt the balance that has been '
               'achieved. The system should evolve carefully, with a clear '
               'understanding of how each adjustment will affect performance.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c30_u7.webp',
-              caption: 'Diagram: Protecting What Works',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c30_u8',
@@ -7982,13 +7065,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'When this responsibility is taken seriously, the operation '
               'remains stable.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c30_u8.webp',
-              caption: 'Diagram: The Ongoing Responsibility',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c30_u9',
@@ -8009,13 +7085,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'And that consistency is what allows the restaurant to perform '
               'at a high level over time.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c30_u9.webp',
-              caption: 'Diagram: The Result',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -8131,13 +7200,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'these signals and respond accordingly, not by reacting to '
               'numbers, but by adjusting the conditions that produce those '
               'numbers.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c31_u3.webp',
-              caption: 'Diagram: Seeing the System Clearly',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c31_u4',
@@ -8187,13 +7249,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'within a clear framework. The restaurant becomes more '
               'predictable, not because it is rigid, but because it is '
               'managed intentionally.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c31_u5.webp',
-              caption: 'Diagram: Leading With Intent',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c31_u6',
@@ -8211,13 +7266,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'They come from understanding how the system works and managing '
               'it effectively.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c31_u6.webp',
-              caption: 'Diagram: The Long-Term Impact',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c31_u7',
@@ -8237,13 +7285,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'And at that point, productivity is no longer a challenge.\n'
               '\n'
               'It is an advantage.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c31_u7.webp',
-              caption: 'Diagram: The Final Shift',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -8280,13 +7321,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'None of these ideas exist in isolation.\n'
               '\n'
               'They are all connected.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c32_u0.webp',
-              caption: 'Diagram: Protect the System',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c32_u1',
@@ -8313,13 +7347,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'correcting issues rather than preventing them.\n'
               '\n'
               'The system is always moving, but it is not controlled.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c32_u1.webp',
-              caption: 'Diagram: What Most Operators Miss',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c32_u2',
@@ -8345,13 +7372,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'precise.\n'
               '\n'
               'The operation becomes more stable.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c32_u2.webp',
-              caption: 'Diagram: What Changes When the System Is Understood',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c32_u3',
@@ -8374,13 +7394,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'convenience?\n'
               '\n'
               'These decisions determine whether the system remains strong.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c32_u3.webp',
-              caption: 'Diagram: The Responsibility That Comes With It',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c32_u4',
@@ -8428,13 +7441,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'Not control through pressure, but control through '
               'understanding. Not control through constant effort, but '
               'control through design.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c32_u5.webp',
-              caption: 'Diagram: What This Creates',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c32_u6',
@@ -8458,13 +7464,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'And that is what separates restaurants that struggle from '
               'those that perform consistently.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c32_u6.webp',
-              caption: 'Diagram: The Final Perspective',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c32_u7',
@@ -8482,13 +7481,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'That is the work.\n'
               '\n'
               'And that is the opportunity.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c32_u7.webp',
-              caption: 'Diagram: Protect the System',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -8547,13 +7539,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'working against you and starts working for you.\n'
               '\n'
               'BENCHMARK',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c33_u0.webp',
-              caption: 'Diagram: Back Cover',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),

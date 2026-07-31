@@ -27,13 +27,6 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
           body: 'BARRIO LEGADO\n'
               'Menu Concept\n'
               '95 Water Street · St. John\'s, Newfoundland',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c0_u0.webp',
-              caption: 'Diagram: Ceviches',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -180,13 +173,6 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
               'Fish - Coleslaw, Chipotle Mayo\n'
               'Pork Belly ???????\n'
               'Oyster Flight 9 piece - 3 of each flavor',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c3_u0.webp',
-              caption: 'Diagram: Slide 8',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c3_u1',
@@ -251,13 +237,6 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
               'Lomo - Onions, Tomato, Pepper. ?Potato?\n'
               'Lomo = Beef loin\n'
               'Saltado = Stir-fried',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c4_u0.webp',
-              caption: 'Diagram: Slide 11',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c4_u1',
@@ -330,13 +309,6 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
               'off mild green pepper over a flame -> Comes from same Mixtera '
               'region as Masa\n'
               'Crema -> Mexican table cream. Lighter than sour cream',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c4_u3.webp',
-              caption: 'Diagram: Slide 14',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c4_u4',
@@ -353,13 +325,6 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
               'this technique adding local ingredients and Peru declared it a '
               'national cultural heritage and gave it its own holiday every '
               '3rd Sunday of July',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c4_u4.webp',
-              caption: 'Diagram: Slide 15',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c4_u5',
@@ -399,13 +364,6 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
               'Potatoes, Rosemary,Pickles?\n'
               'Gallo Pinto ( Red pepper, Onion, Black Bean)\n'
               'Salad Has Cactus in it with Tequila Lime Vinagre',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c4_u6.webp',
-              caption: 'Diagram: Slide 17',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c4_u7',
@@ -535,13 +493,6 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
               'Tinga - Chicken, Chipotle, Cilantro , Onion\n'
               'Quesongo - Mushrooms, Cheese, Onion\n'
               'Fish - Coleslaw, Chipotle Mayo',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c6_u0.webp',
-              caption: 'Diagram: Slide 25',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),

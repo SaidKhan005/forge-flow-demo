@@ -85,13 +85,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               '- Transparency: Open communication built on integrity and '
               'authenticity, the secret ingredients to strengthening trust '
               'and building strong connections!',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c1_u0.webp',
-              caption: 'Diagram: Core Values',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -119,13 +112,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'role that invites you to be present, proactive, and genuinely '
               'connected to every moment, making each guest feel valued from '
               'the moment they arrive until the moment they leave.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c2_u0.webp',
-              caption: 'Diagram: Host Philosophy',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -163,13 +149,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'it\'s easy to question whether you\'ve made the right choice.',
           runIndex: 1,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c3_u0.webp',
-              caption: 'Diagram: Hello\'s',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_host_manual_c3_u1',
@@ -188,13 +167,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'and are on our way to making lasting connections.',
           runIndex: 2,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c3_u1.webp',
-              caption: 'Diagram: Hello\'s',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -334,13 +306,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'table as they arrive. Whether it\'s wishing them a happy '
               'birthday or offering heartfelt congratulations, we go above '
               'and beyond to tailor every moment just for them.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c5_u2.webp',
-              caption: 'Diagram: Celebrations',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_host_manual_c5_u3',
@@ -353,13 +318,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'unexpected gestures that create a "wow" moment, we can elevate '
               'the guest experience and enhance our brand identity, making '
               'each dining occasion both personal and unforgettable.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c5_u3.webp',
-              caption: 'Diagram: Micro Moments',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_host_manual_c5_u4',
@@ -401,13 +359,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               '4. Assisting The Service Team\n'
               '\n'
               '5. Side Duties',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c6_u0.webp',
-              caption: 'Diagram: Host Priorities',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_host_manual_c6_u1',
@@ -449,13 +400,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'final gracious touch, you may assist them in putting it on. '
               'This small but memorable gesture ensures every guest feels '
               'cared for from arrival to departure.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c6_u2.webp',
-              caption: 'Diagram: Coat Check',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_host_manual_c6_u3',
@@ -473,13 +417,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'while keeping the conversation light and friendly. Conclude '
               'the seating with a genuine positive note, ensuring your guests '
               'feel valued and appreciated from the very start!',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c6_u3.webp',
-              caption: 'Diagram: Seating Guests',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_host_manual_c6_u4',
@@ -513,13 +450,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'your path, remember to graciously yield and give them the '
               'right of way: it\'s a simple yet impactful way to enhance their '
               'visit!',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c6_u5.webp',
-              caption: 'Diagram: Yield to Guests',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_host_manual_c6_u6',
@@ -593,13 +523,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'been a problem. Use "You\'re welcome" or "My pleasure".',
           runIndex: 1,
           runLength: 3,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c7_u1.webp',
-              caption: 'Diagram: Language',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_host_manual_c7_u2',
@@ -630,13 +553,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'you must uphold firm guidelines.',
           runIndex: 2,
           runLength: 3,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c7_u2.webp',
-              caption: 'Diagram: Language',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_host_manual_c7_u3',
@@ -649,13 +565,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'and trust, making every visit memorable.',
           runIndex: 3,
           runLength: 3,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c7_u3.webp',
-              caption: 'Diagram: Language',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_host_manual_c7_u4',
@@ -687,13 +596,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'environment for dialogue.',
           runIndex: 1,
           runLength: 3,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c7_u4.webp',
-              caption: 'Diagram: Feedback',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_host_manual_c7_u5',
@@ -715,13 +617,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'effectively.',
           runIndex: 2,
           runLength: 3,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c7_u5.webp',
-              caption: 'Diagram: Feedback',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_host_manual_c7_u6',
@@ -752,13 +647,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'experience.',
           runIndex: 3,
           runLength: 3,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c7_u6.webp',
-              caption: 'Diagram: Feedback',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_host_manual_c7_u7',
@@ -929,13 +817,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'only signals that the host stand requires support but sets '
               'clear expectations for your return, and ensures that guests '
               'are attended to during your brief absence.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c7_u12.webp',
-              caption: 'Diagram: Leaving the Host Stand',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_host_manual_c7_u13',
@@ -946,13 +827,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'check in with a Supervisor or Manager, and take a moment to '
               'connect with the other staff to confirm everything is running '
               'smoothly and they do not require assistance.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c7_u13.webp',
-              caption: 'Diagram: Before You Leave',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_host_manual_c7_u14',
@@ -1105,13 +979,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'minutes to come and claim their table so let them know to '
               'contact the restaurant or reply to the text if they are going '
               'to take a little longer to arrive.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c8_u3.webp',
-              caption: 'Diagram: Waitlist',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_host_manual_c8_u4',
@@ -1146,13 +1013,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'and make it happen. While we cannot offer a guarantee, we will '
               'do everything possible to ensure they have the best possible '
               'experience.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c8_u5.webp',
-              caption: 'Diagram: Guest Requests',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_host_manual_c8_u6',
@@ -1167,13 +1027,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'important details with the party. It\'s a simple step that '
               'keeps everything running smoothly and shows our guests we\'re '
               'truly invested in making their experience special.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c8_u6.webp',
-              caption: 'Diagram: Large Parties',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_host_manual_c8_u7',
@@ -1191,13 +1044,6 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'avoid placing small groups at large party tables so we can '
               'accommodate more parties overall, and plan reservations with '
               'care to avoid large gaps in seating times.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c8_u7.webp',
-              caption: 'Diagram: Be Strategic',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_host_manual_c8_u8',

@@ -43,13 +43,6 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'show a sense of care and attentiveness, allowing guests to '
               'enjoy their experience instead of being distracted by the '
               'unnecessary items on the table.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_table_manicuring_diagrams/training_table_manicuring_c0_u0.webp',
-              caption: 'Diagram: Introduction',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -82,13 +75,6 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'compromised, it distracts from the dining experience; thus, '
               'maintaining a tidy and unobtrusive environment is essential '
               'for creating a more inviting atmosphere.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_table_manicuring_diagrams/training_table_manicuring_c1_u0.webp',
-              caption: 'Diagram: Table Maintenance',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -108,13 +94,6 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'principles. By implementing these best practices, servers can '
               'significantly elevate the overall guest experience, '
               'transforming a meal into a memorable occasion.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_table_manicuring_diagrams/training_table_manicuring_c2_u0.webp',
-              caption: 'Diagram: Table Maintenance Basics',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_table_manicuring_c2_u1',
@@ -130,13 +109,6 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'exercise discretion; plates should only be cleared when every '
               'guest at the table has completed their meal, unless a specific '
               'request for removal has been made.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_table_manicuring_diagrams/training_table_manicuring_c2_u1.webp',
-              caption: 'Diagram: Responsive Clearing',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_table_manicuring_c2_u2',
@@ -175,13 +147,6 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'empty or are no longer needed, preventing clutter on the '
               'table. These small yet significant practice reflect commitment '
               'to high standards of service.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_table_manicuring_diagrams/training_table_manicuring_c2_u3.webp',
-              caption: 'Diagram: Condiment Maintenance',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_table_manicuring_c2_u4',
@@ -203,13 +168,6 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'piled. For these reasons, maintaining a thoughtful approach to '
               'clearing tables protects valuable tableware while also '
               'upholding superior service.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_table_manicuring_diagrams/training_table_manicuring_c2_u4.webp',
-              caption: 'Diagram: Plate Stacking',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_table_manicuring_c2_u5',
@@ -244,13 +202,6 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'invested in their welcome. A well-arranged space speaks '
               'volumes about the establishment\'s commitment to quality and '
               'guest satisfaction.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_table_manicuring_diagrams/training_table_manicuring_c2_u6.webp',
-              caption: 'Diagram: Consistent Setup',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_table_manicuring_c2_u7',
@@ -267,13 +218,6 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'plates and utensils, the technique should reflect an '
               'understanding of the dining rhythm, allowing for a seamless '
               'transition between courses.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_table_manicuring_diagrams/training_table_manicuring_c2_u7.webp',
-              caption: 'Diagram: Discretion',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_table_manicuring_c2_u8',
@@ -292,13 +236,6 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'tables, ensuring a smooth dining experience by keeping their '
               'hands full and removing unnecessary items from the surrounding '
               'areas.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_table_manicuring_diagrams/training_table_manicuring_c2_u8.webp',
-              caption: 'Diagram: Full Hands In, Full Hands Out',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -334,13 +271,6 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'and more efficient table turns.',
           runIndex: 1,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_table_manicuring_diagrams/training_table_manicuring_c3_u0.webp',
-              caption: 'Diagram: Table Manicuring',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_table_manicuring_c3_u1',
@@ -361,13 +291,6 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'experience, creating a subtle yet powerful impression.',
           runIndex: 2,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_table_manicuring_diagrams/training_table_manicuring_c3_u1.webp',
-              caption: 'Diagram: Table Manicuring',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -395,13 +318,6 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'serene atmosphere where guests can relax and enjoy their '
               'experience, with you as a poised facilitator of that '
               'enjoyment.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_table_manicuring_diagrams/training_table_manicuring_c4_u0.webp',
-              caption: 'Diagram: Maintain Composure',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_table_manicuring_c4_u1',
@@ -418,13 +334,6 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'the wood" cleaning approach, where every level of debris is '
               'addressed. Such dedication to detail conveys a sense of care '
               'and professionalism that guests truly appreciate.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_table_manicuring_diagrams/training_table_manicuring_c4_u1.webp',
-              caption: 'Diagram: Attention to Detail',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_table_manicuring_c4_u2',
@@ -480,13 +389,6 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'enjoyment of the meal.',
           runIndex: 1,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_table_manicuring_diagrams/training_table_manicuring_c5_u0.webp',
-              caption: 'Diagram: Benefits of High-Level Execution',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_table_manicuring_c5_u1',
@@ -510,13 +412,6 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'for both guests and servers alike.',
           runIndex: 2,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_table_manicuring_diagrams/training_table_manicuring_c5_u1.webp',
-              caption: 'Diagram: Benefits of High-Level Execution',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),

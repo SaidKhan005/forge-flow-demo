@@ -5,9 +5,10 @@
 // wiring so a future regeneration or manifest edit can never silently drop
 // or mis-anchor a diagram.
 //
-// Full diagram coverage (2026-07-30): every previously text-only reading
-// card now carries a house-style diagram pictogram, so the counts are
-// 176 Company Handbook + 85 Food Safety = 261 diagrams. If a diagram is
+// Diagram coverage after the accuracy cull (2026-07-31): forced/nonsensical
+// auto-icons were removed (566 of 977 across all manuals), leaving only the
+// illustrations that clearly fit their card. The guarded counts are now
+// 67 Company Handbook + 42 Food Safety = 109 diagrams. If a diagram is
 // intentionally added or cut, update these numbers deliberately (that is
 // the point of the guard).
 
@@ -40,18 +41,18 @@ void main() {
               if (_isDiagram(image)) image,
       ];
 
-  test('Company Handbook carries exactly its 176 approved diagrams', () {
+  test('Company Handbook carries exactly its 67 approved diagrams', () {
     final diagrams = diagramsIn(handbook);
-    expect(diagrams, hasLength(176));
+    expect(diagrams, hasLength(67));
     for (final image in diagrams) {
       expect(image.assetPath, startsWith(_kHandbookDiagramDir));
       expect(image.assetPath, endsWith('.webp'));
     }
   });
 
-  test('Food Safety carries exactly its 85 approved diagrams', () {
+  test('Food Safety carries exactly its 42 approved diagrams', () {
     final diagrams = diagramsIn(foodSafety);
-    expect(diagrams, hasLength(85));
+    expect(diagrams, hasLength(42));
     for (final image in diagrams) {
       expect(image.assetPath, startsWith(_kFoodSafetyDiagramDir));
       expect(image.assetPath, endsWith('.webp'));
@@ -60,7 +61,7 @@ void main() {
 
   test('every diagram leads its card and carries an honest alt caption', () {
     final all = [...diagramsIn(handbook), ...diagramsIn(foodSafety)];
-    expect(all, hasLength(261));
+    expect(all, hasLength(109));
     for (final image in all) {
       // afterParagraph -1 renders the diagram before the first paragraph:
       // the picture sets context, then the verbatim text follows.

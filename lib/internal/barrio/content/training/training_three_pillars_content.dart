@@ -61,13 +61,6 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'enveloped by an atmosphere that sets the stage for their '
               'experience, highlighting how the carefully curated ambiance '
               'serves as the heartbeat of the dining journey.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c1_u0.webp',
-              caption: 'Diagram: Atmosphere',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_three_pillars_c1_u1',
@@ -351,13 +344,6 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'thoughtful gestures can significantly impact a guest\'s '
               'experience. The art of true hospitality is a powerful tool, '
               'capable of making a significant impact on people\'s lives.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c2_u5.webp',
-              caption: 'Diagram: Hospitality',
-              afterParagraph: -1,
-            ),
-          ],
         ),
       ],
     ),
@@ -438,13 +424,6 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'dishes are more likely to be shared on social media, '
               'generating buzz and attracting new guests to the '
               'establishment.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c3_u2.webp',
-              caption: 'Diagram: Plating and Presentation',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_three_pillars_c3_u3',
@@ -461,13 +440,6 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'inconsistency can jeopardize guest loyalty, it is important '
               'that restaurants prioritize uniformity to maintain the strong '
               'relationships they have worked hard to establish.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c3_u3.webp',
-              caption: 'Diagram: Consistency',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_three_pillars_c3_u4',
