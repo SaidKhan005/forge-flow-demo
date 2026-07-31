@@ -58,6 +58,47 @@ class BarrioColors {
   // Accents
   static const Color comingSoonTag = Color(0xFF8B6F47);
   static const Color audienceTag   = Color(0xFF1E3A5F);
+
+  // Semantic status tokens (2026-07-31 premium pass) — one source of truth for
+  // the green/amber/red that were previously hardcoded across ~10 files.
+  static const Color success = Color(0xFF2ECC71); // emerald — correct / positive
+  static const Color warning = Color(0xFFF39C12); // amber — caution / quiz accent
+  static const Color error   = Color(0xFFE74C3C); // red — wrong / negative
+
+  // Premium frosted-white card fill — previously written three ways
+  // (#F2FFFFFF, #E6FFFFFF, shellMid@0.92). One token now.
+  static const Color glassFill = Color(0xF2FFFFFF); // ~95% white glass on cream
+
+  // Trophy gold for El Podio — deliberately distinct from brand [gold].
+  static const Color trophyGold = Color(0xFFD4AF37);
+}
+
+/// Shared corner-radius scale for a cohesive premium feel (2026-07-31).
+/// One ladder instead of the prior 6..24 spread. Cards and fields align on
+/// [card]; small pills/badges on [chip]; bottom sheets on [sheet].
+class BarrioRadii {
+  BarrioRadii._();
+  static const double chip = 10; // pills, badges, small chips, thumbnails
+  static const double card = 16; // cards, flashcards, search fields, rows
+  static const double sheet = 24; // bottom sheets
+}
+
+/// The one soft neutral lift used by every premium surface (cards, flashcards,
+/// quiz cards, search fields). A single navy-tinted drop shadow, NO colored
+/// glow — matching the de-glowed home bubbles (2026-07-27 premium pass), so the
+/// shadow language is consistent app-wide.
+List<BoxShadow> barrioSoftShadow({
+  double y = 10,
+  double blur = 24,
+  double opacity = 0.10,
+}) {
+  return <BoxShadow>[
+    BoxShadow(
+      color: BarrioColors.textPrimary.withValues(alpha: opacity),
+      blurRadius: blur,
+      offset: Offset(0, y),
+    ),
+  ];
 }
 
 // ---------------------------------------------------------------------------

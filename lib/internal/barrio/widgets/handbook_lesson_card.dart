@@ -82,7 +82,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
       case HandbookUnitType.decision:
         return const Color(0xFF2ECC71).withValues(alpha: 0.35);
       case HandbookUnitType.checkpoint:
-        return const Color(0xFFF39C12).withValues(alpha: 0.35);
+        return BarrioColors.warning.withValues(alpha: 0.35);
     }
   }
 
@@ -151,23 +151,16 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
         child: Container(
           margin: carousel ? EdgeInsets.zero : const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
-            color: const Color(0xF2FFFFFF), // premium white glass fill
-            borderRadius: BorderRadius.circular(16),
+            color: BarrioColors.glassFill,
+            borderRadius: BorderRadius.circular(BarrioRadii.card),
             border: Border.all(color: _borderColor),
-            boxShadow: [
-              // Inner accent glow
-              BoxShadow(
-                color: _badgeColor.withValues(alpha: _isPressed ? 0.22 : 0.10),
-                blurRadius: _isPressed ? 12 : 20,
-                spreadRadius: -4,
-              ),
-              // Outer soft lift (navy-tinted, light UI)
-              BoxShadow(
-                color: const Color(0x1416243B),
-                blurRadius: _isPressed ? 14 : 28,
-                spreadRadius: _isPressed ? -6 : -2,
-              ),
-            ],
+            // One neutral navy lift, no colored glow — matches the de-glowed
+            // home bubbles for a consistent premium shadow language.
+            boxShadow: barrioSoftShadow(
+              y: _isPressed ? 4 : 10,
+              blur: _isPressed ? 14 : 24,
+              opacity: _isPressed ? 0.14 : 0.10,
+            ),
           ),
           clipBehavior: Clip.antiAlias,
           child: Stack(
@@ -385,7 +378,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
     return switch (widget.unit.type) {
       HandbookUnitType.explainer  => BarrioColors.tealWarm,
       HandbookUnitType.decision   => const Color(0xFF2ECC71),
-      HandbookUnitType.checkpoint => const Color(0xFFF39C12),
+      HandbookUnitType.checkpoint => BarrioColors.warning,
     };
   }
 
@@ -433,7 +426,7 @@ class _TypeBadge extends StatelessWidget {
     final (defaultLabel, color) = switch (type) {
       HandbookUnitType.explainer  => ('LEARN',  BarrioColors.tealWarm),
       HandbookUnitType.decision   => ('DECIDE', const Color(0xFF2ECC71)),
-      HandbookUnitType.checkpoint => ('CHECK',  const Color(0xFFF39C12)),
+      HandbookUnitType.checkpoint => ('CHECK',  BarrioColors.warning),
     };
     final label = badgeHint ?? defaultLabel;
     // Solid accent chip with a luminance-picked foreground so the label
@@ -500,8 +493,8 @@ class _OptionTile extends StatelessWidget {
     }
     if (showWrong) {
       return (
-        const Color(0xFFE74C3C).withValues(alpha: 0.55),
-        const Color(0xFFE74C3C).withValues(alpha: 0.10),
+        BarrioColors.error.withValues(alpha: 0.55),
+        BarrioColors.error.withValues(alpha: 0.10),
       );
     }
     return (const Color(0x2216243B), const Color(0x0A16243B));
@@ -581,7 +574,7 @@ class _OptionTile extends StatelessWidget {
                         size: 18, color: Color(0xFF2ECC71)),
                   ],
                   if (showWrong)
-                    const Icon(Icons.cancel, size: 18, color: Color(0xFFE74C3C)),
+                    const Icon(Icons.cancel, size: 18, color: BarrioColors.error),
                 ],
               ),
               if (isSelected) ...[

@@ -110,7 +110,7 @@ class _JimTaylorModelScreenState extends State<JimTaylorModelScreen>
     final (defaultBadge, color) = switch (unit.type) {
       JtUnitType.concept    => ('CONCEPT',  _accent),
       JtUnitType.scenario   => ('SCENARIO', const Color(0xFF2ECC71)),
-      JtUnitType.checkpoint => ('CHECK',    const Color(0xFFF39C12)),
+      JtUnitType.checkpoint => ('CHECK',    BarrioColors.warning),
     };
     final badge = unit.badgeHint ?? defaultBadge;
     return LearningSurfaceCard(

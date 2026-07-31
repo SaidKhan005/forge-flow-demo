@@ -237,7 +237,7 @@ class _BarrioStreakChipState extends State<BarrioStreakChip> {
         chipColor = widget.accentColor;
         icon = Icons.local_fire_department_rounded;
       case StreakStatus.atRisk:
-        chipColor = const Color(0xFFF39C12);
+        chipColor = BarrioColors.warning;
         icon = Icons.local_fire_department_outlined;
       case StreakStatus.broken:
         chipColor = BarrioColors.textMuted;

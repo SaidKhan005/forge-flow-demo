@@ -831,15 +831,15 @@ class _ElPodioButtonState extends State<_ElPodioButton> {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 14),
             decoration: BoxDecoration(
-              color: const Color(0xFFD4AF37).withValues(alpha: 0.12),
+              color: BarrioColors.trophyGold.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: const Color(0xFFD4AF37).withValues(alpha: 0.45),
+                color: BarrioColors.trophyGold.withValues(alpha: 0.45),
                 width: 1.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFFD4AF37).withValues(alpha: 0.15),
+                  color: BarrioColors.trophyGold.withValues(alpha: 0.15),
                   blurRadius: 16,
                   spreadRadius: 0,
                 ),
@@ -850,7 +850,7 @@ class _ElPodioButtonState extends State<_ElPodioButton> {
               children: [
                 const Icon(
                   Icons.emoji_events,
-                  color: Color(0xFFD4AF37),
+                  color: BarrioColors.trophyGold,
                   size: 20,
                 ),
                 const SizedBox(width: 10),
@@ -860,7 +860,7 @@ class _ElPodioButtonState extends State<_ElPodioButton> {
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.5,
-                    color: const Color(0xFFD4AF37),
+                    color: BarrioColors.trophyGold,
                   ),
                 ),
               ],

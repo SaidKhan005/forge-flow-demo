@@ -110,7 +110,7 @@ class _InterviewPlaybookScreenState extends State<InterviewPlaybookScreen>
     final (defaultBadge, color) = switch (unit.type) {
       PlaybookUnitType.guide    => ('GUIDE',    BarrioColors.tealWarm),
       PlaybookUnitType.scenario => ('SCENARIO', _accent),
-      PlaybookUnitType.checkpoint => ('CHECK',  const Color(0xFFF39C12)),
+      PlaybookUnitType.checkpoint => ('CHECK',  BarrioColors.warning),
     };
     final badge = unit.badgeHint ?? defaultBadge;
     return LearningSurfaceCard(

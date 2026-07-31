@@ -115,19 +115,19 @@ class _BarrioHomeSearchFieldState extends State<BarrioHomeSearchField> {
         curve: Curves.easeOutCubic,
         decoration: BoxDecoration(
           color: BarrioColors.shellMid.withValues(alpha: 0.80),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(BarrioRadii.card),
           border: Border.all(
             color: BarrioColors.tealWarm
                 .withValues(alpha: focused ? 0.65 : 0.35),
             width: 1.2,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: BarrioColors.tealWarm
-                  .withValues(alpha: focused ? 0.22 : 0.10),
-              blurRadius: focused ? 16 : 12,
-            ),
-          ],
+          // Neutral lift (no teal glow) — the focused teal border carries the
+          // accent; the shadow language stays consistent with the cards.
+          boxShadow: barrioSoftShadow(
+            y: 6,
+            blur: focused ? 18 : 12,
+            opacity: focused ? 0.12 : 0.08,
+          ),
         ),
         child: Row(
           children: [
