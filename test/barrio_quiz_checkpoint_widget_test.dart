@@ -17,7 +17,12 @@
 //     and never move the saved reading position; the hero's honest
 //     "SECTION N OF M" follows the quiz card's own chapter;
 //   * resume, in-doc search, and the A-Z index still land on the same
-//     content cards with quiz cards present.
+//     content cards with quiz cards present;
+//   * display shuffle: the bank authors every correct answer first,
+//     but the card shows a deterministic per-question permutation, so
+//     across the full bank the correct option is NOT pinned to the top
+//     row, taps still report ORIGINAL option indices, and the order is
+//     stable across rebuilds of the same question.
 //
 // All widget tests run at a 390x844 phone viewport with explicit pumps
 // and assert takeException() is null, mirroring the other Barrio
@@ -457,6 +462,150 @@ void main() {
               'quiz insertion');
       expect(find.text('${deckPage + 1} of ${dishesDeck.length}'),
           findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('display shuffle', () {
+    final allQuestions = [
+      for (final bank in kBarrioQuizBanks.values) ...bank.questions,
+    ];
+
+    test('across the full bank the correct answer is not pinned to the '
+        'top row, and every display order is a real permutation', () {
+      expect(allQuestions.length, greaterThanOrEqualTo(105),
+          reason: 'sanity: the full 3-manual bank is under test');
+
+      var correctFirst = 0;
+      for (final q in allQuestions) {
+        final order = BarrioQuizCheckpointCard.displayOrderFor(q);
+        expect(
+          List<int>.of(order)..sort(),
+          List<int>.generate(q.options.length, (i) => i),
+          reason: '${q.id}: the display order must be a permutation of '
+              'the original option indices, nothing dropped or doubled',
+        );
+        expect(BarrioQuizCheckpointCard.displayOrderFor(q), order,
+            reason: '${q.id}: the shuffle is deterministic per question');
+        if (order[0] == q.correctIndex) correctFirst++;
+      }
+
+      // The bank authors correctIndex 0 everywhere, so without the
+      // shuffle this count would equal allQuestions.length. Seeded
+      // shuffling is deterministic, so this bound never flakes.
+      expect(correctFirst, lessThan(90),
+          reason: 'the correct answer must not render first for the '
+              'bulk of the bank ($correctFirst of '
+              '${allQuestions.length} render correct-first)');
+    });
+
+    testWidgets('a shuffled card reports ORIGINAL indices: tapping the '
+        'displayed correct option reveals green and hands the screen '
+        'question.correctIndex', (tester) async {
+      // Any question whose shuffle moves the correct answer off the
+      // top row. Deterministic pick, so the test is stable.
+      final moved = allQuestions.firstWhere((q) =>
+          BarrioQuizCheckpointCard.displayOrderFor(q)[0] != q.correctIndex);
+      final order = BarrioQuizCheckpointCard.displayOrderFor(moved);
+
+      tester.view.physicalSize = phoneSize;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      int? picked;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) => SingleChildScrollView(
+                child: BarrioQuizCheckpointCard(
+                  question: moved,
+                  selectedIndex: picked,
+                  onOptionSelected: (i) => setState(() => picked = i),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // The correct option really sits below the top display row, and
+      // the letters follow DISPLAY position, not bank position.
+      final topRect = tester.getRect(_option(moved, order[0]));
+      final correctRect = tester.getRect(_option(moved, moved.correctIndex));
+      expect(correctRect.top, greaterThan(topRect.top),
+          reason: 'the correct option is not the first row on screen');
+      expect(
+        find.descendant(
+            of: _option(moved, order[0]), matching: find.text('A')),
+        findsOneWidget,
+        reason: 'the top display row is lettered A whichever original '
+            'option it holds',
+      );
+      final correctLetter =
+          String.fromCharCode(0x41 + order.indexOf(moved.correctIndex));
+      expect(
+        find.descendant(
+            of: _option(moved, moved.correctIndex),
+            matching: find.text(correctLetter)),
+        findsOneWidget,
+        reason: 'the correct row wears its display-position letter',
+      );
+
+      await tester.tap(_option(moved, moved.correctIndex));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(picked, moved.correctIndex,
+          reason: 'onOptionSelected hands the screen the ORIGINAL bank '
+              'index, so _picks[id] == correctIndex scoring still holds');
+      expect(find.byIcon(Icons.check_circle), findsOneWidget,
+          reason: 'the tapped correct option goes calm green');
+      expect(find.byIcon(Icons.close_rounded), findsNothing);
+      expect(_whyLine(moved), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the display order of one question is identical across '
+        'full rebuilds', (tester) async {
+      final q = allQuestions.first;
+
+      tester.view.physicalSize = phoneSize;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      Future<void> pumpCard() => tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: SingleChildScrollView(
+                  child: BarrioQuizCheckpointCard(
+                    question: q,
+                    selectedIndex: null,
+                    onOptionSelected: (_) {},
+                  ),
+                ),
+              ),
+            ),
+          );
+
+      List<double> rowTops() => [
+            for (var i = 0; i < q.options.length; i++)
+              tester.getRect(_option(q, i)).top,
+          ];
+
+      await pumpCard();
+      await tester.pump();
+      final firstTops = rowTops();
+
+      // Tear the tree down completely, then build the card fresh: the
+      // same question must land its rows at the same positions.
+      await tester.pumpWidget(const SizedBox());
+      await pumpCard();
+      await tester.pump();
+
+      expect(rowTops(), firstTops,
+          reason: 'a rebuilt card shows the same shuffled order, so '
+              'paging away and back never re-deals the options');
       expect(tester.takeException(), isNull);
     });
   });
