@@ -17,6 +17,20 @@
 // punishingly, and the whyLine appears below in plain English. Locked
 // option rows absorb further taps so a re-tap never turns the page by
 // accident (the edge tap zones stay live everywhere else on the card).
+//
+// Display shuffle (operator bug 2026-08-01, "all quick check answers
+// are the first ones"): the bank stays operator-reviewable with the
+// correct option authored first, so this card shuffles the DISPLAY
+// order instead. The permutation is derived from the question id via a
+// stable FNV-1a hash seeding a Fisher-Yates shuffle: the same question
+// always renders in the same order (the card is stable when the reader
+// pages away and back), but the correct answer's position varies from
+// question to question. Everything the card reports outward, that is
+// [selectedIndex] in and [onOptionSelected] out, stays in ORIGINAL
+// [BarrioQuizQuestion.options] index space; only the on-screen row
+// order and the A/B/C/D letters follow display position.
+
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -59,6 +73,39 @@ class BarrioQuizCheckpointCard extends StatelessWidget {
 
   bool get _revealed => selectedIndex != null;
 
+  /// The deterministic display order for [question]'s options, as a
+  /// permutation of original indices into [BarrioQuizQuestion.options].
+  ///
+  /// Seeded from the question id via [_stableSeed] (never
+  /// String.hashCode, which is not stable across runs), so the same
+  /// question always shuffles the same way: rebuilds, paging away and
+  /// back, and app restarts all show one order. Public so tests can
+  /// assert the shuffle without pumping every card.
+  static List<int> displayOrderFor(BarrioQuizQuestion question) {
+    final order =
+        List<int>.generate(question.options.length, (i) => i);
+    final rng = Random(_stableSeed(question.id));
+    // Fisher-Yates, walking down from the last slot.
+    for (var i = order.length - 1; i > 0; i--) {
+      final j = rng.nextInt(i + 1);
+      final swapped = order[i];
+      order[i] = order[j];
+      order[j] = swapped;
+    }
+    return order;
+  }
+
+  /// FNV-1a (32-bit) over the string's code units: a stable hash that
+  /// gives the same seed on every run and platform.
+  static int _stableSeed(String id) {
+    var hash = 0x811C9DC5;
+    for (final unit in id.codeUnits) {
+      hash ^= unit;
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    }
+    return hash;
+  }
+
   void _handleTap(int index) {
     if (_revealed) return;
     if (index == question.correctIndex) {
@@ -76,6 +123,11 @@ class BarrioQuizCheckpointCard extends StatelessWidget {
     // corpus: render nothing rather than a bogus glyph.
     final chapterIcon =
         barrioChapterIconOrManual(question.docId, question.chapterId);
+    // Deterministic display shuffle (see header): displayOrder[pos] is
+    // the ORIGINAL option index shown at display position pos. Keys,
+    // taps, and the picked/correct checks stay in original index
+    // space; only the row order and letters follow display position.
+    final displayOrder = displayOrderFor(question);
     return _QuizGlassShell(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -104,15 +156,18 @@ class BarrioQuizCheckpointCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          for (var i = 0; i < question.options.length; i++)
+          for (var pos = 0; pos < displayOrder.length; pos++)
             _QuizOptionRow(
-              key: ValueKey<String>('quiz_option_${question.id}_$i'),
-              label: question.options[i],
-              letter: String.fromCharCode(0x41 + i),
-              isCorrect: i == question.correctIndex,
-              isPicked: selectedIndex == i,
+              // Keyed by ORIGINAL option index, wherever the row lands
+              // on screen, so callers address options in bank space.
+              key: ValueKey<String>(
+                  'quiz_option_${question.id}_${displayOrder[pos]}'),
+              label: question.options[displayOrder[pos]],
+              letter: String.fromCharCode(0x41 + pos),
+              isCorrect: displayOrder[pos] == question.correctIndex,
+              isPicked: selectedIndex == displayOrder[pos],
               revealed: _revealed,
-              onTap: () => _handleTap(i),
+              onTap: () => _handleTap(displayOrder[pos]),
             ),
           if (_revealed) ...[
             const SizedBox(height: 6),
