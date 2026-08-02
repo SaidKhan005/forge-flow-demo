@@ -425,6 +425,51 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     );
   }
 
+  /// The reading deck, wrapped in the text-selection plumbing.
+  ///
+  /// Select-any-word-to-search (2026-07-29 operator request): the whole
+  /// deck is a text selection region, so a reader can long-press an
+  /// unfamiliar word (for example a Spanish term like 'Amatitan') to
+  /// select it and then pick "Search the web" from the selection menu.
+  /// Selection is a long-press or drag gesture; every reading gesture
+  /// still works because each lives on a recognizer deeper than this
+  /// region: a plain tap still turns the page (the carousel edge tap
+  /// zones), a clearly horizontal swipe still moves between cards, a
+  /// near-vertical drag still scrolls a long card, term-link taps still
+  /// open the definition popover, and an image tap still zooms.
+  Widget _buildSelectableDeck(Color accent) {
+    return SelectionArea(
+      key: _selectionKey,
+      onSelectionChanged: (content) => _selectedText = content?.plainText,
+      contextMenuBuilder: _buildSelectionContextMenu,
+      // Tap-away clears the highlight (2026-07-31 operator report: a
+      // selection stuck around after tapping elsewhere). The carousel's
+      // deeper recognizers (page turn, term links, image zoom) win the
+      // gesture arena, so SelectionArea never receives the winning tap; a
+      // raw pointer listener sits outside the arena and always fires.
+      // Selection gestures still work: the pointer-down that begins a
+      // long-press or drag clears the previous highlight, then forms the
+      // new one. The floating menu and drag handles live in the app
+      // overlay, not this subtree, so using them never lands here.
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) {
+          if ((_selectedText ?? '').isEmpty) return;
+          _selectionKey.currentState?.selectableRegion.clearSelection();
+          _selectedText = null;
+        },
+        child: LearningCarousel(
+          key: _carouselKey,
+          cardCount: _deck.length,
+          initialPage: _initialPage,
+          onPageChanged: _onCardPageChanged,
+          accent: accent,
+          cardBuilder: _buildDeckCard,
+        ),
+      ),
+    );
+  }
+
   /// Opens the A-Z term index sheet (rec #6; TERM manuals only).
   void _openIndexSheet() {
     showModalBottomSheet<void>(
@@ -647,54 +692,7 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
                 },
               ),
               const SizedBox(height: 8),
-              Expanded(
-                // Select-any-word-to-search (2026-07-29 operator request):
-                // the whole reading deck is a text selection region, so a
-                // reader can long-press an unfamiliar word (for example a
-                // Spanish term like 'Amatitan') to select it and then pick
-                // "Search the web" from the selection menu, or Copy it.
-                // Selection is a long-press or drag gesture; every reading
-                // gesture still works because each lives on a recognizer
-                // deeper than this region: a plain tap still turns the page
-                // (the carousel edge tap zones), a clearly horizontal swipe
-                // still moves between cards, a near-vertical drag still
-                // scrolls a long card, term-link taps still open the
-                // definition popover, and an image tap still zooms.
-                child: SelectionArea(
-                  key: _selectionKey,
-                  onSelectionChanged: (content) =>
-                      _selectedText = content?.plainText,
-                  contextMenuBuilder: _buildSelectionContextMenu,
-                  // Tap-away clears the highlight (2026-07-31 operator
-                  // report: a selection stuck around after tapping
-                  // elsewhere). The carousel's deeper recognizers (page
-                  // turn, term links, image zoom) win the gesture arena,
-                  // so SelectionArea never receives the winning tap; a raw
-                  // pointer listener sits outside the arena and always
-                  // fires. Selection gestures still work: the pointer-down
-                  // that begins a long-press or drag clears the previous
-                  // highlight, then forms the new one. The floating menu
-                  // and drag handles live in the app overlay, not this
-                  // subtree, so using them never lands here.
-                  child: Listener(
-                    behavior: HitTestBehavior.translucent,
-                    onPointerDown: (_) {
-                      if ((_selectedText ?? '').isEmpty) return;
-                      _selectionKey.currentState?.selectableRegion
-                          .clearSelection();
-                      _selectedText = null;
-                    },
-                    child: LearningCarousel(
-                      key: _carouselKey,
-                      cardCount: _deck.length,
-                      initialPage: _initialPage,
-                      onPageChanged: _onCardPageChanged,
-                      accent: accent,
-                      cardBuilder: _buildDeckCard,
-                    ),
-                  ),
-                ),
-              ),
+              Expanded(child: _buildSelectableDeck(accent)),
             ],
           ),
         ),
