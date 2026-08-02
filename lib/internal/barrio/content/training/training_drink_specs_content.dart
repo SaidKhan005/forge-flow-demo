@@ -150,10 +150,10 @@ const BarrioTrainingDoc kTrainingDrinkSpecs = BarrioTrainingDoc(
               '\n'
               'Directions:\n'
               '\n'
-              '1. Combine ingredients in shaker with ice and shake '
-              'vigorously.\n'
+              '1. Fill glass with ice and water then set aside.\n'
               '\n'
-              '2. Fill glass with ice and water then set aside.\n'
+              '2. Combine ingredients in shaker with ice and shake '
+              'vigorously.\n'
               '\n'
               '3. Dump out water and ice from glass then double strain shaker '
               'into glass.\n'
@@ -203,9 +203,9 @@ const BarrioTrainingDoc kTrainingDrinkSpecs = BarrioTrainingDoc(
               '\n'
               '2. Add ingredients to yarai and stir for 30 seconds.\n'
               '\n'
-              '3. Peel orange, express on drink, twist and place in drink.\n'
+              '3. Strain yarai into glass.\n'
               '\n'
-              '4. Strain yarai into glass.',
+              '4. Peel orange, express on drink, twist and place in drink.',
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/drink_specs/04.webp',
@@ -509,12 +509,6 @@ const BarrioTrainingDoc kTrainingDrinkSpecs = BarrioTrainingDoc(
               '3. Strain ingredients into glass.\n'
               '\n'
               '4. Place dehydrated orange in center of drink.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/drink_specs/10.webp',
-              afterParagraph: 15,
-            ),
-          ],
         ),
       ],
     ),
@@ -558,6 +552,12 @@ const BarrioTrainingDoc kTrainingDrinkSpecs = BarrioTrainingDoc(
               '\n'
               '2. Place lime wedge on side of drink. Add dehydrated pineapple '
               'to center and frond down the side. Add straw.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/drink_specs/10.webp',
+              afterParagraph: 1,
+            ),
+          ],
         ),
       ],
     ),
@@ -644,12 +644,6 @@ const BarrioTrainingDoc kTrainingDrinkSpecs = BarrioTrainingDoc(
               '\n'
               '3. Add lime wedge to side of glass and skewered pickled '
               'pepper.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/drink_specs/11.webp',
-              afterParagraph: 14,
-            ),
-          ],
         ),
       ],
     ),
@@ -732,9 +726,8 @@ const BarrioTrainingDoc kTrainingDrinkSpecs = BarrioTrainingDoc(
               '2. Add grapefruit slice to side of glass.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_drink_specs_photos/training_drink_specs_c14_u0.webp',
-              caption: 'Grapefruit mimosa',
-              afterParagraph: -1,
+              assetPath: 'assets/internal/barrio/training/drink_specs/11.webp',
+              afterParagraph: 1,
             ),
           ],
         ),
