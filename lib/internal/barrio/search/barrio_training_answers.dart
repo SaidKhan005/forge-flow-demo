@@ -173,6 +173,25 @@ class _ScoredAnswerUnit {
   const _ScoredAnswerUnit(this.corpusOrder, this.score);
 }
 
+/// The chosen best sentence of a unit body: its index in the sentence
+/// list plus how many distinct content terms it covers (the coverage
+/// that grades confidence).
+class _SentencePick {
+  final int index;
+  final int distinctTerms;
+
+  const _SentencePick(this.index, this.distinctTerms);
+}
+
+/// Per-sentence term statistics: distinct content terms present and
+/// their total occurrence count.
+class _SentenceStats {
+  final int distinctTerms;
+  final int totalFrequency;
+
+  const _SentenceStats(this.distinctTerms, this.totalFrequency);
+}
+
 /// Question words and glue words stripped from a query before
 /// retrieval. What remains are the content terms that actually select
 /// and grade an answer ("What is the origin of tequila?" keeps only
@@ -242,30 +261,57 @@ class BarrioTrainingAnswers {
     final tokens = _tokenize(BarrioTrainingSearch.fold(trimmed));
     if (tokens.isEmpty) return const <BarrioTrainingAnswer>[];
 
-    // Distinct content terms in first-seen query order.
-    final seen = <String>{};
-    final terms = <String>[];
-    for (final token in tokens) {
-      if (!_kStopwords.contains(token) && seen.add(token)) {
-        terms.add(token);
-      }
-    }
-    final allStopwords = terms.isEmpty;
-    if (allStopwords) {
-      for (final token in tokens) {
-        if (seen.add(token)) terms.add(token);
-      }
-    }
+    // Distinct content terms in first-seen query order; a query made
+    // only of stopwords falls back to all its tokens (capped at weak
+    // below: glue words alone cannot honestly answer anything).
+    final contentTerms = _dedupe(tokens, stripStopwords: true);
+    final allStopwords = contentTerms.isEmpty;
+    final terms =
+        allStopwords ? _dedupe(tokens, stripStopwords: false) : contentTerms;
 
     final index = _index();
+    if (index.units.isEmpty) return const <BarrioTrainingAnswer>[];
+
+    final scores = _scoreUnits(index, terms);
+    final ranked = _rankUnits(index.units, scores, isDestinationAllowed);
+
+    final answers = <BarrioTrainingAnswer>[];
+    for (final s in ranked) {
+      if (answers.length >= kMaxAnswers) break;
+      final answer = _extract(
+        index.units[s.corpusOrder],
+        terms,
+        s.score,
+        capAtWeak: allStopwords,
+      );
+      if (answer != null) answers.add(answer);
+    }
+    return answers;
+  }
+
+  /// Distinct tokens in first-seen order, optionally dropping
+  /// stopwords.
+  static List<String> _dedupe(
+    List<String> tokens, {
+    required bool stripStopwords,
+  }) {
+    final seen = <String>{};
+    final out = <String>[];
+    for (final token in tokens) {
+      if (stripStopwords && _kStopwords.contains(token)) continue;
+      if (seen.add(token)) out.add(token);
+    }
+    return out;
+  }
+
+  /// BM25 score per corpus unit for [terms]. Document frequency and
+  /// length norms come from the full corpus regardless of any
+  /// visibility filter, so a term's weight is stable and
+  /// deterministic; the filter only decides which scored units may be
+  /// returned.
+  static List<double> _scoreUnits(_AnswerIndex index, List<String> terms) {
     final units = index.units;
     final n = units.length;
-    if (n == 0) return const <BarrioTrainingAnswer>[];
-
-    // BM25 accumulation. Document frequency and length norms come from
-    // the full corpus regardless of the visibility filter, so a term's
-    // weight is stable and deterministic; the filter only decides which
-    // scored units may be returned.
     final scores = List<double>.filled(n, 0);
     for (final term in terms) {
       final variants = _variants(term);
@@ -284,9 +330,18 @@ class BarrioTrainingAnswers {
         scores[i] += idf * tf * (kBm25K1 + 1) / (tf + kBm25K1 * lengthNorm);
       }
     }
+    return scores;
+  }
 
+  /// Matched, visible units sorted by score descending, ties broken by
+  /// corpus order.
+  static List<_ScoredAnswerUnit> _rankUnits(
+    List<_AnswerUnit> units,
+    List<double> scores,
+    bool Function(String destinationId)? isDestinationAllowed,
+  ) {
     final scored = <_ScoredAnswerUnit>[];
-    for (var i = 0; i < n; i++) {
+    for (var i = 0; i < units.length; i++) {
       if (scores[i] <= 0) continue;
       if (isDestinationAllowed != null &&
           !isDestinationAllowed(units[i].destinationId)) {
@@ -299,19 +354,7 @@ class BarrioTrainingAnswers {
       if (byScore != 0) return byScore;
       return a.corpusOrder.compareTo(b.corpusOrder);
     });
-
-    final answers = <BarrioTrainingAnswer>[];
-    for (final s in scored) {
-      if (answers.length >= kMaxAnswers) break;
-      final answer = _extract(
-        units[s.corpusOrder],
-        terms,
-        s.score,
-        capAtWeak: allStopwords,
-      );
-      if (answer != null) answers.add(answer);
-    }
-    return answers;
+    return scored;
   }
 
   /// Folds a result list back to one tier: [BarrioAnswerConfidence.none]
@@ -360,8 +403,8 @@ class BarrioTrainingAnswers {
   }
 
   /// Builds one answer from a retrieved unit: picks the best sentence,
-  /// extends it, grades confidence, and cuts the verbatim excerpt.
-  /// Returns null only when the body has no sentences at all.
+  /// grades confidence on it, extends it, and cuts the verbatim
+  /// excerpt. Returns null only when the body has no sentences at all.
   static BarrioTrainingAnswer? _extract(
     _AnswerUnit entry,
     List<String> terms,
@@ -371,61 +414,15 @@ class BarrioTrainingAnswers {
     final sentences = _splitSentences(entry.foldedBody);
     if (sentences.isEmpty) return null;
 
-    // Best sentence: most distinct content terms; ties by total term
-    // frequency, then earliest position (strict-greater comparisons
-    // keep the earliest sentence on full ties).
-    var bestIdx = 0;
-    var bestDistinct = -1;
-    var bestTf = -1;
-    for (var i = 0; i < sentences.length; i++) {
-      final s = sentences[i];
-      final counts = _sentenceTokenCounts(entry.foldedBody, s);
-      var distinct = 0;
-      var tf = 0;
-      for (final term in terms) {
-        var termTf = 0;
-        for (final v in _variants(term)) {
-          termTf += counts[v] ?? 0;
-        }
-        if (termTf > 0) {
-          distinct++;
-          tf += termTf;
-        }
-      }
-      if (distinct > bestDistinct ||
-          (distinct == bestDistinct && tf > bestTf)) {
-        bestIdx = i;
-        bestDistinct = distinct;
-        bestTf = tf;
-      }
-    }
-
-    // Confidence is graded on the best sentence alone (the seed of the
-    // excerpt), before extension: extension adds context, never
-    // evidence. The 60% bar uses integer math so the comparison is
-    // exact.
-    final coversAll = bestDistinct >= terms.length;
-    final clearsBar =
-        coversAll || (bestDistinct >= 2 && bestDistinct * 10 >= terms.length * 6);
-    final confidence = (clearsBar && !capAtWeak)
-        ? BarrioAnswerConfidence.answer
-        : BarrioAnswerConfidence.weak;
-
-    // Extend short excerpts with the sentences immediately after the
-    // seed (same paragraph only), stopping at the grow target and
-    // never past the cap. The excerpt stays one contiguous span, so
-    // the verbatim law holds by construction.
-    final seed = sentences[bestIdx];
+    final pick = _pickBestSentence(entry.foldedBody, sentences, terms);
+    final confidence = _grade(
+      pick.distinctTerms,
+      terms.length,
+      capAtWeak: capAtWeak,
+    );
+    final seed = sentences[pick.index];
     final start = seed.start;
-    var end = seed.end;
-    var next = bestIdx + 1;
-    while (end - start < kExcerptGrowTarget &&
-        next < sentences.length &&
-        sentences[next].paragraph == seed.paragraph) {
-      if (sentences[next].end - start > kExcerptCap) break;
-      end = sentences[next].end;
-      next++;
-    }
+    final end = _extendExcerpt(sentences, pick.index);
 
     // Content terms that matched this unit, in query order: these are
     // the reader-jump highlight terms.
@@ -450,6 +447,90 @@ class BarrioTrainingAnswers {
       score: score,
       confidence: confidence,
     );
+  }
+
+  /// Best sentence of the body: most distinct content terms; ties by
+  /// total term frequency, then earliest position (strict-greater
+  /// comparisons keep the earliest sentence on full ties).
+  static _SentencePick _pickBestSentence(
+    String foldedBody,
+    List<_Sentence> sentences,
+    List<String> terms,
+  ) {
+    var bestIdx = 0;
+    var bestDistinct = -1;
+    var bestTf = -1;
+    for (var i = 0; i < sentences.length; i++) {
+      final counts = _sentenceTokenCounts(foldedBody, sentences[i]);
+      final stats = _sentenceStats(counts, terms);
+      if (stats.distinctTerms > bestDistinct ||
+          (stats.distinctTerms == bestDistinct &&
+              stats.totalFrequency > bestTf)) {
+        bestIdx = i;
+        bestDistinct = stats.distinctTerms;
+        bestTf = stats.totalFrequency;
+      }
+    }
+    return _SentencePick(bestIdx, bestDistinct);
+  }
+
+  /// Distinct content terms present in one sentence's token counts,
+  /// plus their total occurrence count.
+  static _SentenceStats _sentenceStats(
+    Map<String, int> counts,
+    List<String> terms,
+  ) {
+    var distinct = 0;
+    var tf = 0;
+    for (final term in terms) {
+      var termTf = 0;
+      for (final v in _variants(term)) {
+        termTf += counts[v] ?? 0;
+      }
+      if (termTf > 0) {
+        distinct++;
+        tf += termTf;
+      }
+    }
+    return _SentenceStats(distinct, tf);
+  }
+
+  /// Confidence is graded on the best sentence alone (the seed of the
+  /// excerpt), before extension: extension adds context, never
+  /// evidence. Answer tier: the seed covers every content term, or at
+  /// least 60% of them with two or more matched (integer math keeps
+  /// the 60% comparison exact). [capAtWeak] (the all-stopword
+  /// fallback) never grades above weak.
+  static BarrioAnswerConfidence _grade(
+    int distinctTerms,
+    int termCount, {
+    required bool capAtWeak,
+  }) {
+    final coversAll = distinctTerms >= termCount;
+    final clearsBar = coversAll ||
+        (distinctTerms >= 2 && distinctTerms * 10 >= termCount * 6);
+    return (clearsBar && !capAtWeak)
+        ? BarrioAnswerConfidence.answer
+        : BarrioAnswerConfidence.weak;
+  }
+
+  /// Extends the seed sentence with the sentences immediately after it
+  /// (same paragraph only), stopping at [kExcerptGrowTarget] and never
+  /// past [kExcerptCap]. Returns the excerpt end offset; the start is
+  /// always the seed's start, so the excerpt stays one contiguous span
+  /// and the verbatim law holds by construction.
+  static int _extendExcerpt(List<_Sentence> sentences, int seedIndex) {
+    final seed = sentences[seedIndex];
+    var end = seed.end;
+    var next = seedIndex + 1;
+    while (end - seed.start < kExcerptGrowTarget &&
+        next < sentences.length &&
+        sentences[next].paragraph == seed.paragraph) {
+      if (sentences[next].end - seed.start > kExcerptCap) break;
+      end = sentences[next].end;
+      next++;
+    }
+    return end;
   }
 
   /// Splits a folded body into edge-trimmed sentence spans with
