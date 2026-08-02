@@ -72,8 +72,8 @@ Ingredients:
 
 Directions:
 
-1. Combine ingredients in shaker with ice and shake vigorously.
-2. Fill glass with ice and water then set aside.
+1. Fill glass with ice and water then set aside.
+2. Combine ingredients in shaker with ice and shake vigorously.
 3. Dump out water and ice from glass then double strain shaker into glass.
 4. Peel lemon, express on drink, twist and skewer with mint and place on glass.
 
@@ -96,8 +96,8 @@ Directions:
 
 1. Put large square ice cube in glass and set aside.
 2. Add ingredients to yarai and stir for 30 seconds.
-3. Peel orange, express on drink, twist and place in drink.
-4. Strain yarai into glass.
+3. Strain yarai into glass.
+4. Peel orange, express on drink, twist and place in drink.
 
 ## Sangria De Verano
 
@@ -239,12 +239,12 @@ Directions:
 3. Strain ingredients into glass.
 4. Place dehydrated orange in center of drink.
 
-![](assets/internal/barrio/training/drink_specs/10.webp)
-
 ## Pina Colada Spritz
 
 - **Tools Needed:** Jigger, Bar Spoon, Wine Measure
 - **Garnish/Rim:** lime wedge, dehydrated pineapple, pineapple frond
+
+![](assets/internal/barrio/training/drink_specs/10.webp)
 - **Glassware:** Wine Glass
 - **Mixing Method:** Build
 
@@ -302,8 +302,6 @@ Directions:
 2. Add pinch of tajin to top of drink. Put spicy bean in drink.
 3. Add lime wedge to side of glass and skewered pickled pepper.
 
-![](assets/internal/barrio/training/drink_specs/11.webp)
-
 ## Legado Caesar
 
 - **Tools Needed:** Jigger, Bar Spoon
@@ -330,6 +328,8 @@ Directions:
 
 - **Tools Needed:** Wine Measure
 - **Garnish/Rim:** Grapefruit Slice
+
+![](assets/internal/barrio/training/drink_specs/11.webp)
 - **Glassware:** Champagne Flute
 - **Mixing Method:** Build
 
