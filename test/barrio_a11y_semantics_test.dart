@@ -191,6 +191,16 @@ void main() {
       final question =
           kBarrioQuizBanks['training_food_safety']!.questions.first;
       final wrongIndex = question.correctIndex == 0 ? 1 : 0;
+      // The card shuffles the DISPLAY order of the options (bug fix
+      // 2026-08-01: the bank authors the correct answer first, so a
+      // stored-order card always answered "A"). The permutation is
+      // deterministic per question id, so derive the expected letters
+      // from the card's own public order instead of assuming the bank
+      // order: displayOrder[pos] is the ORIGINAL option index shown at
+      // display position pos, and pos drives the A/B/C/D letter.
+      final displayOrder = BarrioQuizCheckpointCard.displayOrderFor(question);
+      String letterAt(int originalIndex) =>
+          String.fromCharCode(0x41 + displayOrder.indexOf(originalIndex));
       int? picked;
       await tester.pumpWidget(
         MaterialApp(
@@ -211,25 +221,49 @@ void main() {
       );
       await tester.pump();
 
-      // Before reveal: letter + option text, no state suffix.
-      expect(
-        find.bySemanticsLabel('A: ${question.options[0]}'),
-        findsOneWidget,
-      );
+      // Before reveal: every row reads its DISPLAY letter + its own
+      // option text, and no state suffix.
+      for (var pos = 0; pos < displayOrder.length; pos++) {
+        final letter = String.fromCharCode(0x41 + pos);
+        final shown = question.options[displayOrder[pos]];
+        expect(
+          find.bySemanticsLabel('$letter: $shown'),
+          findsOneWidget,
+          reason: 'display position $pos announces letter $letter with the '
+              'option actually rendered there',
+        );
+      }
 
+      // Keys stay in ORIGINAL bank index space wherever the row lands.
       final wrongOption = find.byKey(
           ValueKey<String>('quiz_option_${question.id}_$wrongIndex'));
       await tester.ensureVisible(wrongOption);
       await tester.tap(wrongOption);
       await tester.pump(const Duration(milliseconds: 400));
 
-      // After reveal: the wrong pick and the correct answer both say so.
+      // After reveal: the wrong pick and the correct answer both say so,
+      // each still carrying its display letter, and the state is scored
+      // against the bank's ORIGINAL correctIndex, not the row position.
       expect(
         find.bySemanticsLabel(RegExp(r'your pick, not correct$')),
         findsOneWidget,
       );
       expect(
+        find.bySemanticsLabel(
+          '${letterAt(wrongIndex)}: ${question.options[wrongIndex]}, '
+          'your pick, not correct',
+        ),
+        findsOneWidget,
+      );
+      expect(
         find.bySemanticsLabel(RegExp(r', correct answer$')),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel(
+          '${letterAt(question.correctIndex)}: '
+          '${question.options[question.correctIndex]}, correct answer',
+        ),
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);
