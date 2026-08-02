@@ -216,7 +216,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c4_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Setting Yourself Up For Success (cont.)',
+          title: '86\'d Items And Handoff',
           body: 'Don\'t forget to go through your stock for any items that are '
               '86\'d. Knowing what\'s unavailable helps you avoid those awkward '
               'moments when a guest asks for that one cocktail you can\'t '
@@ -490,7 +490,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c4_u15',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Conflict Resolution (cont.)',
+          title: 'Opening The Conversation',
           body: 'To tackle conflict in a positive way, here are some helpful '
               'steps you can take:\n'
               '\n'
@@ -529,7 +529,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c4_u16',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Conflict Resolution (cont.)',
+          title: 'Solutions And Follow Up',
           body: '5. Find Common Ground: It is important to shift your mindset '
               'from confrontation to collaboration and identify shared goals, '
               'interests, or values.\n'
@@ -565,7 +565,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c4_u17',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Conflict Resolution (cont.)',
+          title: 'Bringing In A Manager',
           body: 'In situations where persistent conflicts hinder progress, it\'s '
               'crucial to shift away from direct negotiations and actively '
               'engage a supervisor or manager, ensuring that we document '
@@ -629,7 +629,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c5_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Mixing Techniques (cont.)',
+          title: 'Consistency Every Time',
           body: 'At Barrio Legado, we take pride in crafting each drink with '
               'precision, ensuring that every cocktail is prepared '
               'consistently and is the exact same delightful experience for '
@@ -703,7 +703,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c5_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Shaking (cont.)',
+          title: 'Rolling And Throwing',
           body: 'Rolling/Throwing offers a middle ground, efficiently mixing '
               'while reducing the risk of over-dilution and preventing '
               'bruised ingredients, making it a fantastic choice for more '
@@ -833,7 +833,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c5_u10',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Perfect Pour (cont.)',
+          title: 'Closing The Tap',
           body: '4. When your glass is full, close the tap quickly and swiftly, '
               'again, not too forceful, working it from the base. Now, it\'s '
               'time to drink.',
@@ -953,7 +953,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c6_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Responsible Service (cont.)',
+          title: 'Standard Drink Sizes',
           body: '- 12oz beer with a 5% ABV: standard bottle\n'
               '\n'
               '- 12oz cider or cooler with a 5% ABV\n'
@@ -1022,7 +1022,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c6_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'ID\'s (cont.)',
+          title: 'Signs Of Intoxication',
           body: '- The individual is loud, overly friendly, argumentative, '
               'bragging, and/or using foul language\n'
               '\n'
@@ -1298,7 +1298,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c7_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Hello\'s (cont.)',
+          title: 'First Impressions',
           body: 'Each guest who walks through the door is making a conscious '
               'decision to choose our restaurant and invest their time and '
               'money into the experience we provide and that we are known '
@@ -1347,7 +1347,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c7_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Goodbye\'s (cont.)',
+          title: 'The Last Impression',
           body: 'As guests walk out the door, let\'s make it a point to thank '
               'them for coming and to wish them a great day/evening/night. '
               'Every guest in the restaurant is part of our experience, '
@@ -1537,7 +1537,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c7_u11',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Language (cont.)',
+          title: 'Phrases To Avoid',
           body: '- Using "I don\'t know" can come across as dismissive. Instead, '
               'opting for responses like "That\'s a great question; let me '
               'find out for you" demonstrates both attentiveness and a '
@@ -1567,7 +1567,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c7_u12',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Language (cont.)',
+          title: 'Words Build Trust',
           body: 'By focusing on solutions and employing positive, reassuring '
               'language and consciously choosing our words and tone, we not '
               'only enhance the guest experience but also cultivate loyalty '
@@ -1602,7 +1602,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c7_u14',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Handling Guest Complaints (cont.)',
+          title: 'Why Follow Up Matters',
           body: 'Our primary goal is to ensure that every guest leaves with a '
               'smile, eager to share their experience with friends and '
               'family. Often, people hesitate to engage in what they perceive '
@@ -1652,7 +1652,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c7_u16',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Feedback (cont.)',
+          title: 'Apologize Then Act',
           body: 'Once we\'ve attentively listened to our guests, the next steps '
               'involve accepting responsibility and empathizing with their '
               'experiences. A heartfelt apology can serve as a powerful tool '
@@ -1673,7 +1673,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c7_u17',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Feedback (cont.)',
+          title: 'Escalate And Follow Up',
           body: 'If the situation appears to be beyond your immediate capacity '
               'to resolve, don\'t hesitate to involve your manager or '
               'supervisor. When doing so, provide them with comprehensive '
@@ -1854,7 +1854,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c8_u7',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Reservation Procedure (cont.)',
+          title: 'Confirm And Initial',
           body: '7. Confirm the name, date, time, contact information, and any '
               'special notes provided with the guest.\n'
               '\n'
@@ -2024,7 +2024,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c10_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Table Maintenance (cont.)',
+          title: 'Clearing Without Rushing',
           body: 'Achieving excellent table maintenance requires a delicate '
               'balance of diligence and restraint, being attentive without '
               'being intrusive. The last thing guests want to feel is rushed '
@@ -2065,7 +2065,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c10_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Table Manicuring (cont.)',
+          title: 'Spills And Crumbs',
           body: 'The dedication to maintaining a polished dining atmosphere '
               'requires continuous vigilance and attention to detail. Staff '
               'members are encouraged to remain alert to spills, crumbs, and '
@@ -2235,7 +2235,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c11_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Allergy Protocol (cont.)',
+          title: 'Kitchen To Table Safety',
           body: 'When a guest shares their allergy, it\'s vital to take their '
               'concerns seriously and communicate our allergy policy clearly. '
               'In cases of uncertainty regarding allergens in a dish, consult '
@@ -2416,7 +2416,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c13_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Bar Glossary (cont.)',
+          title: 'Chaser To Jigger',
           body: '- Chaser: Anything consumed immediately after a shot or neat '
               'drink.\n'
               '\n'
@@ -2459,7 +2459,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c13_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Bar Glossary (cont.)',
+          title: 'Muddle To Straight Up',
           body: '- Muddle: To mash ingredients with a muddler, a special tool '
               'for grinding and crushing ingredients into the bottom and '
               'sides of a glass.\n'
@@ -2501,7 +2501,7 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           id: 'training_bar_manual_c13_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Bar Glossary (cont.)',
+          title: 'Twist To Wet',
           body: '- Twist: A piece of citrus zest (a thin, curled slice of a '
               'citrus fruit peel) added to a drink for flavor or decoration, '
               'either in the drink directly or hanging on the side of the '

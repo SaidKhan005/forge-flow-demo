@@ -7,26 +7,25 @@
 // teaches. The manifest replaces those titles with authored ones.
 //
 // WHY TWO TIERS OF RULE. The end-state contract is "every card title is
-// short, unique in its chapter, and never says (cont.)". Today's content
-// cannot satisfy it, and not because it is sloppy:
+// short, unique in its chapter, and never says (cont.)". Authoring is
+// now DONE: all 183 continuation cards carry an authored title, so the
+// '(cont.)' half of that contract is a HARD assertion below, not a
+// ratchet. What is still out of reach is the source headings themselves:
 //
 //   * 251 run-start titles are longer than 26 characters. Those are
 //     VERBATIM source headings. Shortening one deletes source words, and
 //     tool/barrio_training_verbatim_check.py only passes at lost=0w, so
-//     they are permanently out of reach.
-//   * 183 continuation cards still carry the generated '(cont.)' title,
-//     and a run of 3+ cards therefore repeats the same title inside one
-//     chapter. Authoring those titles is the NEXT slice; this slice only
-//     ships the mechanism.
+//     they are permanently out of reach. Held by a ratchet, not a rule.
+//   * 1 chapter repeats a title: BOLD By Design c32 legitimately opens
+//     two runs with the verbatim heading 'Protect the System'. Same
+//     reason, same posture.
 //
-// So the strong rules bind exactly the titles this mechanism produces
-// (an authored continuation title), where they can be enforced at full
-// strength from the first title that lands. The population still
-// carrying generated titles is held by a RATCHET: the counts below may
-// fall, never grow. Each authoring wave lowers the two constants in the
-// same PR; when kDefaultContinuationTitleBaseline reaches 0 every
-// continuation card is authored and the strong rules cover all of them.
-// The rules are not weakened, they are scoped honestly to what exists.
+// So the strong rules bind every title this mechanism produces (an
+// authored continuation title) at full strength, and the two verbatim
+// source-heading populations are held by RATCHETS: the counts below may
+// fall, never grow. A ratchet that drops is the signal to lower its
+// constant in the same PR. The rules are not weakened, they are scoped
+// honestly to what the source documents make possible.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/internal/barrio/content/company_handbook_content.dart';
@@ -37,17 +36,28 @@ import 'package:forge_and_flow/internal/barrio/content/training/training_docs.da
 /// diagram engine's own `wrap(title, 26, 3)` agree on this number.
 const int kMaxCardTitleChars = 26;
 
-/// RATCHET: continuation cards still carrying the generated
-/// `'<heading> (cont.)'` title. Lower this as authoring waves land; it
-/// must never grow. 0 means every continuation card is authored.
-const int kDefaultContinuationTitleBaseline = 183;
+/// RATCHET: card titles longer than [kMaxCardTitleChars].
+///
+/// Every one of these is a run-start card carrying a VERBATIM source
+/// heading, so it cannot be shortened without failing
+/// tool/barrio_training_verbatim_check.py at lost=0w. Authored titles
+/// are held to the hard bound instead (see the strong rules below), so
+/// this number can only move when a source document changes.
+///
+/// Was 351 before the authoring wave: 251 run-start headings plus the
+/// 100 continuation cards whose generated `'<heading> (cont.)'` title
+/// inherited a long heading. Authoring all 183 continuation cards took
+/// the continuation share to 0, leaving the 251 source headings.
+const int kOverBudgetTitleBaseline = 251;
 
 /// RATCHET: cards that repeat a title already used in the same chapter.
-/// Almost all of these are '(cont.)' runs of 3+ cards, so authoring
-/// drives this down with the constant above. It bottoms out at 1: the
-/// BOLD By Design chapter that legitimately opens two runs with the
-/// verbatim heading 'Protect the System'.
-const int kChapterDuplicateTitleBaseline = 62;
+///
+/// Was 62 before the authoring wave, almost all of it '(cont.)' runs of
+/// 3+ cards sharing one generated title. Authoring cleared those and
+/// the count bottomed out at its floor of 1: the BOLD By Design chapter
+/// that legitimately opens two runs with the verbatim source heading
+/// 'Protect the System'. Only a source-document change can move it.
+const int kChapterDuplicateTitleBaseline = 1;
 
 /// One card plus the title of the card that opened its run.
 typedef _Card = ({
@@ -100,18 +110,38 @@ void main() {
       }
     });
 
-    test('only continuation cards carry a "(cont.)" title', () {
-      // The run-start card holds the verbatim source heading, so a
-      // '(cont.)' there would mean the generator suffixed the wrong
-      // card. It also keeps _generatedContinuationTitle honest: the
-      // authored-title test below depends on the default being exactly
-      // '<run-start title> (cont.)'.
-      for (final card in _allCards()) {
-        if (card.unit.runIndex > 1) continue;
-        expect(card.unit.title.endsWith('(cont.)'), isFalse,
-            reason: '${card.unit.id} opens a run but is titled as a '
-                'continuation');
-      }
+    test('no card title anywhere says "(cont.)"', () {
+      // HARD ASSERTION, not a ratchet. Every continuation card is
+      // authored, so the generator's '<heading> (cont.)' default must
+      // no longer reach the app: a run-start card ending in '(cont.)'
+      // would mean the generator suffixed the wrong card, and a
+      // continuation card ending in '(cont.)' would mean a card slipped
+      // out of tool/barrio_training_card_titles.json (a new split, a
+      // re-pointed unit id) without anyone authoring a title for it.
+      final offenders = _allCards()
+          .where((c) => c.unit.title.endsWith('(cont.)'))
+          .map((c) => '${c.unit.id}: "${c.unit.title}"')
+          .toList();
+      expect(offenders, isEmpty,
+          reason: '${offenders.length} card(s) still carry the generated '
+              '"(cont.)" title; author each one in '
+              'tool/barrio_training_card_titles.json: '
+              '${offenders.join(", ")}');
+    });
+
+    test('every continuation card carries an authored title', () {
+      // The other half of the same hard assertion. A card could dodge
+      // the '(cont.)' test by having a run-start heading that already
+      // ended in '(cont.)'; this checks the default directly.
+      final pending = _allCards()
+          .where((c) => c.unit.runIndex > 1 && !_isAuthored(c))
+          .map((c) => c.unit.id)
+          .toList();
+      expect(pending, isEmpty,
+          reason: '${pending.length} continuation card(s) still carry the '
+              'generator default; every split card needs an authored title '
+              'in tool/barrio_training_card_titles.json: '
+              '${pending.join(", ")}');
     });
 
     test('every authored continuation title is short, self-describing, '
@@ -144,38 +174,50 @@ void main() {
       }
     });
 
-    test('RATCHET: the count of un-authored continuation titles only falls',
-        () {
+    test('RATCHET: the count of over-budget titles only falls', () {
       // Growth fails; a drop passes and is the signal to lower the
       // constant in the same PR (same posture as
       // tool/metrics_ratchet_check.dart: the bar only tightens on
       // purpose, never silently).
-      final pending = _allCards()
-          .where((c) => c.unit.runIndex > 1 && !_isAuthored(c))
-          .length;
-      expect(pending, lessThanOrEqualTo(kDefaultContinuationTitleBaseline),
-          reason: 'continuation cards still titled "(cont.)" grew from '
-              '$kDefaultContinuationTitleBaseline to $pending; every new '
-              'split card needs an authored title in '
-              'tool/barrio_training_card_titles.json');
+      final overBudget = _allCards()
+          .where((c) => c.unit.title.length > kMaxCardTitleChars)
+          .toList();
+      expect(overBudget.length, lessThanOrEqualTo(kOverBudgetTitleBaseline),
+          reason: 'card titles longer than $kMaxCardTitleChars chars grew '
+              'from $kOverBudgetTitleBaseline to ${overBudget.length}; an '
+              'authored title must fit the header budget, and a run-start '
+              'heading only lengthens when the source document changes');
+      // The whole justification for tolerating these is that they are
+      // verbatim source headings. An AUTHORED title in here would mean
+      // the ratchet is hiding a rule violation.
+      final authoredOver = overBudget
+          .where(_isAuthored)
+          .map((c) => '${c.unit.id}: "${c.unit.title}"')
+          .toList();
+      expect(authoredOver, isEmpty,
+          reason: 'the over-budget population must be verbatim source '
+              'headings only: ${authoredOver.join(", ")}');
     });
 
     test('RATCHET: the count of repeated titles within a chapter only falls',
         () {
-      var repeats = 0;
+      final repeats = <String>[];
       for (final doc in kBarrioTrainingDocs.values) {
         for (final chapter in doc.chapters) {
           final seen = <String>{};
           for (final unit in chapter.units) {
-            if (!seen.add(unit.title)) repeats++;
+            if (!seen.add(unit.title)) {
+              repeats.add('${chapter.id}: "${unit.title}"');
+            }
           }
         }
       }
       // Lower the constant whenever this drops (see the ratchet above).
-      expect(repeats, lessThanOrEqualTo(kChapterDuplicateTitleBaseline),
+      expect(repeats.length, lessThanOrEqualTo(kChapterDuplicateTitleBaseline),
           reason: 'chapter-internal duplicate titles grew from '
-              '$kChapterDuplicateTitleBaseline to $repeats; authoring a '
-              'continuation title must not create a collision');
+              '$kChapterDuplicateTitleBaseline to ${repeats.length}; '
+              'authoring a continuation title must not create a collision: '
+              '${repeats.join(", ")}');
     });
   });
 }

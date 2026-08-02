@@ -109,7 +109,7 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
           id: 'training_mastering_metrics_c1_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Average Guest Check (cont.)',
+          title: 'What AGC Reveals',
           body: 'The insights gained from tracking AGC are invaluable; '
               'revealing ways to enhance the dining experience. For example, '
               'if data shows that guests tend to spend significantly more on '
@@ -176,7 +176,7 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
           id: 'training_mastering_metrics_c2_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Covers (cont.)',
+          title: 'Staffing And Turnover',
           body: 'Staffing is another area affected by cover counts. Having a '
               'reliable indicator of expected guest numbers enables '
               'restaurant operators to determine the appropriate staffing '
@@ -251,7 +251,7 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
           id: 'training_mastering_metrics_c3_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Covers Per Labour Hour (cont.)',
+          title: 'Finding The Sweet Spot',
           body: 'The ultimate goal is to find the sweet spot to achieve the '
               'highest productivity score without negatively impacting guest '
               'satisfaction. This means maximizing sales while ensuring staff '
@@ -351,7 +351,7 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
           id: 'training_mastering_metrics_c5_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Increasing AGC (cont.)',
+          title: 'Menu Knowledge Sells',
           body: 'Being well-versed in the ingredients, preparation methods, and '
               'unique flavors of each dish enables you to communicate '
               'passionately about the menu. When guests hear you '
@@ -427,7 +427,7 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
           id: 'training_mastering_metrics_c6_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Factors That AGC (cont.)',
+          title: 'Do Not Rush Guests',
           body: 'While it is important to keep things clean and tidy, cleaning '
               'around guests or rushing them can create an uncomfortable '
               'atmosphere. When you sweep, mop, put the chairs up around '

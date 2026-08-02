@@ -297,7 +297,7 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
           id: 'training_latin_dishes_c0_u12',
           type: HandbookUnitType.explainer,
           badgeHint: 'TERM',
-          title: 'CEVICHE (cont.)',
+          title: 'Styles by Country',
           body: 'It is commonly served on crispy tostadas or with crackers.\n'
               '- ECUADOR: Features cooked shrimp served in a soup-like bowl '
               'with generous citrus juices, often featuring onion, tomato '
@@ -577,7 +577,7 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
           id: 'training_latin_dishes_c1_u12',
           type: HandbookUnitType.explainer,
           badgeHint: 'TERM',
-          title: 'EMPANADAS (cont.)',
+          title: 'Fillings by Country',
           body: 'They are generally larger than Argentinian ones.\n'
               '- BOLIVIA: A sweet, baked, soup-filled empanada containing '
               'meat, eggs, potatoes, and olives.\n'

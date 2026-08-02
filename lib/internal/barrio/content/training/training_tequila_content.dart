@@ -55,7 +55,7 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
           id: 'training_tequila_c0_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Tequila Training (cont.)',
+          title: 'What Makes It Tequila',
           body: 'To be legally recognized as tequila, a spirit must adhere to '
               'stringent production regulations. Primarily, it must be '
               'distilled from the blue weber agave (Agave tequilana), a plant '
@@ -87,7 +87,7 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
           id: 'training_tequila_c0_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Tequila Training (cont.)',
+          title: 'Origin And Oversight',
           body: 'The governance of tequila is further enhanced by its '
               'Denomination of Origin status, granted in 1974, which legally '
               'protects the production of tequila to certain regions of '
@@ -156,7 +156,7 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
           id: 'training_tequila_c1_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'How Tequila Is Made (cont.)',
+          title: 'Cooking To Distilling',
           body: 'Once harvested, the piñas are chopped and then slow-baked in '
               'large steam ovens, known as hornos, or in autoclaves for a '
               'duration of 24 to 48 hours. This step converts the complex '
@@ -191,7 +191,7 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
           id: 'training_tequila_c1_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'How Tequila Is Made (cont.)',
+          title: 'Aging In Oak',
           body: 'The final stages of tequila production allow for variations in '
               'flavor and character. While some tequila is bottled '
               'immediately or within a couple of months to produce a clear '
@@ -403,7 +403,7 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
           id: 'training_tequila_c3_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Popular Tequila Cocktails (cont.)',
+          title: 'Modern Cocktail Twists',
           body: '- TEQUILA MOCKINGBIRD: A Spicy Margarita riff that combines '
               'muddled jalapeño and refreshing watermelon cubes to Blanco '
               'tequila, zesty lime juice, and agave syrup for a delightful '
@@ -477,7 +477,7 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
           id: 'training_tequila_c4_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Mezcal (cont.)',
+          title: 'Flavors And Mezcaleros',
           body: 'In addition to the individual characteristics of the agave, '
               'mezcal also reflects its terroir as each bottle represents the '
               'unique attributes of its environment. This means that beyond '

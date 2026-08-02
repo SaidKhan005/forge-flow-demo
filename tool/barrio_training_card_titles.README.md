@@ -58,6 +58,15 @@ would fall through. Documentation lives here instead.
 `test/barrio_training_card_title_guard_test.dart` enforces the first
 three of these over the generated content.
 
+## Coverage is complete, so the guard is a hard assertion
+
+All 183 continuation cards are authored. The guard test no longer
+tolerates a `(cont.)` title anywhere and no longer tolerates a
+continuation card left on the generator default, so **a new split card
+fails the build until it has an entry here.** If a source edit or a
+split-constant change opens a new run, author its cards 2..N in the same
+PR. That is the point: coverage cannot silently regress.
+
 ## Workflow
 
 ```

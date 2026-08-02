@@ -180,7 +180,7 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
           id: 'training_labour_cost_c4_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Average Wage (cont.)',
+          title: 'Hardest To Change',
           body: 'The average wage is intricately linked to the broader context '
               'of operational dynamics and market competitiveness. It is '
               'often the least flexible variable, primarily influenced by '
@@ -420,7 +420,7 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
           id: 'training_labour_cost_c6_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Productivity Goal (cont.)',
+          title: 'Steady Beats Maxed Out',
           body: 'An effective operation thrives on maintaining a consistent '
               'level of productivity that is sensitive to fluctuations in '
               'volume, staffing, and guest behavior. The challenge lies in '
@@ -1142,7 +1142,7 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
           id: 'training_labour_cost_c10_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Productivity Too High (cont.)',
+          title: 'The Cost Of Turnover',
           body: 'The repercussions of heightened productivity do not merely '
               'impact workplace dynamics; they also have tangible financial '
               'consequences that can be overlooked. Frequent employee '
@@ -1199,7 +1199,7 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
           id: 'training_labour_cost_c10_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Productivity Too Low (cont.)',
+          title: 'False Sense Of Security',
           body: 'This underutilization, while seemingly stable, can instill a '
               'false sense of security. The operation appears to be running '
               'smoothly, but it is not achieving its full potential, leading '

@@ -91,7 +91,7 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
           id: 'training_suggestive_selling_c1_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Selling Strategies (cont.)',
+          title: 'Active Selling',
           body: 'Active selling is characterized by a proactive approach where '
               'the seller actively engages with guests, seeking out sales '
               'opportunities through direct interaction. This method is '
@@ -144,7 +144,7 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
           id: 'training_suggestive_selling_c2_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Suggestive Selling (cont.)',
+          title: 'Nudge Not Pressure',
           body: 'Effective suggestive selling lies in its ability to create a '
               'tailored, personalized experience for each guest. Rather than '
               'employing high-pressure techniques, servers must utilize '
@@ -242,7 +242,7 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
           id: 'training_suggestive_selling_c3_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Managing Improper Execution (cont.)',
+          title: 'When Selling Backfires',
           body: 'Poorly executed selling techniques can introduce significant '
               'risks, including damaged trust, decreased satisfaction, and a '
               'decline in repeat business. When guests feel that their '
@@ -436,7 +436,7 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
           id: 'training_suggestive_selling_c4_u6',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Pick Your Moments (cont.)',
+          title: 'Dessert And Coffee Timing',
           body: 'The optimal timing for dessert or coffee recommendations is '
               'just after main plates are cleared, ensuring that the '
               'suggestions feel timely and relevant. It\'s important to match '
@@ -553,7 +553,7 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
           id: 'training_suggestive_selling_c5_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Setting Goals (cont.)',
+          title: 'Align And Track',
           body: 'Aligning these sales goals with the broader objectives of the '
               'restaurant is crucial for overall success. For instance, if '
               'the restaurant aims to boost beverage sales, this goal should '

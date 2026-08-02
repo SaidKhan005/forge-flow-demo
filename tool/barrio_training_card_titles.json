@@ -1,1 +1,734 @@
-{}
+{
+  "company_handbook_c0_u1": {
+    "was": "OUR CONCEPT (cont.)",
+    "title": "Design And Ambiance"
+  },
+  "company_handbook_c0_u2": {
+    "was": "OUR CONCEPT (cont.)",
+    "title": "Every Occasion"
+  },
+  "company_handbook_c10_u6": {
+    "was": "LOST OR STOLEN PROPERTY (cont.)",
+    "title": "Lost And Found"
+  },
+  "company_handbook_c11_u1": {
+    "was": "CODE OF CONDUCT (cont.)",
+    "title": "What Not To Do"
+  },
+  "company_handbook_c13_u3": {
+    "was": "SOCIAL MEDIA (cont.)",
+    "title": "Posting Responsibly"
+  },
+  "company_handbook_c14_u3": {
+    "was": "DISCIPLINARY PROCEDURE (cont.)",
+    "title": "When It Escalates"
+  },
+  "company_handbook_c14_u5": {
+    "was": "TERMINATION (cont.)",
+    "title": "Giving Your Notice"
+  },
+  "company_handbook_c15_u1": {
+    "was": "HEALTH AND SAFETY STATEMENT (cont.)",
+    "title": "Who Is Responsible"
+  },
+  "company_handbook_c15_u4": {
+    "was": "EMPLOYEE RIGHTS (cont.)",
+    "title": "Right To Refuse"
+  },
+  "company_handbook_c16_u11": {
+    "was": "Practical Ways to Look After Your Mental Health Each Day (cont.)",
+    "title": "Support From Leaders"
+  },
+  "company_handbook_c16_u14": {
+    "was": "ANONYMOUS COMPLAINTS AND REPORTING (cont.)",
+    "title": "Filing Anonymously"
+  },
+  "company_handbook_c16_u2": {
+    "was": "RIGHT TO REFUSE UNSAFE WORK (cont.)",
+    "title": "Pay And Reassignment"
+  },
+  "company_handbook_c16_u20": {
+    "was": "IN CASE OF FIRE (cont.)",
+    "title": "Evacuation Steps"
+  },
+  "company_handbook_c16_u29": {
+    "was": "FOOD SAFETY (cont.)",
+    "title": "Preventing Illness"
+  },
+  "company_handbook_c16_u3": {
+    "was": "RIGHT TO REFUSE UNSAFE WORK (cont.)",
+    "title": "No Retaliation"
+  },
+  "company_handbook_c16_u30": {
+    "was": "FOOD SAFETY (cont.)",
+    "title": "Safe Handling Steps"
+  },
+  "company_handbook_c16_u5": {
+    "was": "OCCUPATIONAL HEALTH AND SAFETY COMMITTEE (cont.)",
+    "title": "Committee Duties"
+  },
+  "company_handbook_c18_u11": {
+    "was": "FAMILY VIOLENCE LEAVE (cont.)",
+    "title": "What Leave Covers"
+  },
+  "company_handbook_c18_u12": {
+    "was": "FAMILY VIOLENCE LEAVE (cont.)",
+    "title": "Eligibility And Notice"
+  },
+  "company_handbook_c18_u14": {
+    "was": "COMMUNICABLE DISEASE EMERGENCY LEAVE (cont.)",
+    "title": "Proof And Family"
+  },
+  "company_handbook_c18_u5": {
+    "was": "COMPASSIONATE CARE LEAVE (cont.)",
+    "title": "Who Counts As Family"
+  },
+  "company_handbook_c18_u7": {
+    "was": "CRITICAL ILLNESS LEAVE (cont.)",
+    "title": "Length And Return"
+  },
+  "company_handbook_c19_u4": {
+    "was": "DEFINITION (cont.)",
+    "title": "Examples Of Harassment"
+  },
+  "company_handbook_c1_u1": {
+    "was": "95 Water Street (cont.)",
+    "title": "Heritage Architecture"
+  },
+  "company_handbook_c22_u4": {
+    "was": "SUPPLIER LABEL REQUIREMENTS (cont.)",
+    "title": "Supplemental Info"
+  },
+  "company_handbook_c2_u1": {
+    "was": "Raymonds Legacy (cont.)",
+    "title": "Cuisine And Awards"
+  },
+  "company_handbook_c2_u2": {
+    "was": "Raymonds Legacy (cont.)",
+    "title": "Celebration Of Place"
+  },
+  "company_handbook_c3_u1": {
+    "was": "LATIN AMERICA (cont.)",
+    "title": "Blended Heritage"
+  },
+  "company_handbook_c7_u6": {
+    "was": "CONFLICT OF INTEREST (cont.)",
+    "title": "Gifts And Favoritism"
+  },
+  "company_handbook_c8_u9": {
+    "was": "STATUTORY HOLIDAYS (cont.)",
+    "title": "How Holiday Pay Works"
+  },
+  "jim_taylor_labor_model_c10_u10": {
+    "was": "The diagnostic - tracing which input moved (cont.)",
+    "title": "Food Cost Comes Next"
+  },
+  "jim_taylor_labor_model_c10_u4": {
+    "was": "Full weekly variance - built from Chapter 09 (cont.)",
+    "title": "What The Gap Costs"
+  },
+  "jim_taylor_labor_model_c10_u6": {
+    "was": "The diagnostic - tracing which input moved (cont.)",
+    "title": "PPA Moves Both Sides"
+  },
+  "jim_taylor_labor_model_c10_u7": {
+    "was": "The diagnostic - tracing which input moved (cont.)",
+    "title": "CPLH And SPLH Moves"
+  },
+  "jim_taylor_labor_model_c10_u8": {
+    "was": "The diagnostic - tracing which input moved (cont.)",
+    "title": "FOH Wage Moves"
+  },
+  "jim_taylor_labor_model_c10_u9": {
+    "was": "The diagnostic - tracing which input moved (cont.)",
+    "title": "BOH Wage Moves"
+  },
+  "jim_taylor_labor_model_c12_u2": {
+    "was": "How the metrics chain together (cont.)",
+    "title": "Defend Your OPZ"
+  },
+  "jim_taylor_labor_model_c12_u5": {
+    "was": "Reading a shift in 90 seconds (cont.)",
+    "title": "Metrics Covered"
+  },
+  "jim_taylor_labor_model_c2_u2": {
+    "was": "What it calculates (cont.)",
+    "title": "Who Controls Each Input"
+  },
+  "jim_taylor_labor_model_c3_u2": {
+    "was": "Change one input - watch labor % move (cont.)",
+    "title": "Beyond Manager Control"
+  },
+  "jim_taylor_labor_model_c4_u2": {
+    "was": "Why CPLH is a better manager metric than labor % (cont.)",
+    "title": "When Guests Spend Less"
+  },
+  "jim_taylor_labor_model_c4_u5": {
+    "was": "What a 0.63 CPLH gap costs in real life (cont.)",
+    "title": "Scoreboard Not Strategy"
+  },
+  "jim_taylor_labor_model_c5_u2": {
+    "was": "Point 1 - Why scheduling to revenue fails (cont.)",
+    "title": "Schedule To Guest Count"
+  },
+  "jim_taylor_labor_model_c5_u4": {
+    "was": "Point 2 - Same 28%, two completely different operations (cont.)",
+    "title": "Restaurant A Overstaffed"
+  },
+  "jim_taylor_labor_model_c5_u5": {
+    "was": "Point 2 - Same 28%, two completely different operations (cont.)",
+    "title": "A's 28% Was Luck"
+  },
+  "jim_taylor_labor_model_c5_u6": {
+    "was": "Point 2 - Same 28%, two completely different operations (cont.)",
+    "title": "B's 28% Was Designed"
+  },
+  "jim_taylor_labor_model_c7_u1": {
+    "was": "Chapter 07: CPLH and SPLH Together (cont.)",
+    "title": "Fix The Forecast"
+  },
+  "jim_taylor_labor_model_c8_u3": {
+    "was": "Why it matters - the walk-in tears story (cont.)",
+    "title": "The Other Manager"
+  },
+  "jim_taylor_labor_model_c9_u3": {
+    "was": "What you are looking for (cont.)",
+    "title": "Range Not Best Day"
+  },
+  "jim_taylor_labor_model_c9_u5": {
+    "was": "Why 60 days - the replication problem (cont.)",
+    "title": "The Best Wednesday Trap"
+  },
+  "jim_taylor_labor_model_c9_u7": {
+    "was": "How it assembles into your theoretical labor % (cont.)",
+    "title": "Hours And Labor Dollars"
+  },
+  "jim_taylor_labor_model_c9_u8": {
+    "was": "How it assembles into your theoretical labor % (cont.)",
+    "title": "Your Labor Floor"
+  },
+  "training_bar_manual_c10_u1": {
+    "was": "Table Maintenance (cont.)",
+    "title": "Clearing Without Rushing"
+  },
+  "training_bar_manual_c10_u3": {
+    "was": "Table Manicuring (cont.)",
+    "title": "Spills And Crumbs"
+  },
+  "training_bar_manual_c11_u2": {
+    "was": "Allergy Protocol (cont.)",
+    "title": "Kitchen To Table Safety"
+  },
+  "training_bar_manual_c13_u1": {
+    "was": "Bar Glossary (cont.)",
+    "title": "Chaser To Jigger"
+  },
+  "training_bar_manual_c13_u2": {
+    "was": "Bar Glossary (cont.)",
+    "title": "Muddle To Straight Up"
+  },
+  "training_bar_manual_c13_u3": {
+    "was": "Bar Glossary (cont.)",
+    "title": "Twist To Wet"
+  },
+  "training_bar_manual_c4_u1": {
+    "was": "Setting Yourself Up For Success (cont.)",
+    "title": "86'd Items And Handoff"
+  },
+  "training_bar_manual_c4_u15": {
+    "was": "Conflict Resolution (cont.)",
+    "title": "Opening The Conversation"
+  },
+  "training_bar_manual_c4_u16": {
+    "was": "Conflict Resolution (cont.)",
+    "title": "Solutions And Follow Up"
+  },
+  "training_bar_manual_c4_u17": {
+    "was": "Conflict Resolution (cont.)",
+    "title": "Bringing In A Manager"
+  },
+  "training_bar_manual_c5_u1": {
+    "was": "Mixing Techniques (cont.)",
+    "title": "Consistency Every Time"
+  },
+  "training_bar_manual_c5_u10": {
+    "was": "Perfect Pour (cont.)",
+    "title": "Closing The Tap"
+  },
+  "training_bar_manual_c5_u5": {
+    "was": "Shaking (cont.)",
+    "title": "Rolling And Throwing"
+  },
+  "training_bar_manual_c6_u3": {
+    "was": "Responsible Service (cont.)",
+    "title": "Standard Drink Sizes"
+  },
+  "training_bar_manual_c6_u5": {
+    "was": "ID's (cont.)",
+    "title": "Signs Of Intoxication"
+  },
+  "training_bar_manual_c7_u1": {
+    "was": "Hello's (cont.)",
+    "title": "First Impressions"
+  },
+  "training_bar_manual_c7_u11": {
+    "was": "Language (cont.)",
+    "title": "Phrases To Avoid"
+  },
+  "training_bar_manual_c7_u12": {
+    "was": "Language (cont.)",
+    "title": "Words Build Trust"
+  },
+  "training_bar_manual_c7_u14": {
+    "was": "Handling Guest Complaints (cont.)",
+    "title": "Why Follow Up Matters"
+  },
+  "training_bar_manual_c7_u16": {
+    "was": "Feedback (cont.)",
+    "title": "Apologize Then Act"
+  },
+  "training_bar_manual_c7_u17": {
+    "was": "Feedback (cont.)",
+    "title": "Escalate And Follow Up"
+  },
+  "training_bar_manual_c7_u3": {
+    "was": "Goodbye's (cont.)",
+    "title": "The Last Impression"
+  },
+  "training_bar_manual_c8_u7": {
+    "was": "Reservation Procedure (cont.)",
+    "title": "Confirm And Initial"
+  },
+  "training_bold_by_design_c13_u1": {
+    "was": "Chapter 12: The Productivity Balance (cont.)",
+    "title": "Employee Workload Factor"
+  },
+  "training_bold_by_design_c13_u2": {
+    "was": "Chapter 12: The Productivity Balance (cont.)",
+    "title": "The Optimal Zone"
+  },
+  "training_bold_by_design_c13_u3": {
+    "was": "Chapter 12: The Productivity Balance (cont.)",
+    "title": "Reading the Signals"
+  },
+  "training_bold_by_design_c13_u4": {
+    "was": "Chapter 12: The Productivity Balance (cont.)",
+    "title": "Stability Compounds"
+  },
+  "training_bold_by_design_c13_u5": {
+    "was": "Chapter 12: The Productivity Balance (cont.)",
+    "title": "Protect the Zone"
+  },
+  "training_bold_by_design_c15_u2": {
+    "was": "The Shape of Operational Performance (cont.)",
+    "title": "The Tipping Point"
+  },
+  "training_bold_by_design_c1_u1": {
+    "was": "Why Most Restaurants Are Chasing the Wrong Number (cont.)",
+    "title": "Common Labor Myths"
+  },
+  "training_bold_by_design_c21_u1": {
+    "was": "Chapter 20: The Psychology of Understaffing (cont.)",
+    "title": "Running on Reaction"
+  },
+  "training_bold_by_design_c21_u2": {
+    "was": "Chapter 20: The Psychology of Understaffing (cont.)",
+    "title": "Fatigue and Burnout"
+  },
+  "training_bold_by_design_c21_u3": {
+    "was": "Chapter 20: The Psychology of Understaffing (cont.)",
+    "title": "Why Operators Cut Hours"
+  },
+  "training_bold_by_design_c21_u4": {
+    "was": "Chapter 20: The Psychology of Understaffing (cont.)",
+    "title": "When Staffing Fits"
+  },
+  "training_bold_by_design_c23_u1": {
+    "was": "Chapter 22: From Understanding to Execution (cont.)",
+    "title": "Systems Over Instinct"
+  },
+  "training_bold_by_design_c23_u2": {
+    "was": "Chapter 22: From Understanding to Execution (cont.)",
+    "title": "Holding Under Pressure"
+  },
+  "training_bold_by_design_c23_u3": {
+    "was": "Chapter 22: From Understanding to Execution (cont.)",
+    "title": "Discipline Over Habit"
+  },
+  "training_bold_by_design_c24_u1": {
+    "was": "Chapter 23: Designing for Consistency (cont.)",
+    "title": "Schedules And Training"
+  },
+  "training_bold_by_design_c24_u2": {
+    "was": "Chapter 23: Designing for Consistency (cont.)",
+    "title": "Manager Routines"
+  },
+  "training_bold_by_design_c24_u3": {
+    "was": "Chapter 23: Designing for Consistency (cont.)",
+    "title": "When Design Is Missing"
+  },
+  "training_bold_by_design_c2_u1": {
+    "was": "Chapter 1: The Labor Illusion (cont.)",
+    "title": "Why the Number Moves"
+  },
+  "training_bold_by_design_c2_u2": {
+    "was": "Chapter 1: The Labor Illusion (cont.)",
+    "title": "Cutting Backfires"
+  },
+  "training_bold_by_design_c3_u2": {
+    "was": "The Equation Beneath the Business (cont.)",
+    "title": "The Three Variables"
+  },
+  "training_bold_by_design_c4_u3": {
+    "was": "The Myth of Universal Productivity Targets (cont.)",
+    "title": "Borrowed Targets Hurt"
+  },
+  "training_cheers_responsibility_c0_u2": {
+    "was": "Governing Bodies (cont.)",
+    "title": "Liquor And Smoking Laws"
+  },
+  "training_cheers_responsibility_c0_u5": {
+    "was": "Licenses (cont.)",
+    "title": "Lounge Delivery Hotel"
+  },
+  "training_cheers_responsibility_c0_u6": {
+    "was": "Licenses (cont.)",
+    "title": "Special Events"
+  },
+  "training_cheers_responsibility_c1_u3": {
+    "was": "Signs of Intoxication (cont.)",
+    "title": "Behaviour And Body Signs"
+  },
+  "training_cheers_responsibility_c1_u6": {
+    "was": "Valid Forms of ID (cont.)",
+    "title": "Feel Look Ask"
+  },
+  "training_cheers_responsibility_c1_u7": {
+    "was": "Valid Forms of ID (cont.)",
+    "title": "Give Back Fake IDs"
+  },
+  "training_cheers_responsibility_c3_u3": {
+    "was": "Drinking and Driving (cont.)",
+    "title": "What Not To Do"
+  },
+  "training_cheers_responsibility_c3_u5": {
+    "was": "Liability (cont.)",
+    "title": "Penalties And Insurance"
+  },
+  "training_coffee_c10_u1": {
+    "was": "Drinks (cont.)",
+    "title": "Flat White and Latte"
+  },
+  "training_coffee_c10_u2": {
+    "was": "Drinks (cont.)",
+    "title": "Cappuccino"
+  },
+  "training_coffee_c11_u1": {
+    "was": "Our Coffee (cont.)",
+    "title": "Drip and Decaf"
+  },
+  "training_coffee_c13_u1": {
+    "was": "Words to Know (cont.)",
+    "title": "Blind Filter to Drip"
+  },
+  "training_coffee_c13_u2": {
+    "was": "Words to Know (cont.)",
+    "title": "Grinds to French Press"
+  },
+  "training_coffee_c13_u3": {
+    "was": "Words to Know (cont.)",
+    "title": "Grinder to Hopper"
+  },
+  "training_coffee_c13_u4": {
+    "was": "Words to Know (cont.)",
+    "title": "Instant to Pour Over"
+  },
+  "training_coffee_c13_u5": {
+    "was": "Words to Know (cont.)",
+    "title": "Purge to Stretching"
+  },
+  "training_coffee_c13_u6": {
+    "was": "Words to Know (cont.)",
+    "title": "Tamper to Whole Bean"
+  },
+  "training_coffee_c1_u1": {
+    "was": "Roasting (cont.)",
+    "title": "Darker Roasts"
+  },
+  "training_coffee_c5_u1": {
+    "was": "Colombian Coffee (cont.)",
+    "title": "Hand Picking and Washing"
+  },
+  "training_coffee_c9_u1": {
+    "was": "Cleaning & Maintenance (cont.)",
+    "title": "Water Back Flush"
+  },
+  "training_coffee_c9_u2": {
+    "was": "Cleaning & Maintenance (cont.)",
+    "title": "Shampoo Back Flush"
+  },
+  "training_coffee_c9_u3": {
+    "was": "Cleaning & Maintenance (cont.)",
+    "title": "Grinder Cleaning"
+  },
+  "training_food_safety_c11_u1": {
+    "was": "Safe Cooling Practices (cont.)",
+    "title": "Cooling Tools And Timing"
+  },
+  "training_food_safety_c13_u1": {
+    "was": "Critical Steps To Creating A Proper Ice Bath (cont.)",
+    "title": "Calibrate To 32 Degrees"
+  },
+  "training_food_safety_c14_u2": {
+    "was": "Refrigerator Storage (cont.)",
+    "title": "Shelf Order By Temp"
+  },
+  "training_food_safety_c14_u3": {
+    "was": "Refrigerator Storage (cont.)",
+    "title": "How Long Food Keeps"
+  },
+  "training_food_safety_c1_u1": {
+    "was": "Governing Laws And Regulations (cont.)",
+    "title": "Inspections And Liability"
+  },
+  "training_food_safety_c6_u11": {
+    "was": "Physical Hazards (cont.)",
+    "title": "Examples And Prevention"
+  },
+  "training_food_safety_c6_u12": {
+    "was": "Physical Hazards (cont.)",
+    "title": "Avoidable And Unavoidable"
+  },
+  "training_food_safety_c6_u2": {
+    "was": "Biological Hazards (cont.)",
+    "title": "Viruses"
+  },
+  "training_food_safety_c6_u3": {
+    "was": "Biological Hazards (cont.)",
+    "title": "Parasites"
+  },
+  "training_food_safety_c6_u4": {
+    "was": "Biological Hazards (cont.)",
+    "title": "Fungi And Mold"
+  },
+  "training_food_safety_c6_u5": {
+    "was": "Biological Hazards (cont.)",
+    "title": "Preservation Methods"
+  },
+  "training_food_safety_c6_u6": {
+    "was": "Biological Hazards (cont.)",
+    "title": "Spotting Spoilage"
+  },
+  "training_food_safety_c6_u8": {
+    "was": "Chemical Hazards (cont.)",
+    "title": "Symptoms And Handling"
+  },
+  "training_food_safety_c6_u9": {
+    "was": "Chemical Hazards (cont.)",
+    "title": "Storage And Labeling"
+  },
+  "training_food_safety_c7_u10": {
+    "was": "Common Food Allergies (cont.)",
+    "title": "Sesame Allergy"
+  },
+  "training_food_safety_c7_u11": {
+    "was": "Common Food Allergies (cont.)",
+    "title": "Soy Allergy"
+  },
+  "training_food_safety_c7_u12": {
+    "was": "Common Food Allergies (cont.)",
+    "title": "Wheat And Triticale"
+  },
+  "training_food_safety_c7_u2": {
+    "was": "Symptoms (cont.)",
+    "title": "Auto Injectors"
+  },
+  "training_food_safety_c7_u4": {
+    "was": "Common Food Allergies (cont.)",
+    "title": "Fish"
+  },
+  "training_food_safety_c7_u5": {
+    "was": "Common Food Allergies (cont.)",
+    "title": "Egg"
+  },
+  "training_food_safety_c7_u6": {
+    "was": "Common Food Allergies (cont.)",
+    "title": "Milk"
+  },
+  "training_food_safety_c7_u7": {
+    "was": "Common Food Allergies (cont.)",
+    "title": "Mustard"
+  },
+  "training_food_safety_c7_u8": {
+    "was": "Common Food Allergies (cont.)",
+    "title": "Peanut Allergy"
+  },
+  "training_food_safety_c7_u9": {
+    "was": "Common Food Allergies (cont.)",
+    "title": "Tree Nut Allergy"
+  },
+  "training_food_safety_c8_u1": {
+    "was": "Food Allergies: Keep Your Guests Safe (cont.)",
+    "title": "Serving An Allergy Order"
+  },
+  "training_food_safety_c8_u3": {
+    "was": "What To Do If Someone Has A Reaction (cont.)",
+    "title": "Care Until Help Arrives"
+  },
+  "training_food_safety_c9_u1": {
+    "was": "Temperature Danger Zone (cont.)",
+    "title": "No Visible Warning"
+  },
+  "training_host_manual_c3_u1": {
+    "was": "Hello's (cont.)",
+    "title": "First Impressions"
+  },
+  "training_host_manual_c4_u1": {
+    "was": "Goodbye's (cont.)",
+    "title": "Last Impression"
+  },
+  "training_host_manual_c7_u10": {
+    "was": "Conflict Resolution (cont.)",
+    "title": "When To Escalate"
+  },
+  "training_host_manual_c7_u2": {
+    "was": "Language (cont.)",
+    "title": "Phrases To Avoid"
+  },
+  "training_host_manual_c7_u3": {
+    "was": "Language (cont.)",
+    "title": "Words Build Trust"
+  },
+  "training_host_manual_c7_u5": {
+    "was": "Feedback (cont.)",
+    "title": "Apologize And Act"
+  },
+  "training_host_manual_c7_u6": {
+    "was": "Feedback (cont.)",
+    "title": "Escalate And Follow Up"
+  },
+  "training_host_manual_c7_u8": {
+    "was": "Conflict Resolution (cont.)",
+    "title": "Address It Early"
+  },
+  "training_host_manual_c7_u9": {
+    "was": "Conflict Resolution (cont.)",
+    "title": "Solve It Together"
+  },
+  "training_host_manual_c8_u2": {
+    "was": "Reservation Procedure (cont.)",
+    "title": "Confirm And Initial"
+  },
+  "training_labour_cost_c10_u1": {
+    "was": "Productivity Too High (cont.)",
+    "title": "The Cost Of Turnover"
+  },
+  "training_labour_cost_c10_u3": {
+    "was": "Productivity Too Low (cont.)",
+    "title": "False Sense Of Security"
+  },
+  "training_labour_cost_c4_u1": {
+    "was": "Average Wage (cont.)",
+    "title": "Hardest To Change"
+  },
+  "training_labour_cost_c6_u4": {
+    "was": "Productivity Goal (cont.)",
+    "title": "Steady Beats Maxed Out"
+  },
+  "training_latin_dishes_c0_u12": {
+    "was": "CEVICHE (cont.)",
+    "title": "Styles by Country"
+  },
+  "training_latin_dishes_c1_u12": {
+    "was": "EMPANADAS (cont.)",
+    "title": "Fillings by Country"
+  },
+  "training_mastering_metrics_c1_u1": {
+    "was": "Average Guest Check (cont.)",
+    "title": "What AGC Reveals"
+  },
+  "training_mastering_metrics_c2_u1": {
+    "was": "Covers (cont.)",
+    "title": "Staffing And Turnover"
+  },
+  "training_mastering_metrics_c3_u1": {
+    "was": "Covers Per Labour Hour (cont.)",
+    "title": "Finding The Sweet Spot"
+  },
+  "training_mastering_metrics_c5_u1": {
+    "was": "Increasing AGC (cont.)",
+    "title": "Menu Knowledge Sells"
+  },
+  "training_mastering_metrics_c6_u1": {
+    "was": "Factors That AGC (cont.)",
+    "title": "Do Not Rush Guests"
+  },
+  "training_strong_foundation_c2_u1": {
+    "was": "Brand Strength (cont.)",
+    "title": "Reputation And Referrals"
+  },
+  "training_strong_foundation_c4_u2": {
+    "was": "Food (cont.)",
+    "title": "Portions And Temperature"
+  },
+  "training_strong_foundation_c6_u1": {
+    "was": "Buy In (cont.)",
+    "title": "Leading With Clarity"
+  },
+  "training_strong_foundation_c6_u3": {
+    "was": "Systems and Training (cont.)",
+    "title": "Confidence And Skills"
+  },
+  "training_suggestive_selling_c1_u1": {
+    "was": "Selling Strategies (cont.)",
+    "title": "Active Selling"
+  },
+  "training_suggestive_selling_c2_u1": {
+    "was": "Suggestive Selling (cont.)",
+    "title": "Nudge Not Pressure"
+  },
+  "training_suggestive_selling_c3_u1": {
+    "was": "Managing Improper Execution (cont.)",
+    "title": "When Selling Backfires"
+  },
+  "training_suggestive_selling_c4_u6": {
+    "was": "Pick Your Moments (cont.)",
+    "title": "Dessert And Coffee Timing"
+  },
+  "training_suggestive_selling_c5_u1": {
+    "was": "Setting Goals (cont.)",
+    "title": "Align And Track"
+  },
+  "training_table_manicuring_c3_u1": {
+    "was": "Table Manicuring (cont.)",
+    "title": "Everyone Pitches In"
+  },
+  "training_table_manicuring_c5_u1": {
+    "was": "Benefits of High-Level Execution (cont.)",
+    "title": "Tips And Consistency"
+  },
+  "training_tequila_c0_u1": {
+    "was": "Tequila Training (cont.)",
+    "title": "What Makes It Tequila"
+  },
+  "training_tequila_c0_u2": {
+    "was": "Tequila Training (cont.)",
+    "title": "Origin And Oversight"
+  },
+  "training_tequila_c1_u1": {
+    "was": "How Tequila Is Made (cont.)",
+    "title": "Cooking To Distilling"
+  },
+  "training_tequila_c1_u2": {
+    "was": "How Tequila Is Made (cont.)",
+    "title": "Aging In Oak"
+  },
+  "training_tequila_c3_u1": {
+    "was": "Popular Tequila Cocktails (cont.)",
+    "title": "Modern Cocktail Twists"
+  },
+  "training_tequila_c4_u1": {
+    "was": "Mezcal (cont.)",
+    "title": "Flavors And Mezcaleros"
+  }
+}
