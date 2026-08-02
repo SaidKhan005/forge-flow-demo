@@ -6,6 +6,7 @@ import 'barrio_destination_scaffold.dart';
 import 'barrio_training_image_viewer.dart';
 import '../content/company_handbook_content.dart';
 import '../content/highlight/barrio_key_terms.dart';
+import '../content/highlight/cards/barrio_card_keys_index.dart';
 import '../content/quiz/barrio_quiz_models.dart';
 import '../content/training/training_docs.dart';
 import '../search/barrio_training_search.dart';
@@ -112,7 +113,15 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
     // and no new public constructor param. Every prose reading manual has a
     // curated list; glossary decks, SOP/screenshot manuals, recipe cards,
     // slides, and picture-first docs return an empty list (no highlighting).
-    final keyTerms = barrioKeyTermsForUnit(unit.id);
+    //
+    // Per-CARD phrases (T8, 2026-08-02): the lookup now asks
+    // [barrioCardKeysForUnit], which answers with THIS card's authored
+    // phrase set when it has one and falls back to the per-manual list
+    // above when it does not. The mechanism shipped with an empty registry,
+    // so today every card takes the fallback and rendering is unchanged
+    // (proved by `test/barrio_card_key_sets_test.dart`); authored sets then
+    // land as pure data, doc by doc, with no further renderer change.
+    final keyTerms = barrioCardKeysForUnit(unit.id);
 
     // Accessibility (rec #12): a collapsed interactive card is one big
     // tap target, so ONLY that state gets a button-role wrapper (its

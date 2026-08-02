@@ -18,6 +18,11 @@
 //   * The per-manual lookup [barrioKeyTermsForUnit]: prose manuals return a
 //     non-empty curated list, non-prose docs return empty, and a sampled term
 //     from a rolled-out manual really matches (whole-word) in its body prose.
+//     Since T8 (2026-08-02) the card asks [barrioCardKeysForUnit] instead,
+//     which answers with a card's own authored phrases when it has them and
+//     falls back to this per-manual list when it does not; the registry
+//     ships empty, so the two lookups agree everywhere today (exhaustively
+//     proved in `test/barrio_card_key_sets_test.dart`).
 //   * The rendering card [HandbookLessonCard] on real + crafted Three
 //     Pillars units and an uncurated unit: the term renders as w700 +
 //     tealInk, only curated manuals highlight, the cap and first-occurrence
@@ -28,6 +33,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/internal/barrio/content/company_handbook_content.dart';
 import 'package:forge_and_flow/internal/barrio/content/highlight/barrio_key_terms.dart';
+import 'package:forge_and_flow/internal/barrio/content/highlight/cards/barrio_card_keys_index.dart';
 import 'package:forge_and_flow/internal/barrio/content/training/training_docs.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/barrio_destination_scaffold.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/handbook_lesson_card.dart';
@@ -315,6 +321,26 @@ void main() {
         expect(_termMatchesInDocBody(docId, term), isTrue,
             reason: '"$term" must match whole-word somewhere in $docId body');
       }
+    });
+
+    test('T8 swap: the card lookup [barrioCardKeysForUnit] returns exactly '
+        'the per-manual terms while no per-card set is authored', () {
+      // The renderer reads barrioCardKeysForUnit now. On the pilot card, on
+      // a crafted id inside a curated doc, and on an uncurated doc, the new
+      // lookup must be indistinguishable from the old one, or the swap
+      // changed the screen. Ids come from the real registry so a content
+      // regeneration cannot rot this.
+      final sampled = <String>[
+        _pilotUnitId,
+        for (final doc in kBarrioTrainingDocs.values)
+          if (doc.chapters.isNotEmpty && doc.chapters.first.units.isNotEmpty)
+            doc.chapters.first.units.first.id,
+      ];
+      for (final unitId in sampled) {
+        expect(barrioCardKeysForUnit(unitId), barrioKeyTermsForUnit(unitId),
+            reason: '$unitId must render the same terms after the swap');
+      }
+      expect(barrioCardKeysForUnit('some_unknown_doc_c0_u0'), isEmpty);
     });
   });
 
