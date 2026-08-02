@@ -3,7 +3,8 @@
 //   * rec #7: in-manual search sheet (exact-substring, scoped to the
 //     open doc, honest empty state, jump in place with highlighting),
 //   * rec #6: A-Z term index sheet on exactly the three TERM manuals,
-//     with "(cont.)" runs listed once under the base title.
+//     with split runs listed once under their first card's title
+//     (folded on run metadata, never on the title text).
 //
 // All widget tests run at a 390x844 phone viewport and assert
 // takeException() is null (overflow guard: the header and sheets must
@@ -228,7 +229,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('the index lists a "(cont.)" run once and tapping the '
+    testWidgets('the index lists a split run once and tapping the '
         'entry jumps in place to the first card of the run',
         (tester) async {
       final doc = kBarrioTrainingDocs['training_latin_dishes']!;
@@ -239,11 +240,15 @@ void main() {
       final deck = buildTrainingDeck(doc);
       final cevichePage = flatUnits.indexWhere((u) => u.title == 'CEVICHE');
       expect(cevichePage, greaterThanOrEqualTo(0));
-      expect(
-        flatUnits.indexWhere((u) => u.title == 'CEVICHE (cont.)'),
-        cevichePage + 1,
-        reason: 'sanity: CEVICHE is a split run in the dishes glossary',
-      );
+      // Run metadata, not the title text, identifies the continuation:
+      // continuation titles are authored per card
+      // (tool/barrio_training_card_titles.json), so 'CEVICHE (cont.)'
+      // is not a stable thing to look for.
+      expect(flatUnits[cevichePage].runIndex, 1);
+      expect(flatUnits[cevichePage].runLength, greaterThan(1),
+          reason: 'sanity: CEVICHE is a split run in the dishes glossary');
+      expect(flatUnits[cevichePage + 1].runIndex, 2,
+          reason: 'sanity: the next card continues the CEVICHE run');
 
       await pumpDoc(tester, 'training_latin_dishes');
       final stateBefore =
@@ -263,9 +268,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
 
       expect(find.text('CEVICHE'), findsOneWidget,
-          reason: 'a split run is listed ONCE under its base title');
-      expect(find.textContaining('(cont.)'), findsNothing,
-          reason: 'continuation cards never appear as their own entries');
+          reason: 'a split run is listed ONCE under its first card title');
+      expect(find.text(flatUnits[cevichePage + 1].title), findsNothing,
+          reason: 'the continuation card never gets its own entry, '
+              'whatever it is titled');
 
       await tester.tap(find.text('CEVICHE'));
       await tester.pump();
@@ -316,7 +322,7 @@ void main() {
   });
 
   group('buildTrainingIndexGroups (pure)', () {
-    test('every glossary entry is unique, sorted, and never a "(cont.)" '
+    test('every glossary entry is unique, sorted, and always a run-start '
         'title; totals match the deduplicated deck', () {
       for (final docId in _kGlossaryIds) {
         final doc = kBarrioTrainingDocs[docId]!;
@@ -324,16 +330,21 @@ void main() {
         final groups = buildTrainingIndexGroups(doc);
         final entries = [for (final g in groups) ...g.entries];
 
+        // The index is built from run metadata, so the expectation is
+        // too: exactly the titles of cards that OPEN a run. Continuation
+        // titles are authored per card and are not derivable from the
+        // base title by any string rule.
         final expectedBases = <String>{
           for (final u in flatUnits)
-            u.title.replaceFirst(RegExp(r'\s*\(cont\.\)\s*$'), '').trim(),
+            if (u.runIndex == 1 && u.title.trim().isNotEmpty) u.title.trim(),
         };
         expect(entries.length, expectedBases.length,
-            reason: '$docId: one entry per unique base title');
+            reason: '$docId: one entry per unique run-start title');
         expect(entries.map((e) => e.title).toSet(), expectedBases);
         for (final entry in entries) {
-          expect(entry.title.endsWith('(cont.)'), isFalse);
-          expect(flatUnits[entry.page].title, startsWith(entry.title),
+          expect(flatUnits[entry.page].runIndex, 1,
+              reason: '$docId: each entry jumps to the FIRST card of a run');
+          expect(flatUnits[entry.page].title.trim(), entry.title,
               reason: '$docId: each entry jumps to a card of its own run');
         }
 

@@ -216,23 +216,31 @@ void main() {
         expect(entries.length, lessThanOrEqualTo(azEntries.length),
             reason: '$docId: the A-Z list stays the complete index');
         for (final entry in entries) {
-          expect(entry.title.endsWith('(cont.)'), isFalse,
-              reason: '$docId: runs fold once under the base title');
+          expect(flatUnits[entry.page].runIndex, 1,
+              reason: '$docId: a run folds once, onto its first card');
           expect(azPageByTitle[entry.title], entry.page,
               reason: '$docId: ${entry.title} jumps exactly where its '
                   'A-Z entry jumps');
           expect(entry.assetPath, isNotEmpty);
-          // The photo really belongs to this term's own cards (any
-          // card whose folded base title matches the entry).
+          // The photo really belongs to this term's own cards. Run
+          // membership comes from runIndex, not from the title text:
+          // continuation titles are authored per card
+          // (tool/barrio_training_card_titles.json) and no longer echo
+          // the term. A term can open more than one run in a manual, and
+          // the service folds those runs together by title, so this
+          // walk does the same.
           final foldedTitle = BarrioTrainingSearch.fold(entry.title);
-          final runPaths = <String>{
-            for (final u in flatUnits)
-              if (BarrioTrainingSearch.fold(u.title
-                      .replaceFirst(RegExp(r'\s*\(cont\.\)\s*$'), '')
-                      .trim()) ==
-                  foldedTitle)
-                for (final i in u.images) i.assetPath,
-          };
+          final runPaths = <String>{};
+          String? runKey;
+          for (final u in flatUnits) {
+            if (u.runIndex == 1) {
+              runKey = BarrioTrainingSearch.fold(u.title.trim());
+            }
+            if (runKey != foldedTitle) continue;
+            for (final i in u.images) {
+              runPaths.add(i.assetPath);
+            }
+          }
           expect(runPaths, contains(entry.assetPath),
               reason: '$docId: ${entry.title} shows its own card photo');
         }

@@ -115,8 +115,9 @@ void main() {
 
   test('every original Cheers chapter heading survives as a card title', () {
     // The 24 parsed chapter headings (the merge must keep each one as a
-    // verbatim card title inside its section; '(cont.)' splits reuse the
-    // heading, so we match the un-suffixed head of every card title).
+    // verbatim card title inside its section). A split section puts the
+    // verbatim heading on the card that OPENS the run; cards 2..N carry
+    // their own titles, so only run-start titles are matched here.
     const originalHeadings = <String>[
       'Responsible Alcohol Service In NL', // the doc intro chapter
       'Governing Bodies',
@@ -146,7 +147,7 @@ void main() {
     final cardTitles = <String>{
       for (final chapter in cheers!.chapters)
         for (final unit in chapter.units)
-          unit.title.replaceAll(' (cont.)', ''),
+          if (unit.runIndex == 1) unit.title,
     };
     for (final heading in originalHeadings) {
       expect(cardTitles, contains(heading),

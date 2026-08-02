@@ -117,6 +117,13 @@ class BarrioTermLinks {
       for (var c = 0; c < doc.chapters.length; c++) {
         final units = doc.chapters[c].units;
         for (var u = 0; u < units.length; u++) {
+          // Continuation cards define no term. Only the first card of a
+          // run carries the verbatim term heading; cards 2..N are titled
+          // for what they teach (tool/barrio_training_card_titles.json),
+          // so registering them would invent terms that no glossary
+          // defines. Run metadata is the honest signal here: it holds
+          // whatever the title says.
+          if (units[u].runIndex > 1) continue;
           final card = BarrioTermCard(
             docId: docId,
             chapterIndex: c,
@@ -124,8 +131,8 @@ class BarrioTermLinks {
             unit: units[u],
           );
           for (final term in _termsOfTitle(units[u].title)) {
-            // First registration wins: a '(cont.)' card or duplicate
-            // title never steals the base definition card.
+            // First registration wins: a duplicate title never steals
+            // the first card that defined the term.
             built.putIfAbsent(term, () => card);
           }
         }
@@ -146,9 +153,10 @@ class BarrioTermLinks {
   }
 
   /// Folded, guard-filtered term variants of one TERM card title.
-  /// A '(cont.)' suffix is formatting, not a distinct term, and a '/'
+  /// A parenthetical is a qualifier, not part of the term, and a '/'
   /// separates alternate names ('MAIZE/EL MAIZ') that both point at
-  /// the same card.
+  /// the same card. Continuation cards never reach here: [registry]
+  /// skips them on runIndex.
   static List<String> _termsOfTitle(String title) {
     var base = title;
     final paren = base.indexOf('(');

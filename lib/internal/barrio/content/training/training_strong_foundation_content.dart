@@ -4,6 +4,11 @@
 // Body text is word-for-word from the source Markdown. Headings become
 // chapter/card titles; markdown syntax markers are formatting, not words,
 // and are omitted. Generated for the 2026-07-11 training-bubble slice.
+//
+// Continuation cards (runIndex > 1) default to the source heading plus
+// " (cont.)". Where tool/barrio_training_card_titles.json carries an
+// entry for the card, its authored title is emitted instead, naming what
+// that card teaches. Body text is untouched either way.
 
 import '../company_handbook_content.dart';
 import 'barrio_training_doc.dart';
