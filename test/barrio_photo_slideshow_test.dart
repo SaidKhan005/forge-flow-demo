@@ -8,7 +8,8 @@
 //
 // Covers:
 // - Corpus guards: the deliberate shipped slide-group count, the wired
-//   second photographs, and their credit captions.
+//   second photographs, their credit captions, and the rule that no
+//   group ever mixes a captioned diagram in with photographs.
 // - Degrade rule: a one-photograph card renders today's tree exactly
 //   (no chips, no dots, no counter, bare caption semantics), and a
 //   diagram never joins a group.
@@ -223,35 +224,72 @@ void main() {
     // them means content changed: update them on purpose or find out
     // why a card silently gained or lost a slideshow.
     //
-    // Where 91 comes from: 28 shipped cards already stacked two or more
-    // uncaptioned source-document figures (the eight
-    // `bar_manual/03..10.webp` uniform-guideline scans, for one), and
-    // this slice wired 65 operator-approved second photographs. Two of
-    // those 65 landed on cards that were already stacking figures, so
-    // 28 + 65 - 2 = 91.
-    test('forms exactly 91 slide groups across 91 cards', () {
-      expect(imagedUnits, 744);
-      expect(groups, hasLength(91));
-      expect(unitsWithSlideGroup, 91,
+    // Where 88 comes from. The broad positional rule first produced 91
+    // groups: 28 shipped cards already stacked two or more uncaptioned
+    // source-document figures (the eight `bar_manual/03..10.webp`
+    // uniform-guideline scans, for one), plus 65 wired second
+    // photographs, minus the 2 of those 65 that landed on cards already
+    // stacking figures. 28 + 65 - 2 = 91.
+    //
+    // The classifier pass then captioned 7 drawn source figures on 5
+    // cards as diagrams, because each was sharing a holder with real
+    // photographs, and a diagram ends a run:
+    //
+    //   - 3 cards lost their group outright, 2 slides each
+    //     (`company_handbook_c5_u0`, `company_handbook_c23_u5`,
+    //     `training_food_safety_c12_u1`): 91 - 3 = 88 groups over 88
+    //     cards, and those 3 cards move to the single-picture column,
+    //     which is the +3 in 655 below.
+    //   - 2 cards kept a group but shed drawn figures from it:
+    //     `company_handbook_c16_u30` (3 slides to 2) and
+    //     `training_food_safety_c17_u1` (5 slides to 2).
+    //
+    // So the slide total drops by 2 + 2 + 2 + 1 + 3 = 10, to 200.
+    //
+    // Two of these numbers also carry a correction. The wiring slice
+    // shipped 744 imaged cards and 653 single-picture cards, but the
+    // corpus held 743 and 652, so both guards were failing on master
+    // before this pass. 743 is the true imaged count; 652 + the 3 cards
+    // above = 655.
+    test('forms exactly 88 slide groups across 88 cards', () {
+      expect(imagedUnits, 743);
+      expect(groups, hasLength(88));
+      expect(unitsWithSlideGroup, 88,
           reason: 'no card carries two separate slide holders today');
       expect(
         groups.fold<int>(0, (sum, group) => sum + group.length),
-        210,
-        reason: '210 photographs now live inside a holder that slides',
+        200,
+        reason: '200 photographs now live inside a holder that slides',
       );
       expect(
         groups.map((group) => group.length).reduce((a, b) => a > b ? a : b),
         8,
-        reason: 'the deepest group is the 8-scan uniform-guidelines card',
+        reason: 'the deepest group is the 8-photo uniform-guidelines card',
       );
     });
 
-    test('653 imaged cards keep the single-picture degrade path', () {
+    test('655 imaged cards keep the single-picture degrade path', () {
       // The degrade rule at corpus scale: the overwhelming majority of
       // imaged cards still render exactly today's tree, one picture per
       // holder, no chips, no dots, no counter.
-      expect(unitsWithNoSlideGroup, 653);
+      expect(unitsWithNoSlideGroup, 655);
       expect(unitsWithSlideGroup + unitsWithNoSlideGroup, imagedUnits);
+    });
+
+    test('no slide group mixes a diagram in with photographs', () {
+      // The rule the classifier pass exists to hold. A drawn source
+      // figure (values poster, WHMIS chart, step illustration) is a
+      // different teaching visual from a photograph, so it must never
+      // share a swipe holder with one. Because grouping is positional,
+      // this is equivalent to: no group contains a diagram at all.
+      final offenders = [
+        for (final group in groups)
+          if (group.any(HandbookUnitPhotos.isDiagram))
+            group.map((s) => s.assetPath).join(' + '),
+      ];
+      expect(offenders, isEmpty,
+          reason: 'a drawn figure must stack on its own, not slide with '
+              'photographs');
     });
 
     test('all 65 wired second photographs land inside a slide group', () {

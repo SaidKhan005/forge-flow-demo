@@ -269,7 +269,7 @@ We embrace the philosophy that how we make people feel is what truly counts and 
 
 At Barrio Legado we’re not just here to serve delicious food; our goal is to foster connections, spark joy, and create heartwarming memories with every meal. After all, it’s about more than just food; it’s about the love, laughter, and stories shared around the table. We pride ourselves on creating a welcoming and cozy atmosphere where every guest leaves not just satisfied, but enriched by their time spent with us.
 
-![](assets/internal/barrio/training/barrio_company_handbook/07.webp)
+![Diagram: the six POCKIT values, one per colour band](assets/internal/barrio/training/barrio_company_handbook/07.webp)
 
 ## Core Values
 
@@ -880,7 +880,7 @@ As food allergies become more prevalent, restaurant staff must be vigilant in pr
 
 Regular handwashing with soap and water, particularly before handling food and after touching raw meats or using the restroom, is essential. Cleaning cutting boards, utensils, and countertops after contact with raw meat is also vital to avoid cross-contamination. Cooking all meats, poultry, and eggs to the correct internal temperatures, ensuring hot foods remain above 60°C (140°F), and properly chilling leftovers are key practices that every employee should consistently adhere to. By using separate cutting boards for raw meats and fruits or vegetables, and by storing raw meats below ready-to-eat foods in the refrigerator, we can further safeguard our guests' health and well-being.
 
-![](assets/internal/barrio/training/barrio_company_handbook/12.webp)
+![Diagram: good food handler practices beside poor ones, head to toe](assets/internal/barrio/training/barrio_company_handbook/12.webp)
 
 ## Food Handler Practices: Good vs. Bad
 
@@ -1327,7 +1327,7 @@ SDSs will have the following information:
 
 Pictograms are graphic images that immediately show the user of a hazardous product what type of hazard is present. With a quick glance, you can see, for example, that the product is flammable or that it might be a health hazard. Most pictograms have a distinctive red "square set on one of its points" border. Inside this border is a symbol that represents the potential hazard. Together, the symbol and the border are referred to as a pictogram. Pictograms are assigned to specific hazard classes or categories.
 
-![](assets/internal/barrio/training/barrio_company_handbook/17.webp)
+![Diagram: the WHMIS pictograms and the hazard each one stands for](assets/internal/barrio/training/barrio_company_handbook/17.webp)
 
 ### WHMIS Pictograms
 

@@ -119,6 +119,17 @@ class HandbookUnit {
 /// Honesty: a pictogram is not a photo of the thing). These helpers let the
 /// photo-only surfaces skip diagrams while the reading card keeps rendering
 /// every image in order.
+///
+/// Source-document figures declare themselves the SAME way (2026-08-02).
+/// A drawn figure lifted out of a source manual (a values poster, a WHMIS
+/// pictogram chart, a numbered step illustration) is a teaching visual too,
+/// not a photograph, so it carries a 'Diagram: ' caption authored on its
+/// `![caption](path)` marker in `docs/Knowledge_graph_docs/**` and emitted
+/// by tool/barrio_training_content_generator.py. A caption is the whole
+/// mechanism on purpose: it is how every other diagram already declares
+/// itself, it survives regeneration because the markdown is the source of
+/// truth, and it doubles as the screen-reader description those figures
+/// previously lacked. No hard-coded asset list lives in Dart.
 extension HandbookUnitPhotos on HandbookUnit {
   /// Whether an image is a house-style diagram pictogram (vs. a photograph).
   static bool isDiagram(HandbookUnitImage image) =>

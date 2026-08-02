@@ -1171,6 +1171,15 @@ class _BodySegment {
 /// governs how second photographs are AUTHORED (`<unit_id>_2.webp`
 /// beside its lead); it is simply no longer what the renderer keys on.
 ///
+/// Follow-up the same day: broad positional grouping put a DRAWN source
+/// figure in the same holder as real photographs on 5 cards (a values
+/// poster, a food-handler poster, a WHMIS chart, an ice-bath poster, and
+/// three counter-cleaning step illustrations). Every image on those
+/// cards was on topic, but a drawing and a photograph are different
+/// teaching visuals and must not swipe as one set. The fix is content,
+/// not code: those seven figures now carry a 'Diagram: ' caption, so the
+/// rule below already ends the run at them. Nothing here changed.
+///
 /// Degrade rule is absolute and unchanged: a lone photograph is a group
 /// of one and renders exactly today's tree, no chips, no dots, no
 /// counter.
