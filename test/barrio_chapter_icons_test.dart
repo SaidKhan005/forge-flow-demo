@@ -24,14 +24,137 @@ import 'package:forge_and_flow/internal/barrio/content/company_handbook_content.
 import 'package:forge_and_flow/internal/barrio/content/quiz/barrio_quiz_models.dart';
 import 'package:forge_and_flow/internal/barrio/content/training/training_docs.dart';
 import 'package:forge_and_flow/internal/barrio/routes/barrio_destinations.dart';
+import 'package:forge_and_flow/internal/barrio/search/barrio_training_search.dart';
 import 'package:forge_and_flow/internal/barrio/services/barrio_bookmarks_service.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/barrio_chapter_icons.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/barrio_quiz_checkpoint_card.dart';
+import 'package:forge_and_flow/internal/barrio/widgets/barrio_row_thumbnail.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/handbook_chapter_rail.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/home/barrio_home_destination_visuals.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/home/barrio_home_shelf.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/training_doc_search_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+// Photo-less fixtures are chosen at RUNTIME, never hard-coded.
+//
+// Picture coverage is content, and it changes every build: the real-photo
+// passes keep turning previously imageless cards into photo cards, and a
+// photo card leads its browse row with a thumbnail INSTEAD of the
+// wayfinding icon. Any fixture that hard-codes "this manual/card has no
+// picture" therefore rots the moment that card gets a photograph (it did,
+// twice, in builds 30 and 32). The helpers below walk the routed corpus
+// for a card that is genuinely photo-less today and fail loudly if the
+// corpus no longer has one. Note that a diagram pictogram is not a photo
+// (HandbookUnitPhotos.isDiagram keys on the 'Diagram: ' caption prefix),
+// so a diagram-only card still counts as photo-less and still shows the
+// icon.
+
+/// A photo-less card that a home Saved row can point at: its manual is on
+/// the home shelf and has an identity icon, so the row's icon branch is
+/// the one under test.
+class _ImagelessSavedCard {
+  final String docId;
+  final int chapterIndex;
+  final int unitIndex;
+  final IconData manualIcon;
+
+  const _ImagelessSavedCard({
+    required this.docId,
+    required this.chapterIndex,
+    required this.unitIndex,
+    required this.manualIcon,
+  });
+
+  ValueKey<String> get rowKey =>
+      ValueKey<String>('barrio_saved_${docId}_${chapterIndex}_$unitIndex');
+}
+
+/// First photo-less card, scanning the home-shelf manuals in shelf order.
+_ImagelessSavedCard _findImagelessSavedCard(
+  List<BarrioDestination> shelfDestinations,
+) {
+  for (final dest in shelfDestinations) {
+    final doc = kBarrioTrainingDocs[dest.id];
+    if (doc == null) continue;
+    final manualIcon = barrioManualIconOrNull(dest.id);
+    if (manualIcon == null) continue;
+    for (var c = 0; c < doc.chapters.length; c++) {
+      final units = doc.chapters[c].units;
+      for (var u = 0; u < units.length; u++) {
+        if (units[u].firstPhoto != null) continue;
+        return _ImagelessSavedCard(
+          docId: dest.id,
+          chapterIndex: c,
+          unitIndex: u,
+          manualIcon: manualIcon,
+        );
+      }
+    }
+  }
+  fail('no photo-less card exists in any home-shelf manual, so the Saved '
+      'row icon branch cannot be exercised: either every card now carries '
+      'a photograph (delete this test and its branch) or the corpus/shelf '
+      'wiring broke');
+}
+
+/// A search query whose TOP in-manual hit is a photo-less card, plus the
+/// chapter icon that hit must lead with.
+class _ImagelessSearchHit {
+  final String docId;
+  final String query;
+  final int chapterIndex;
+  final int unitIndex;
+  final String chapterTitle;
+  final IconData chapterIcon;
+
+  const _ImagelessSearchHit({
+    required this.docId,
+    required this.query,
+    required this.chapterIndex,
+    required this.unitIndex,
+    required this.chapterTitle,
+    required this.chapterIcon,
+  });
+
+  ValueKey<String> get rowKey => ValueKey<String>(
+      'training_doc_search_row_${docId}_${chapterIndex}_$unitIndex');
+}
+
+/// First card whose own title, searched inside its own manual, ranks that
+/// card FIRST. Insisting on the top hit keeps the row inside the sheet's
+/// opening viewport, so the test never has to scroll a lazy list.
+_ImagelessSearchHit _findImagelessTopSearchHit() {
+  for (final entry in kBarrioTrainingDocs.entries) {
+    final docId = entry.key;
+    for (var c = 0; c < entry.value.chapters.length; c++) {
+      final units = entry.value.chapters[c].units;
+      for (var u = 0; u < units.length; u++) {
+        if (units[u].firstPhoto != null) continue;
+        final query = units[u].title.trim();
+        if (query.length < BarrioTrainingSearch.kMinQueryLength) continue;
+        final results = BarrioTrainingSearch.search(
+          query,
+          isDestinationAllowed: (id) => id == docId,
+        );
+        if (results.isEmpty) continue;
+        final top = results.first;
+        if (top.chapterIndex != c || top.unitIndex != u) continue;
+        return _ImagelessSearchHit(
+          docId: docId,
+          query: query,
+          chapterIndex: c,
+          unitIndex: u,
+          chapterTitle: top.chapterTitle,
+          chapterIcon: barrioChapterIconAt(docId, c),
+        );
+      }
+    }
+  }
+  fail('no photo-less card in the routed corpus ranks first for its own '
+      'title, so the in-manual search icon branch cannot be exercised: '
+      'either every card now carries a photograph (delete this test and '
+      'its branch) or search ranking changed');
+}
 
 void main() {
   const phoneSize = Size(390, 844);
@@ -164,19 +287,23 @@ void main() {
     testWidgets('in-manual search rows show the hit chapter icon beside '
         'the chapter title', (tester) async {
       usePhoneViewport(tester);
+      // Runtime fixture (see the header note): a hit whose card carries a
+      // photo leads with a thumbnail instead of the icon, so the branch
+      // under test needs a card that is photo-less TODAY.
+      final hit = _findImagelessTopSearchHit();
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             backgroundColor: Colors.black,
             body: TrainingDocSearchSheet(
-              docId: 'training_coffee',
+              docId: hit.docId,
               accent: Colors.amber,
               onResultTap: (_, __) {},
             ),
           ),
         ),
       );
-      await tester.enterText(find.byType(TextField), 'roasting');
+      await tester.enterText(find.byType(TextField), hit.query);
       // Ride out the ~200ms debounce, then rebuild with results.
       await tester.pump(const Duration(milliseconds: 250));
       await tester.pump();
@@ -185,9 +312,28 @@ void main() {
         find.byKey(const ValueKey<String>('training_doc_search_results')),
         findsOneWidget,
       );
-      expect(find.byIcon(Icons.local_fire_department), findsWidgets,
-          reason: 'hits in the "Roasting" chapter carry its curated '
-              'chapter icon; the text label stays beside it');
+      final row = find.byKey(hit.rowKey);
+      expect(row, findsOneWidget,
+          reason: 'the photo-less card must be the top hit for its own '
+              'title: "${hit.query}" in ${hit.docId}');
+      expect(
+        find.descendant(of: row, matching: find.byType(BarrioRowThumbnail)),
+        findsNothing,
+        reason: 'the fixture is photo-less by construction, so nothing may '
+            'lead the row with a picture',
+      );
+      final icon = find.descendant(
+        of: row,
+        matching: find.byIcon(hit.chapterIcon),
+      );
+      expect(icon, findsOneWidget,
+          reason: 'an imageless hit carries its curated chapter icon');
+      // The icon never replaces the chapter title: both sit in one kicker
+      // row, so the shape and the words carry the signal together.
+      final kicker =
+          find.ancestor(of: icon, matching: find.byType(Row)).first;
+      expect(find.descendant(of: kicker, matching: find.text(hit.chapterTitle)),
+          findsOneWidget);
       expect(find.byIcon(Icons.circle_outlined), findsNothing);
       expect(tester.takeException(), isNull);
     });
@@ -241,30 +387,35 @@ void main() {
 
     testWidgets('cross-manual Saved rows for an imageless card lead with '
         'the manual icon in the manual accent', (tester) async {
-      // Tequila carries no card photos, so this row exercises the
-      // manual-icon fallback branch. A saved card WITH a photo leads
-      // with a thumbnail instead (visual-first pass, rec #9); that
-      // branch is covered in barrio_visual_thumbnails_test.dart.
+      // Runtime fixture (see the header note): this row exercises the
+      // manual-icon fallback branch, which only renders for a card with
+      // no photo. A saved card WITH a photo leads with a thumbnail
+      // instead (visual-first pass, rec #9); that branch is covered in
+      // barrio_visual_thumbnails_test.dart.
+      final saved = _findImagelessSavedCard(
+        barrioDestinations.where((d) => d.showOnHomeHub).toList(),
+      );
       await pumpShelf(
         tester,
-        bookmarks: const [
+        bookmarks: [
           BarrioBookmark(
-            docId: 'training_tequila',
-            chapterIndex: 0,
-            unitInChapter: 0,
+            docId: saved.docId,
+            chapterIndex: saved.chapterIndex,
+            unitInChapter: saved.unitIndex,
           ),
         ],
       );
 
-      final row = find.byKey(
-        const ValueKey<String>('barrio_saved_training_tequila_0_0'),
-      );
+      final row = find.byKey(saved.rowKey);
       expect(row, findsOneWidget);
       expect(
-        find.descendant(
-          of: row,
-          matching: find.byIcon(Icons.local_bar_rounded),
-        ),
+        find.descendant(of: row, matching: find.byType(BarrioRowThumbnail)),
+        findsNothing,
+        reason: 'the fixture is photo-less by construction, so nothing may '
+            'lead the row with a picture',
+      );
+      expect(
+        find.descendant(of: row, matching: find.byIcon(saved.manualIcon)),
         findsOneWidget,
         reason: 'the Saved list is cross-manual, so an imageless row leads '
             'with its manual identity icon; the manual name text stays too',
