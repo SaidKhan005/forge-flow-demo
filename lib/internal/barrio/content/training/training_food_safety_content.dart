@@ -201,6 +201,11 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               caption: 'Clean attire, good hygiene. Photo: Marcbarrafon, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c2_u0_2.webp',
+              caption: 'Photo: New Zealand Defence Force, CC BY 2.0',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -284,6 +289,11 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c2_u2.webp',
               caption: 'Wash your hands often. Photo: Beat Ruest, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c2_u2_2.webp',
+              caption: 'Photo: Rawpixel, CC0 1.0',
               afterParagraph: -1,
             ),
           ],
@@ -1530,6 +1540,11 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               caption: 'Find and use the EpiPen. Photo: AngelHM, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c8_u2_2.webp',
+              caption: 'Photo: Intropin, CC BY 3.0',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -1680,6 +1695,11 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c9_u4.webp',
               caption: 'Check food temperatures. Photo: U.S. Air Force / Airman 1st Class Zachary Kee, Public domain',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c9_u4_2.webp',
+              caption: 'Photo: Ildar Sagdejev, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -2330,6 +2350,11 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               caption: 'Clean then sanitize surfaces. Photo: U.S. Navy / Mass Communication Specialist Seaman Sam McNeely, Public domain',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c17_u1_2.webp',
+              caption: 'Photo: U.S. Navy / Commander, U.S. Naval Forces Europe-Africa, U.S. 6th Fleet, Public domain',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -2554,6 +2579,11 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               caption: 'Keep the bar clean. Photo: Matti Blume, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c19_u2_2.webp',
+              caption: 'Photo: Achim Schleuning, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -2594,6 +2624,11 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c20_u0.webp',
               caption: 'Servers protect the food. Photo: Shixart1985, CC BY 2.0',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c20_u0_2.webp',
+              caption: 'Photo: Shixart1985, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],

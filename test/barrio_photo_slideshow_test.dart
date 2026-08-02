@@ -1,14 +1,17 @@
-// T10 picture-holder slideshow (2026-08-02), mechanism only.
+// T10 picture-holder slideshow (2026-08-02): mechanism plus the wired
+// corpus.
 //
-// A training card whose picture holder carries a lead photograph plus
-// its numbered alternate views shows them one at a time: two small
-// visible chevron chips on the picture's edges, a dot strip, and a
-// 'K of N' counter. The full-screen viewer pages between the same
-// slides and swaps the credit caption with the picture.
+// A training card carrying a run of consecutive photographs shows them
+// one at a time: two small visible chevron chips on the picture's edges,
+// a dot strip, and a 'K of N' counter. The full-screen viewer pages
+// between the same slides and swaps the credit caption with the picture.
 //
 // Covers:
+// - Corpus guards: the deliberate shipped slide-group count, the wired
+//   second photographs, and their credit captions.
 // - Degrade rule: a one-photograph card renders today's tree exactly
-//   (no chips, no dots, no counter, bare caption semantics).
+//   (no chips, no dots, no counter, bare caption semantics), and a
+//   diagram never joins a group.
 // - A slide group renders the chrome, the next chip advances the slide
 //   and swaps the credit caption, and the chips are absent at the ends
 //   (no wrap-around).
@@ -62,8 +65,8 @@ const _kSinglePhotoUnit = HandbookUnit(
   ],
 );
 
-/// A three-slide group: the lead photograph plus `_2` and `_3` alternate
-/// views of the same subject, the naming the content pipeline emits.
+/// A three-slide group: a lead photograph plus the `_2` and `_3`
+/// alternates the content pipeline authors beside it.
 const _kSlideGroupUnit = HandbookUnit(
   id: 'fixture_slide_group_unit',
   type: HandbookUnitType.explainer,
@@ -89,14 +92,15 @@ const _kSlideGroupUnit = HandbookUnit(
   ],
 );
 
-/// Two photographs that are NOT alternate views (different stems, the
-/// shape of the 28 real cards holding stacked source-document figures).
-/// These must keep stacking, untouched.
-const _kTwoUnrelatedPhotosUnit = HandbookUnit(
-  id: 'fixture_two_unrelated_unit',
+/// Two uncaptioned source-document figures with unrelated file stems:
+/// the shape of the 28 shipped cards that already stacked scans (the
+/// eight `bar_manual/03..10.webp` pages, for one). Operator-approved on
+/// 2026-08-02 to slide rather than stack.
+const _kTwoSourceFiguresUnit = HandbookUnit(
+  id: 'fixture_two_source_figures_unit',
   type: HandbookUnitType.explainer,
   badgeHint: 'READ',
-  title: 'Fixture Two Unrelated',
+  title: 'Fixture Two Source Figures',
   body: _kBody,
   images: [
     HandbookUnitImage(
@@ -105,6 +109,29 @@ const _kTwoUnrelatedPhotosUnit = HandbookUnit(
     ),
     HandbookUnitImage(
       assetPath: 'assets/internal/barrio/training/fixture/04.webp',
+      afterParagraph: -1,
+    ),
+  ],
+);
+
+/// A photograph followed by a house-style diagram pictogram. A diagram
+/// is a different teaching visual, so it never joins a slide group: this
+/// card must keep stacking two separate pictures.
+const _kPhotoThenDiagramUnit = HandbookUnit(
+  id: 'fixture_photo_then_diagram_unit',
+  type: HandbookUnitType.explainer,
+  badgeHint: 'READ',
+  title: 'Fixture Photo Then Diagram',
+  body: _kBody,
+  images: [
+    HandbookUnitImage(
+      assetPath: _kLeadPath,
+      caption: _kFirstCaption,
+      afterParagraph: -1,
+    ),
+    HandbookUnitImage(
+      assetPath: 'assets/internal/barrio/training/fixture_diagrams/pict.webp',
+      caption: 'Diagram: the fixture pictogram',
       afterParagraph: -1,
     ),
   ],
@@ -154,32 +181,102 @@ Finder _cardImages() => find.descendant(
     );
 
 void main() {
-  test('the live training corpus forms ZERO slide groups today', () {
-    var slideGroups = 0;
-    var unitsWithTwoOrMorePhotos = 0;
-    for (final doc in kBarrioTrainingDocs.values) {
-      for (final chapter in doc.chapters) {
-        for (final unit in chapter.units) {
-          if (unit.images.length < 2) continue;
-          if (unit.photos.length >= 2) unitsWithTwoOrMorePhotos++;
-          slideGroups += barrioPhotoSlideGroups(unit.images)
-              .where((group) => group.length > 1)
-              .length;
+  group('live training corpus', () {
+    // One walk of the shipped corpus, reused by every guard below.
+    final groups = <List<HandbookUnitImage>>[];
+    var imagedUnits = 0;
+    var unitsWithSlideGroup = 0;
+    var unitsWithNoSlideGroup = 0;
+    var wiredSecondPhotos = 0;
+    var wiredSecondPhotosInAGroup = 0;
+
+    setUpAll(() {
+      for (final doc in kBarrioTrainingDocs.values) {
+        for (final chapter in doc.chapters) {
+          for (final unit in chapter.units) {
+            if (unit.images.isEmpty) continue;
+            imagedUnits++;
+            final unitGroups = barrioPhotoSlideGroups(unit.images)
+                .where((group) => group.length > 1)
+                .toList();
+            if (unitGroups.isEmpty) {
+              unitsWithNoSlideGroup++;
+            } else {
+              unitsWithSlideGroup++;
+              groups.addAll(unitGroups);
+            }
+            for (final image in unit.images) {
+              if (!image.assetPath.endsWith('_2.webp')) continue;
+              wiredSecondPhotos++;
+              final inGroup = unitGroups.any(
+                (group) => group.any((s) => s.assetPath == image.assetPath),
+              );
+              if (inGroup) wiredSecondPhotosInAGroup++;
+            }
+          }
         }
       }
-    }
+    });
 
-    // The discovery this slice is built around: 28 shipped cards
-    // (2026-08-02) already stack two or more uncaptioned photographs,
-    // such as the eight `bar_manual/03..10.webp` source-document scans.
-    // A bare "two or more photographs" rule would have turned every one
-    // of them into a slideshow the day it landed.
-    expect(unitsWithTwoOrMorePhotos, greaterThan(0));
+    // Deliberate numbers, recomputed from the wired content on
+    // 2026-08-02 (same discipline as the diagram guards). Moving any of
+    // them means content changed: update them on purpose or find out
+    // why a card silently gained or lost a slideshow.
+    //
+    // Where 91 comes from: 28 shipped cards already stacked two or more
+    // uncaptioned source-document figures (the eight
+    // `bar_manual/03..10.webp` uniform-guideline scans, for one), and
+    // this slice wired 65 operator-approved second photographs. Two of
+    // those 65 landed on cards that were already stacking figures, so
+    // 28 + 65 - 2 = 91.
+    test('forms exactly 91 slide groups across 91 cards', () {
+      expect(imagedUnits, 744);
+      expect(groups, hasLength(91));
+      expect(unitsWithSlideGroup, 91,
+          reason: 'no card carries two separate slide holders today');
+      expect(
+        groups.fold<int>(0, (sum, group) => sum + group.length),
+        210,
+        reason: '210 photographs now live inside a holder that slides',
+      );
+      expect(
+        groups.map((group) => group.length).reduce((a, b) => a > b ? a : b),
+        8,
+        reason: 'the deepest group is the 8-scan uniform-guidelines card',
+      );
+    });
 
-    expect(slideGroups, 0,
-        reason: 'shipped content must render exactly as it does today. '
-            'Wiring the approved second photographs is what moves this '
-            'number, and that is the operator sign-off gate.');
+    test('653 imaged cards keep the single-picture degrade path', () {
+      // The degrade rule at corpus scale: the overwhelming majority of
+      // imaged cards still render exactly today's tree, one picture per
+      // holder, no chips, no dots, no counter.
+      expect(unitsWithNoSlideGroup, 653);
+      expect(unitsWithSlideGroup + unitsWithNoSlideGroup, imagedUnits);
+    });
+
+    test('all 65 wired second photographs land inside a slide group', () {
+      expect(wiredSecondPhotos, 65);
+      expect(wiredSecondPhotosInAGroup, 65,
+          reason: 'a second photograph that does not slide is dead weight');
+    });
+
+    test('every wired second photograph carries a credit, no em dash', () {
+      var checked = 0;
+      for (final group in groups) {
+        for (final slide in group) {
+          // UX no-em-dash law applies to every slide caption, wired or
+          // pre-existing.
+          expect(slide.caption ?? '', isNot(contains('—')),
+              reason: slide.assetPath);
+          if (!slide.assetPath.endsWith('_2.webp')) continue;
+          checked++;
+          expect(slide.caption, isNotNull, reason: slide.assetPath);
+          expect(slide.caption!, startsWith('Photo: '),
+              reason: '${slide.assetPath} must credit its source');
+        }
+      }
+      expect(checked, 65);
+    });
   });
 
   group('degrade rule', () {
@@ -221,20 +318,69 @@ void main() {
       handle.dispose();
     });
 
-    testWidgets('two photographs that are NOT alternate views keep stacking',
+    testWidgets('a photograph followed by a diagram keeps stacking',
         (tester) async {
       await _setMobileSurface(tester);
       await tester.pumpWidget(
-        _host(const HandbookLessonCard(unit: _kTwoUnrelatedPhotosUnit)),
+        _host(const HandbookLessonCard(unit: _kPhotoThenDiagramUnit)),
       );
       await tester.pumpAndSettle();
 
-      // Both render at once, as they do today: 03.webp is not the lead
-      // of 04.webp, so no slide group forms.
+      // A pictogram is not another view of the photograph, so the run
+      // ends at the diagram and both pictures render at once.
       expect(_cardImages(), findsNWidgets(2));
-      expect(_circleCount(tester), 0);
+      expect(_circleCount(tester), 0,
+          reason: 'neither picture is part of a slide group');
+      expect(_cardIcon(Icons.chevron_right_rounded), findsNothing);
       expect(find.textContaining(' of '), findsNothing);
+      expect(find.text(_kFirstCaption), findsOneWidget);
+      expect(find.text('Diagram: the fixture pictogram'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('consecutive source figures', () {
+    testWidgets('two uncaptioned figures share one holder that slides',
+        (tester) async {
+      await _setMobileSurface(tester);
+      await tester.pumpWidget(
+        _host(const HandbookLessonCard(unit: _kTwoSourceFiguresUnit)),
+      );
+      await tester.pumpAndSettle();
+
+      // Broadened grouping (operator-approved 2026-08-02): 03.webp and
+      // 04.webp are consecutive photographs, so they slide instead of
+      // stacking down the card.
+      expect(_cardImages(), findsOneWidget);
+      expect(find.text('1 of 2'), findsOneWidget);
+      // Two dots plus the next chip; no previous chip on slide 1.
+      expect(_circleCount(tester), 3);
+      expect(_cardIcon(Icons.chevron_right_rounded), findsOneWidget);
+      expect(_cardIcon(Icons.chevron_left_rounded), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('an uncaptioned figure invents no caption', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _setMobileSurface(tester);
+      await tester.pumpWidget(
+        _host(const HandbookLessonCard(unit: _kTwoSourceFiguresUnit)),
+      );
+      await tester.pumpAndSettle();
+
+      // Verbatim law: no source caption means the honest card-title
+      // fallback, never an invented description.
+      expect(
+        find.bySemanticsLabel(
+          'Photo: Fixture Two Source Figures. Photo 1 of 2',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(_cardIcon(Icons.chevron_right_rounded));
+      await tester.pumpAndSettle();
+      expect(find.text('2 of 2'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      handle.dispose();
     });
   });
 

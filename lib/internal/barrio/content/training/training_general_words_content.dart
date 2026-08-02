@@ -197,6 +197,11 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               caption: 'Guests who linger late. Photo: Elvert Barnes, CC BY-SA 2.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_photos/training_general_words_c0_u11_2.webp',
+              caption: 'Photo: Sarah Stierch, CC BY 4.0',
+              afterParagraph: -1,
+            ),
           ],
         ),
       ],
@@ -316,6 +321,11 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               caption: 'A course of the meal. Photo: Carlillasa, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_photos/training_general_words_c1_u7_2.webp',
+              caption: 'Photo: Gzen92, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -383,6 +393,11 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/training_general_words_photos/training_general_words_c2_u0.webp',
               caption: 'A quiet, empty room. Photo: Community Archives, CC0',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_photos/training_general_words_c2_u0_2.webp',
+              caption: 'Photo: Shixart1985, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -527,6 +542,11 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               caption: 'The service team. Photo: Florian Plag, CC BY 2.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_photos/training_general_words_c2_u11_2.webp',
+              caption: 'Photo: Jorge Royan, CC BY-SA 3.0',
+              afterParagraph: -1,
+            ),
           ],
         ),
       ],
@@ -549,6 +569,11 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/training_general_words_photos/training_general_words_c3_u0.webp',
               caption: 'Garnish, final touch. Photo: Ilikefood, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_photos/training_general_words_c3_u0_2.webp',
+              caption: 'Photo: Tom Ipri, CC BY-NC 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -597,6 +622,11 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/training_general_words_photos/training_general_words_c3_u3.webp',
               caption: 'Hands, food ready to run. Photo: CNEcija12345, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_general_words_photos/training_general_words_c3_u3_2.webp',
+              caption: 'Photo: Willem van de Poll, CC0',
               afterParagraph: -1,
             ),
           ],

@@ -20,6 +20,10 @@ const _kBodyWithImages =
     'Second paragraph, which carries the picture.\n\n'
     'Third paragraph after the picture.';
 
+/// A photograph plus a house-style diagram pictogram. Two SEPARATE
+/// picture holders on purpose: a diagram never joins a photograph's
+/// slide group (T10, 2026-08-02), so this fixture keeps proving the
+/// stacked picture-first render order that slide grouping leaves alone.
 const _kUnitWithImages = HandbookUnit(
   id: 'fixture_images_unit',
   type: HandbookUnitType.explainer,
@@ -33,7 +37,7 @@ const _kUnitWithImages = HandbookUnit(
     ),
     HandbookUnitImage(
       assetPath: 'assets/internal/barrio/training/fixture/02.webp',
-      caption: 'A literal source caption',
+      caption: 'Diagram: a literal source caption',
       afterParagraph: 1,
     ),
   ],
@@ -90,7 +94,7 @@ void main() {
     expect(find.text(_kBodyWithImages), findsNothing);
 
     // Caption renders under its image.
-    expect(find.text('A literal source caption'), findsOneWidget);
+    expect(find.text('Diagram: a literal source caption'), findsOneWidget);
 
     // Picture-first: BOTH images now render ABOVE the entire body. This
     // card was previously interleaved (afterParagraph -1 image led, the

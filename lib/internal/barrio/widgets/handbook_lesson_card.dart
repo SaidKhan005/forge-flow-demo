@@ -732,10 +732,11 @@ class _UnitBody extends StatelessWidget {
     // interleaving, so no image can double-render. Cards with no images
     // (handled above) are unchanged.
     //
-    // Slide grouping (T10, 2026-08-02): a lead photograph plus its
-    // numbered alternate views collapses into ONE picture holder that
-    // slides. Every other image, and every lone photograph, keeps
-    // rendering as its own [_UnitImage], exactly as it does today.
+    // Slide grouping (T10, 2026-08-02): a run of consecutive
+    // photographs collapses into ONE picture holder that slides, so a
+    // card never stacks a tall pile of pictures above its words. Every
+    // diagram, and every lone photograph, keeps rendering as its own
+    // [_UnitImage], exactly as it does today.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1142,32 +1143,40 @@ class _BodySegment {
 /// Partitions a unit's images into render groups, in source order.
 ///
 /// A group of one renders as a plain [_UnitImage], exactly as every
-/// picture does today. A group of two or more is a SLIDE GROUP: a lead
-/// photograph plus its alternate views of the same subject, rendered in
-/// one [_UnitPhotoSlides] holder.
+/// picture does today. A group of two or more is a SLIDE GROUP: a run of
+/// consecutive photographs sharing one [_UnitPhotoSlides] holder, shown
+/// one at a time.
 ///
-/// What counts as an alternate is the content pipeline's naming
-/// convention and nothing else: the lead keeps
-/// `<folder>/<unit_id>.webp` and each extra view is
-/// `<folder>/<unit_id>_2.webp`, `_3.webp`, sitting immediately after the
-/// lead in the unit's image list. That convention IS the wiring
-/// contract: a second photograph named anything else stays a separate
-/// stacked picture.
+/// The rule is positional and nothing else: consecutive photographs in a
+/// unit's image list belong to the same holder, and a diagram ends the
+/// run. Diagrams never join a group, because a house-style pictogram and
+/// a photograph are different teaching visuals (see
+/// [HandbookUnitPhotos]).
 ///
-/// Deliberately narrow, and verified against the whole corpus on
-/// 2026-08-02: 758 image lists, 28 of them holding two or more
-/// uncaptioned photographs (source-document figures such as the eight
-/// stacked `bar_manual/03..10.webp` scans), and ZERO slide groups. A
-/// bare "two or more photographs" rule would have turned all 28 of those
-/// cards into slideshows on the spot; unrelated page scans are not
-/// alternate views of one subject, and that change was never approved.
+/// History, kept because the reasoning still governs what may be wired.
+/// This function shipped deliberately narrow on 2026-08-02: it grouped
+/// ONLY a lead `<folder>/<unit_id>.webp` with its named alternates
+/// `_2.webp`, `_3.webp`. The corpus census behind that choice was 744
+/// imaged cards, 28 of them already stacking two or more uncaptioned
+/// photographs (source-document figures such as the eight
+/// `bar_manual/03..10.webp` page scans), and ZERO slide groups. The
+/// worry was that unrelated page scans are not alternate views of one
+/// subject, and turning those 28 cards into slideshows had never been
+/// approved.
 ///
-/// Diagrams never join a group: a house-style pictogram and a photograph
-/// are different teaching visuals (see [HandbookUnitPhotos]).
+/// Operator decision, 2026-08-02: approved. Those 28 stacked-figure
+/// cards read better as one slideshow than as a tall pile of pictures on
+/// a phone, so the rule is now the broad positional one above and the
+/// stacked figures become slides. The narrow naming convention still
+/// governs how second photographs are AUTHORED (`<unit_id>_2.webp`
+/// beside its lead); it is simply no longer what the renderer keys on.
+///
+/// Degrade rule is absolute and unchanged: a lone photograph is a group
+/// of one and renders exactly today's tree, no chips, no dots, no
+/// counter.
 ///
 /// Public so the corpus guard in `barrio_photo_slideshow_test.dart` can
-/// keep proving that number stays at zero until the approved second
-/// photographs are wired in.
+/// hold the shipped slide-group count to a deliberate number.
 List<List<HandbookUnitImage>> barrioPhotoSlideGroups(
   List<HandbookUnitImage> images,
 ) {
@@ -1178,9 +1187,7 @@ List<List<HandbookUnitImage>> barrioPhotoSlideGroups(
     final group = <HandbookUnitImage>[lead];
     i++;
     if (!HandbookUnitPhotos.isDiagram(lead)) {
-      while (i < images.length &&
-          !HandbookUnitPhotos.isDiagram(images[i]) &&
-          _isSlideAlternateOf(images[i].assetPath, lead.assetPath)) {
+      while (i < images.length && !HandbookUnitPhotos.isDiagram(images[i])) {
         group.add(images[i]);
         i++;
       }
@@ -1188,20 +1195,6 @@ List<List<HandbookUnitImage>> barrioPhotoSlideGroups(
     groups.add(group);
   }
   return groups;
-}
-
-/// Whether [path] is `<stem>_<n>.<ext>` beside the lead `<stem>.<ext>`.
-/// Requiring the lead to be present is what keeps a unit id that already
-/// ends in digits (`..._c16_u30.webp`) from reading as somebody else's
-/// alternate.
-bool _isSlideAlternateOf(String path, String leadPath) {
-  final dot = leadPath.lastIndexOf('.');
-  if (dot <= 0) return false;
-  final stem = leadPath.substring(0, dot);
-  final extension = leadPath.substring(dot);
-  if (!path.startsWith('${stem}_') || !path.endsWith(extension)) return false;
-  final index = path.substring(stem.length + 1, path.length - extension.length);
-  return index.isNotEmpty && int.tryParse(index) != null;
 }
 
 /// One content picture inside a unit body: rounded corners, full card
@@ -1281,8 +1274,8 @@ class _UnitImage extends StatelessWidget {
   }
 }
 
-/// A slide group inside a unit body: two or more views of the SAME
-/// subject sharing one picture holder, shown one at a time.
+/// A slide group inside a unit body: two or more consecutive
+/// photographs sharing one picture holder, shown one at a time.
 ///
 /// Gesture grammar (T10, 2026-08-02), and the reason this holder looks
 /// the way it does. The reading deck turns pages with a strongly
@@ -1306,7 +1299,7 @@ class _UnitImage extends StatelessWidget {
 /// [_UnitImage]), so today's single-picture cards keep today's tree
 /// exactly: no chips, no dots, no counter.
 class _UnitPhotoSlides extends StatefulWidget {
-  /// The lead photograph and its alternate views, in source order.
+  /// The run of consecutive photographs, in source order.
   final List<HandbookUnitImage> slides;
 
   /// Owning card title, the honest fallback when a slide has no caption.

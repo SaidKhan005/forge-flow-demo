@@ -297,6 +297,11 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               caption: 'Writing the order accurately. Photo: Alan Light, CC BY 2.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c4_u5_2.webp',
+              caption: 'Photo: Library of Congress (PPOC), Public domain',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -395,6 +400,11 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c4_u10.webp',
               caption: 'Communicating with the kitchen. Photo: CNEcija12345, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c4_u10_2.webp',
+              caption: 'Photo: Willem van de Poll, CC0',
               afterParagraph: -1,
             ),
           ],
@@ -1355,6 +1365,11 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               caption: 'A warm goodbye at the door. Photo: Hughcanbefound, CC BY-SA 3.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c7_u3_2.webp',
+              caption: 'Photo: Jonathan Palombo, CC BY 2.0',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -2092,6 +2107,11 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               caption: 'Cross-selling, dessert and coffee. Photo: JIP, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c10_u4_2.webp',
+              caption: 'Photo: JIP, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -2118,6 +2138,11 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c10_u5.webp',
               caption: 'Upselling to the larger cut. Photo: Nenad Stojkovic, CC BY 4.0',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c10_u5_2.webp',
+              caption: 'Photo: Shixart1985, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],

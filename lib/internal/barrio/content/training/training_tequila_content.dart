@@ -76,6 +76,11 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               caption: 'Blue Weber agave. Photo: Tomascastelazo, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_tequila_photos/training_tequila_c0_u1_2.webp',
+              caption: 'Photo: Jay8085, CC BY 2.0',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -200,6 +205,11 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/training_tequila_photos/training_tequila_c1_u2.webp',
               caption: 'Aging in oak. Photo: Juan Carlos Fonseca Mata, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_tequila_photos/training_tequila_c1_u2_2.webp',
+              caption: 'Photo: ORGP, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],

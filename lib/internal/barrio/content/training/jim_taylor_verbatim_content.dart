@@ -90,6 +90,11 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               caption: 'One guest, one cover. Photo: Ministry of Information Photo Division photographer, Public domain',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_photos/jim_taylor_labor_model_c1_u1_2.webp',
+              caption: 'Photo: Ministry of Information Photo Division photographer, Public domain',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(

@@ -1138,6 +1138,11 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               caption: 'Tips and tipout. Photo: Topher, CC0 1.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c9_u7_2.webp',
+              caption: 'Photo: Dave Dugdale, CC BY-SA 2.0',
+              afterParagraph: -1,
+            ),
           ],
         ),
       ],
@@ -1165,6 +1170,11 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c10_u0.webp',
               caption: 'Greeting callers warmly. Photo: Bill Branson, Public domain',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c10_u0_2.webp',
+              caption: 'Photo: State Library of Queensland, No known copyright restrictions',
               afterParagraph: -1,
             ),
           ],
@@ -1701,6 +1711,11 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               caption: 'Polished and professional. Photo: Florian Plag, CC BY 2.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c12_u0_2.webp',
+              caption: 'Photo: Jokromberg, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -1762,6 +1777,11 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c12_u2.webp',
               caption: 'Wash hands every time. Photo: Sgt. Grace L. Waladkewics, Public domain',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c12_u2_2.webp',
+              caption: 'Photo: Lance Cpl. Scott L. Tomaszycki, Public domain',
               afterParagraph: -1,
             ),
           ],
@@ -2960,6 +2980,11 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               caption: 'Know your extinguisher. Photo: Roman Eisele, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c16_u24_2.webp',
+              caption: 'Photo: vgroiwwo96, CC BY 2.0',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -3048,6 +3073,11 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               caption: 'Check the temperature. Photo: cyclonebill, CC BY-SA 2.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c16_u28_2.webp',
+              caption: 'Photo: USDA, Public domain',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -3107,6 +3137,11 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c16_u30.webp',
               caption: 'Store raw below ready to eat. Photo: Lance Cheung, USDA, Public domain',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c16_u30_2.webp',
+              caption: 'Photo: Lance Cheung, USDA, Public domain',
               afterParagraph: -1,
             ),
           ],

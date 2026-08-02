@@ -131,6 +131,11 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               caption: 'Reading the roast level. Photo: Sage Ross, CC BY-SA 3.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training_photos/training_coffee_c1_u1_2.webp',
+              caption: 'Photo: Your Best Digs, CC BY 2.0',
+              afterParagraph: -1,
+            ),
           ],
         ),
       ],
@@ -494,6 +499,11 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/coffee_training_photos/training_coffee_c9_u1.webp',
               caption: 'Scrubbing the group head. Photo: jonathanpoh, CC BY-NC-ND 2.0',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training_photos/training_coffee_c9_u1_2.webp',
+              caption: 'Photo: takc, CC BY-NC-SA 2.0',
               afterParagraph: -1,
             ),
           ],
