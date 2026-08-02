@@ -327,6 +327,21 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
           setState(() => _highlightTerms = _foldQueryWords(query));
           _jumpToCard(_chapterStarts[result.chapterIndex] + result.unitIndex);
         },
+        // An asked question that this manual answers behaves exactly
+        // like a tapped hit; only the highlight terms differ (the
+        // sheet sends the content terms, never the glue words).
+        onAnswerTap: (answer, highlightQuery) {
+          Navigator.of(sheetContext).pop();
+          setState(() => _highlightTerms = _foldQueryWords(highlightQuery));
+          _jumpToCard(_chapterStarts[answer.chapterIndex] + answer.unitIndex);
+        },
+        // The manual has no answer, so the reader leaves for the web.
+        // Closing the sheet first keeps the failure SnackBar visible
+        // and returns them to the manual when the browser closes.
+        onWebSearchRequested: (query) {
+          Navigator.of(sheetContext).pop();
+          _launchWebSearch(query);
+        },
       ),
     );
   }
