@@ -5,9 +5,17 @@
 // the three TERM manuals only. It lists every card title alphabetically
 // under letter headers computed at runtime from the titles themselves.
 // Presentation-only: the verbatim content (including chapter titles
-// like "8 to C") is never renamed or touched. Cards split into
-// "(cont.)" continuations are listed once under the base title, jumping
-// to the first card of the run.
+// like "8 to C") is never renamed or touched. A section split across
+// several cards is listed once under the first card's title, jumping to
+// that card.
+//
+// Run folding reads RUN METADATA (runIndex/runLength), never the title
+// text. Continuation cards used to be titled "<base> (cont.)", so a
+// regex could strip the suffix and recover the base; they are now
+// titled for what each card teaches
+// (tool/barrio_training_card_titles.json), and no string test can
+// recover a run from an authored title. runIndex was always the honest
+// signal: do not reintroduce the suffix regex.
 //
 // Photos view: on manuals whose cards carry bundled photos (today the
 // two food glossaries; Words To Know has none, so it shows no toggle),
@@ -33,9 +41,6 @@ import '../content/training/barrio_training_doc.dart';
 import '../search/barrio_training_search.dart';
 import 'barrio_destination_scaffold.dart';
 import 'barrio_row_thumbnail.dart';
-
-/// Strips a trailing continuation marker off a split card's title.
-final RegExp _kContSuffix = RegExp(r'\s*\(cont\.\)\s*$');
 
 /// One tappable index entry: the base card title and the flat-deck
 /// page of the first card carrying it, plus the term's first bundled
@@ -66,40 +71,70 @@ class TrainingIndexGroup {
   const TrainingIndexGroup({required this.letter, required this.entries});
 }
 
-/// Builds the alphabetical index for [doc] at runtime.
+/// The three folded lookups both index views are built from: display
+/// title, flat-deck jump page, and thumbnail asset, all keyed by the
+/// folded title of a run's first card.
+typedef _IndexWalk = ({
+  Map<String, String> titleByKey,
+  Map<String, int> pageByKey,
+  Map<String, String> assetByKey,
+});
+
+/// One pass over [doc]'s flat deck, folding each split run into the
+/// entry its first card opened.
 ///
-/// Walks the flat deck in reading order, folds "(cont.)" continuation
-/// cards into their base title (first card of the run wins), sorts the
-/// unique titles case- and diacritic-insensitively, and groups them by
-/// first letter. Digits and other non-letters group under '#', which
-/// sorts first, matching the glossaries' own "8 to C" reading order.
-List<TrainingIndexGroup> buildTrainingIndexGroups(BarrioTrainingDoc doc) {
-  // First card of every title run wins the title + page; the first card
-  // of the run carrying a photo wins the thumbnail asset (the base card
-  // may be imageless while a '(cont.)' card has the picture, so the
-  // asset is accumulated across the whole run, exactly like
-  // [buildTrainingIndexPhotoEntries]).
+/// Shared by both index views on purpose: the A-Z list and the photo
+/// grid must never disagree about which cards belong to which term, and
+/// two copies of this walk would eventually drift.
+///
+/// A card with runIndex > 1 contributes no entry of its own; its photo
+/// accumulates into the run's entry, so a term whose picture sits on a
+/// later card of the run still shows a thumbnail. Run metadata, not the
+/// title text, decides this (see the library comment).
+_IndexWalk _walkIndexRuns(BarrioTrainingDoc doc) {
   final titleByKey = <String, String>{};
   final pageByKey = <String, int>{};
   final assetByKey = <String, String>{};
   var page = 0;
   for (final chapter in doc.chapters) {
+    // A run never spans chapters, so a chapter boundary closes any open
+    // one. An untitled first card opens no run: its continuations are
+    // skipped with it rather than folding into the previous term.
+    String? runKey;
     for (final unit in chapter.units) {
-      final base = unit.title.replaceFirst(_kContSuffix, '').trim();
-      if (base.isNotEmpty) {
-        final key = BarrioTrainingSearch.fold(base);
-        titleByKey.putIfAbsent(key, () => base);
-        pageByKey.putIfAbsent(key, () => page);
-        // Photo-only: the A-Z index and its photo grid show real photos, not
-        // diagram pictograms (a pictogram is not a photo of the term).
-        final photo = unit.firstPhoto;
-        if (photo != null) {
-          assetByKey.putIfAbsent(key, () => photo.assetPath);
+      if (unit.runIndex == 1) {
+        final base = unit.title.trim();
+        runKey = base.isEmpty ? null : BarrioTrainingSearch.fold(base);
+        if (runKey != null) {
+          titleByKey.putIfAbsent(runKey, () => base);
+          pageByKey.putIfAbsent(runKey, () => page);
         }
+      }
+      // Photo-only: the A-Z index and its photo grid show real photos, not
+      // diagram pictograms (a pictogram is not a photo of the term).
+      final photo = unit.firstPhoto;
+      if (runKey != null && photo != null) {
+        assetByKey.putIfAbsent(runKey, () => photo.assetPath);
       }
       page++;
     }
   }
+  return (
+    titleByKey: titleByKey,
+    pageByKey: pageByKey,
+    assetByKey: assetByKey,
+  );
+}
+
+/// Builds the alphabetical index for [doc] at runtime.
+///
+/// Walks the flat deck in reading order, folds each split run into its
+/// first card's title, sorts the unique titles case- and
+/// diacritic-insensitively, and groups them by first letter. Digits and
+/// other non-letters group under '#', which sorts first, matching the
+/// glossaries' own "8 to C" reading order.
+List<TrainingIndexGroup> buildTrainingIndexGroups(BarrioTrainingDoc doc) {
+  final (:titleByKey, :pageByKey, :assetByKey) = _walkIndexRuns(doc);
   final sortedKeys = titleByKey.keys.toList()..sort();
   // Folded keys sort digits before letters, so group insertion order is
   // already '#' first, then A to Z.
@@ -149,27 +184,7 @@ class TrainingIndexPhotoEntry {
 List<TrainingIndexPhotoEntry> buildTrainingIndexPhotoEntries(
   BarrioTrainingDoc doc,
 ) {
-  final titleByKey = <String, String>{};
-  final pageByKey = <String, int>{};
-  final assetByKey = <String, String>{};
-  var page = 0;
-  for (final chapter in doc.chapters) {
-    for (final unit in chapter.units) {
-      final base = unit.title.replaceFirst(_kContSuffix, '').trim();
-      if (base.isNotEmpty) {
-        final key = BarrioTrainingSearch.fold(base);
-        titleByKey.putIfAbsent(key, () => base);
-        pageByKey.putIfAbsent(key, () => page);
-        // Photo-only: the A-Z index and its photo grid show real photos, not
-        // diagram pictograms (a pictogram is not a photo of the term).
-        final photo = unit.firstPhoto;
-        if (photo != null) {
-          assetByKey.putIfAbsent(key, () => photo.assetPath);
-        }
-      }
-      page++;
-    }
-  }
+  final (:titleByKey, :pageByKey, :assetByKey) = _walkIndexRuns(doc);
   final sortedKeys = assetByKey.keys.toList()..sort();
   return <TrainingIndexPhotoEntry>[
     for (final key in sortedKeys)

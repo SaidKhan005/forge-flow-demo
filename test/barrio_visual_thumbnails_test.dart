@@ -58,7 +58,12 @@ _Coord? _firstUnit(BarrioTrainingDoc doc, bool Function(HandbookUnit u) test) {
   return null;
 }
 
-bool _isCont(HandbookUnit u) => u.title.contains('(cont.)');
+/// Whether [u] continues a split run rather than opening one.
+///
+/// Reads run metadata, not the title text: continuation cards are
+/// titled for what they teach (tool/barrio_training_card_titles.json),
+/// so a '(cont.)' substring test would silently stop matching them.
+bool _isCont(HandbookUnit u) => u.runIndex > 1;
 
 void main() {
   const phoneSize = Size(390, 844);
@@ -229,8 +234,8 @@ void main() {
               docId: docId,
               accent: const Color(0xFFE0A030),
               onResultTap: (_, __) {},
-              // The sheet also answers questions and offers a web fallback (#1536);
-              // these surfaces are not under test here, so the callbacks are no-ops.
+              // Ask-the-manual callbacks (#1536) are required but unused
+              // by these thumbnail assertions.
               onAnswerTap: (_, __) {},
               onWebSearchRequested: (_) {},
             ),

@@ -35,6 +35,36 @@ if os.path.exists(_DIAGRAM_MANIFEST_PATH):
     with open(_DIAGRAM_MANIFEST_PATH, encoding='utf-8') as _mf:
         DIAGRAM_IMAGES = json.load(_mf)
 
+# Hand-authored CONTINUATION-card titles, keyed by the same FINAL
+# (post-split) unit id. A split section's cards 2..N are titled
+# '<heading> (cont.)' by default, which tells the reader nothing about
+# what that particular card teaches. This manifest lets an authored
+# title replace it. Entry shape:
+#
+#     "<unit_id>": {"was": "<title the generator would emit>",
+#                   "title": "<the informative title>"}
+#
+# `was` is a drift tripwire, not decoration: unit ids shift whenever a
+# source doc or a split constant changes, and a silent mismatch would
+# land an authored title on the wrong card. See the guards in
+# card_title_for / check_card_title_manifest below, and
+# tool/barrio_training_card_titles.README.md for the authoring rules.
+# The file is a pure {unit_id: entry} map with NO documentation keys:
+# every key is checked against the run, so a stray '_README' key would
+# have to be special-cased and that exemption is exactly the hole a
+# future typo would fall through.
+_CARD_TITLES_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    'barrio_training_card_titles.json')
+CARD_TITLES = {}
+if os.path.exists(_CARD_TITLES_PATH):
+    with open(_CARD_TITLES_PATH, encoding='utf-8') as _tf:
+        CARD_TITLES = json.load(_tf)
+
+# Manifest unit ids actually reached during this run (see
+# check_card_title_manifest).
+_CARD_TITLES_SEEN = set()
+
 DOCS = [
     dict(md='Barrio Building A Strong Foundation.md', id='training_strong_foundation',
          const='kTrainingStrongFoundation', title='Building A Strong Foundation', kind='prose'),
@@ -457,6 +487,53 @@ def dart_string(body, indent):
     return ('\n' + pad).join(f"'{s}'" for s in segs)
 
 
+def card_title_for(unit_id, computed_title, run_idx):
+    """Title to emit for one card: the manifest override, or the computed one.
+
+    Same posture as _check_ranges: a manifest that no longer lines up with
+    the parsed source is a hard stop, never a silent skip.
+
+      * run-start guard - only continuation cards (runIndex > 1) may be
+        retitled. The first card of a run carries the verbatim source
+        heading, and tool/barrio_training_verbatim_check.py only passes at
+        lost=0w, so replacing that heading would delete source words.
+      * drift tripwire - the computed title must equal the entry's `was`.
+        Unit ids shift when a source doc or a split constant changes, so
+        an id that still resolves but now names a different card would
+        otherwise land an authored title on the wrong content.
+    """
+    entry = CARD_TITLES.get(unit_id)
+    if entry is None:
+        return computed_title
+    _CARD_TITLES_SEEN.add(unit_id)
+    if run_idx <= 1:
+        raise SystemExit(
+            f'{unit_id}: card-title manifest entry targets the FIRST card '
+            f'of a run (runIndex {run_idx}); only continuation cards may be '
+            f'retitled, because the first card carries the verbatim source '
+            f'heading. Move the entry to the right unit id or drop it.')
+    if computed_title != entry['was']:
+        raise SystemExit(
+            f'{unit_id}: card-title manifest drift. Expected `was` '
+            f'{entry["was"]!r} but the generator computed '
+            f'{computed_title!r}; unit ids shift when a source doc or a '
+            f'split constant changes. Re-point the entry at the card it '
+            f'was authored for before regenerating.')
+    return entry['title']
+
+
+def check_card_title_manifest():
+    """Every manifest unit id must have been reached by this run."""
+    missing = sorted(set(CARD_TITLES) - _CARD_TITLES_SEEN)
+    if missing:
+        raise SystemExit(
+            f'card-title manifest: {len(missing)} unit id(s) never appeared '
+            f'in this run: {", ".join(missing)}. Unit ids shift when a '
+            f'source doc or a split constant changes; re-point or drop each '
+            f'stale entry (a title silently going missing is the failure '
+            f'this guard exists to prevent).')
+
+
 def emit(doc, chapters, part_of=None):
     """chapters: list of (title, units, subtitle?) where units = (title, body).
 
@@ -471,6 +548,11 @@ def emit(doc, chapters, part_of=None):
     a('// Body text is word-for-word from the source Markdown. Headings become')
     a('// chapter/card titles; markdown syntax markers are formatting, not words,')
     a('// and are omitted. Generated for the 2026-07-11 training-bubble slice.')
+    a('//')
+    a('// Continuation cards (runIndex > 1) default to the source heading plus')
+    a('// " (cont.)". Where tool/barrio_training_card_titles.json carries an')
+    a("// entry for the card, its authored title is emitted instead, naming what")
+    a('// that card teaches. Body text is untouched either way.')
     a('')
     a("import '../company_handbook_content.dart';")
     a("import 'barrio_training_doc.dart';")
@@ -527,6 +609,9 @@ def emit(doc, chapters, part_of=None):
                     u_images = manifest_images
                 else:
                     u_images = list(u_images) + manifest_images
+            # Authored continuation-card titles ride the same unit id as the
+            # diagram manifest above; guards live in card_title_for.
+            u_title = card_title_for(unit_id, u_title, run_idx)
             badge = {'prose': 'READ', 'glossary': 'TERM', 'slides': 'SLIDE'}[doc['kind']]
             a('        HandbookUnit(')
             a(f"          id: '{doc['id']}_c{ci}_u{ui}',")
@@ -793,3 +878,8 @@ for doc in DOCS:
         f.write(emit(doc, chapters, part_of))
     n_units = sum(len(c[1]) for c in chapters)
     print(f'{doc["id"]}: {len(chapters)} chapters, {n_units} units -> {out_path}')
+
+check_card_title_manifest()
+if CARD_TITLES:
+    print(f'card titles: {len(CARD_TITLES)} continuation card(s) retitled '
+          f'from the manifest')
