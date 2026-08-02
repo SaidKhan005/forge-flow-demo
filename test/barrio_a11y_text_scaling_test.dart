@@ -284,6 +284,10 @@ void main() {
                 docId: 'training_food_safety',
                 accent: Colors.teal,
                 onResultTap: (_, __) {},
+                // The sheet also answers questions and offers a web fallback (#1536);
+                // these surfaces are not under test here, so the callbacks are no-ops.
+                onAnswerTap: (_, __) {},
+                onWebSearchRequested: (_) {},
               ),
             ),
           ),
