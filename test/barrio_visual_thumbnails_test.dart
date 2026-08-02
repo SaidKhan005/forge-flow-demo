@@ -35,6 +35,13 @@ const _kIngredients = 'training_latin_ingredients';
 const _kWords = 'training_general_words';
 const _kTequila = 'training_tequila';
 
+/// Push Training carries no card art at all, so it is the fixture for
+/// photo-free behavior. Words To Know used to fill that role, but build 32
+/// gave it real photographs on some cards, which is the point of the
+/// build: a manual's picture coverage is content that changes, so the
+/// photo-free assertions hang off a manual that genuinely has none.
+const _kPushSop = 'training_push_sop';
+
 /// A resolved coordinate: chapter index, unit index within the chapter,
 /// and the unit itself.
 typedef _Coord = ({int chapterIndex, int unitIndex, HandbookUnit unit});
@@ -106,14 +113,60 @@ void main() {
       );
     });
 
-    test('every card of the imageless Words To Know manual resolves null',
-        () {
-      final words = kBarrioTrainingDocs[_kWords]!;
-      for (var c = 0; c < words.chapters.length; c++) {
-        for (var u = 0; u < words.chapters[c].units.length; u++) {
-          expect(barrioUnitFirstImageAt(_kWords, c, u), isNull);
+    test('across every manual, a coordinate resolves exactly its card\'s '
+        'first photograph, and null when the card has none', () {
+      var resolvedNull = 0;
+      var resolvedPhoto = 0;
+      for (final entry in kBarrioTrainingDocs.entries) {
+        final doc = entry.value;
+        for (var c = 0; c < doc.chapters.length; c++) {
+          for (var u = 0; u < doc.chapters[c].units.length; u++) {
+            final unit = doc.chapters[c].units[u];
+            final resolved = barrioUnitFirstImageAt(entry.key, c, u);
+            expect(resolved, unit.firstPhoto?.assetPath,
+                reason: '${entry.key} $c/$u resolves its first photo');
+            if (resolved == null) {
+              resolvedNull++;
+            } else {
+              resolvedPhoto++;
+              expect(HandbookUnitPhotos.isDiagram(unit.firstPhoto!), isFalse,
+                  reason: 'a thumbnail is never a diagram pictogram');
+            }
+          }
         }
       }
+      expect(resolvedNull, greaterThan(0),
+          reason: 'sanity: photo-less cards exist and resolve null');
+      expect(resolvedPhoto, greaterThan(0),
+          reason: 'sanity: photo-backed cards exist and resolve their photo');
+    });
+
+    test('a diagram is never a row thumbnail: Words To Know mixes photo '
+        'cards with diagram-only cards', () {
+      final words = kBarrioTrainingDocs[_kWords]!;
+      var diagramOnly = 0;
+      var photoBacked = 0;
+      for (var c = 0; c < words.chapters.length; c++) {
+        for (var u = 0; u < words.chapters[c].units.length; u++) {
+          final unit = words.chapters[c].units[u];
+          final resolved = barrioUnitFirstImageAt(_kWords, c, u);
+          if (resolved == null) {
+            diagramOnly++;
+            for (final image in unit.images) {
+              expect(image.assetPath, contains('_diagrams/'),
+                  reason: 'a card resolves null only when it has no photo');
+            }
+          } else {
+            photoBacked++;
+            expect(resolved, contains('_photos/'),
+                reason: 'a row thumbnail is a photo, never a diagram');
+          }
+        }
+      }
+      expect(diagramOnly, greaterThan(0),
+          reason: 'sanity: the manual still has diagram-only cards');
+      expect(photoBacked, greaterThan(0),
+          reason: 'sanity: build 32 gave the manual photo-backed cards');
     });
 
     test('out-of-range coordinates and unknown docs resolve null', () {
@@ -320,21 +373,31 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('the fully imageless Words To Know index shows plain text '
-        'rows and never a thumbnail', (tester) async {
+    testWidgets('a photo-free manual index shows plain text rows and never '
+        'a thumbnail', (tester) async {
       usePhone(tester);
-      final doc = kBarrioTrainingDocs[_kWords]!;
+      // Found at runtime rather than named: which manuals carry photos is
+      // content that changes build to build, and hard-coding one here is
+      // exactly what went stale when build 32 added photographs.
+      final photoFree = kBarrioTrainingDocs.entries.firstWhere(
+        (e) =>
+            buildTrainingIndexGroups(e.value).isNotEmpty &&
+            buildTrainingIndexPhotoEntries(e.value).isEmpty,
+        orElse: () => throw StateError(
+            'no photo-free manual left to exercise the plain-row path'),
+      );
+      final doc = photoFree.value;
       final firstEntry = [
         for (final g in buildTrainingIndexGroups(doc)) ...g.entries,
       ].first;
 
-      await pumpIndex(tester, _kWords);
+      await pumpIndex(tester, photoFree.key);
       expect(list, findsOneWidget);
       // No A-Z row in a photo-free manual ever renders a thumbnail.
       expect(
         find.descendant(of: list, matching: find.byType(BarrioRowThumbnail)),
         findsNothing,
-        reason: 'Words To Know has zero card photos, so zero thumbnails',
+        reason: 'Push Training has zero card photos, so zero thumbnails',
       );
       // The plain text row still renders and is tappable.
       expect(

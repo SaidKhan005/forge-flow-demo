@@ -377,8 +377,8 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'to show every visitor that they truly matter.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c6_u1.webp',
-              caption: 'Diagram: Greeting Our Guests',
+              assetPath: 'assets/internal/barrio/training/training_host_manual_photos/training_host_manual_c6_u1.webp',
+              caption: 'Greeting guests at entry. Photo: Wonderlane, CC0 1.0',
               afterParagraph: -1,
             ),
           ],
@@ -462,8 +462,8 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'features, that will keep our guests smiling!',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c6_u6.webp',
-              caption: 'Diagram: Communication Board',
+              assetPath: 'assets/internal/barrio/training/training_host_manual_photos/training_host_manual_c6_u6.webp',
+              caption: 'Check the comm board. Photo: elyaqim, CC BY-SA 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -490,8 +490,8 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'inviting atmosphere throughout your restaurant.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c7_u0.webp',
-              caption: 'Diagram: Washroom Checks',
+              assetPath: 'assets/internal/barrio/training/training_host_manual_photos/training_host_manual_c7_u0.webp',
+              caption: 'Washroom, clean and stocked. Photo: bartonjs, CC BY-NC-SA 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -1085,8 +1085,8 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
               'warmth.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_host_manual_diagrams/training_host_manual_c8_u9.webp',
-              caption: 'Diagram: Host Stand Cleanliness',
+              assetPath: 'assets/internal/barrio/training/training_host_manual_photos/training_host_manual_c8_u9.webp',
+              caption: 'A tidy host stand. Photo: Lou Stejskal, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],

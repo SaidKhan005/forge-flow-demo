@@ -11,6 +11,7 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/internal/barrio/content/company_handbook_content.dart';
 import 'package:forge_and_flow/internal/barrio/content/training/training_docs.dart';
 import 'package:forge_and_flow/internal/barrio/services/barrio_flashcard_deck.dart';
 
@@ -41,15 +42,28 @@ void main() {
       }
     });
 
-    test('general words deck has 92 term cards and no pictures', () {
+    test('general words deck has 92 term cards, each picture matching its '
+        'source card', () {
+      final doc = kBarrioTrainingDocs['training_general_words']!;
+      final units = [for (final c in doc.chapters) ...c.units];
       final deck = barrioFlashcardDeckForManual(
         'training_general_words',
         title: 'Words To Know',
       );
       expect(deck, isNotNull);
       expect(deck!.cards.length, 92);
-      expect(deck.cards.every((c) => c.imageAssetPath == null), isTrue,
-          reason: 'the source glossary carries no images');
+      // Build 32 gave part of this glossary real photographs, so the deck
+      // is a mix: a card shows a picture when, and only when, its source
+      // card carries a real photo. Diagram pictograms stay out of the deck
+      // (a pictogram is not a photo of the thing), so those fronts are the
+      // branded definition card (FC-2), never a blank frame.
+      expect(deck.cards.length, units.length);
+      for (var i = 0; i < deck.cards.length; i++) {
+        expect(deck.cards[i].imageAssetPath, units[i].firstPhoto?.assetPath,
+            reason: '${units[i].title} matches its source card');
+      }
+      expect(deck.cards.any((c) => c.imageAssetPath != null), isTrue,
+          reason: 'sanity: build 32 gave some of these terms pictures');
     });
 
     test('every flashcard manual id builds a deck; other manuals do not', () {

@@ -152,8 +152,8 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           body: 'Refers to the kitchen team.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c0_u9.webp',
-              caption: 'Diagram: BOH (BACK OF HOUSE)',
+              assetPath: 'assets/internal/barrio/training/training_general_words_photos/training_general_words_c0_u9.webp',
+              caption: 'The kitchen team. Photo: Dennis Wong, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -188,8 +188,8 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'have finished their dining experience.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c0_u11.webp',
-              caption: 'Diagram: CAMPERS',
+              assetPath: 'assets/internal/barrio/training/training_general_words_photos/training_general_words_c0_u11.webp',
+              caption: 'Guests who linger late. Photo: Elvert Barnes, CC BY-SA 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -211,8 +211,8 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'ticket or a chit.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c1_u0.webp',
-              caption: 'Diagram: CHIT',
+              assetPath: 'assets/internal/barrio/training/training_general_words_photos/training_general_words_c1_u0.webp',
+              caption: 'The order ticket. Photo: Tavallai, CC BY-ND 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -307,8 +307,8 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'appetizer, main dish, and dessert.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c1_u7.webp',
-              caption: 'Diagram: COURSE',
+              assetPath: 'assets/internal/barrio/training/training_general_words_photos/training_general_words_c1_u7.webp',
+              caption: 'A course of the meal. Photo: Carlillasa, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -376,8 +376,8 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'given time.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c2_u0.webp',
-              caption: 'Diagram: DEAD (BUSINESS LEVEL)',
+              assetPath: 'assets/internal/barrio/training/training_general_words_photos/training_general_words_c2_u0.webp',
+              caption: 'A quiet, empty room. Photo: Community Archives, CC0',
               afterParagraph: -1,
             ),
           ],
@@ -439,8 +439,8 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'items, and ensuring accuracy before sending food to the guest.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c2_u5.webp',
-              caption: 'Diagram: EXPO',
+              assetPath: 'assets/internal/barrio/training/training_general_words_photos/training_general_words_c2_u5.webp',
+              caption: 'Expo: final plate check. Photo: Cpl. Hyung Ju Lee, U.S. Army, Public domain',
               afterParagraph: -1,
             ),
           ],
@@ -518,8 +518,8 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
           body: 'Refers to the service team.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c2_u11.webp',
-              caption: 'Diagram: FOH (FRONT OF HOUSE)',
+              assetPath: 'assets/internal/barrio/training/training_general_words_photos/training_general_words_c2_u11.webp',
+              caption: 'The service team. Photo: Florian Plag, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -542,8 +542,8 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'drink\'s appearance.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c3_u0.webp',
-              caption: 'Diagram: GARNISH',
+              assetPath: 'assets/internal/barrio/training/training_general_words_photos/training_general_words_c3_u0.webp',
+              caption: 'Garnish, final touch. Photo: Ilikefood, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -590,8 +590,8 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'to be brought to the guest.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c3_u3.webp',
-              caption: 'Diagram: HANDS',
+              assetPath: 'assets/internal/barrio/training/training_general_words_photos/training_general_words_c3_u3.webp',
+              caption: 'Hands, food ready to run. Photo: CNEcija12345, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -853,8 +853,8 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'and credit card payments at the table.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c5_u0.webp',
-              caption: 'Diagram: PATT',
+              assetPath: 'assets/internal/barrio/training/training_general_words_photos/training_general_words_c5_u0.webp',
+              caption: 'PATT, pay at table. Photo: HLundgaard, CC BY-SA 3.0',
               afterParagraph: -1,
             ),
           ],
@@ -1242,8 +1242,8 @@ const BarrioTrainingDoc kTrainingGeneralWords = BarrioTrainingDoc(
               'temperatures for perishable goods.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_general_words_diagrams/training_general_words_c7_u5.webp',
-              caption: 'Diagram: WALK IN (FRIDGE/FREEZER)',
+              assetPath: 'assets/internal/barrio/training/training_general_words_photos/training_general_words_c7_u5.webp',
+              caption: 'Walk-in, cold storage. Photo: liz west, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],

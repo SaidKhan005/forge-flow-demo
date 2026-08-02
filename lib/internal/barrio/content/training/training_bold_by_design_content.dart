@@ -1706,8 +1706,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'consistency.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_diagrams/training_bold_by_design_c8_u0.webp',
-              caption: 'Diagram: Chapter 7: Understanding Productivity (Back of House)',
+              assetPath: 'assets/internal/barrio/training/training_bold_by_design_photos/training_bold_by_design_c8_u0.webp',
+              caption: 'The kitchen under service pressure. Photo: Lars Plougmann, CC BY-SA 2.0',
               afterParagraph: -1,
             ),
           ],

@@ -93,17 +93,22 @@ void main() {
       }
     });
 
-    testWidgets('Words To Know (zero card photos) shows no toggle and '
-        'keeps the plain A to Z sheet', (tester) async {
-      // Precondition keeps the test self-validating: the manual really
-      // has no card photos, so no photo view can exist.
-      expect(
-        buildTrainingIndexPhotoEntries(
-          kBarrioTrainingDocs['training_general_words']!,
-        ),
-        isEmpty,
-        reason: 'sanity: Words To Know carries zero card photos',
-      );
+    testWidgets('Words To Know (photos on too few cards) shows no toggle '
+        'and keeps the plain A to Z sheet', (tester) async {
+      // Precondition keeps the test self-validating. Build 32 gave this
+      // manual real photographs on some cards, but a photo browse is only
+      // honest once at least half the terms carry one, so the toggle must
+      // still stay away: a grid of mostly blanks would teach nothing.
+      final doc = kBarrioTrainingDocs['training_general_words']!;
+      final termCount = buildTrainingIndexGroups(doc)
+          .fold<int>(0, (sum, g) => sum + g.entries.length);
+      final photoCount = buildTrainingIndexPhotoEntries(doc).length;
+      expect(photoCount, greaterThan(0),
+          reason: 'sanity: the manual does carry some card photos');
+      expect(photoCount * 2, lessThan(termCount),
+          reason: 'sanity: coverage is under the half-the-terms bar '
+              '($photoCount of $termCount)');
+      expect(trainingDocHasPhotoBrowse(doc), isFalse);
 
       await pumpDoc(tester, 'training_general_words');
       await openIndexSheet(tester);
@@ -273,13 +278,36 @@ void main() {
       }
     });
 
-    test('Words To Know yields zero photo entries', () {
-      expect(
-        buildTrainingIndexPhotoEntries(
-          kBarrioTrainingDocs['training_general_words']!,
-        ),
-        isEmpty,
-      );
+    test('a manual whose cards carry only diagrams yields zero photo '
+        'entries', () {
+      // Located at runtime: which manuals hold photographs is content that
+      // changes, so the diagram-only path is exercised by whichever manual
+      // currently qualifies rather than by a hard-coded name.
+      final diagramOnly = kBarrioTrainingDocs.values.where((doc) => [
+            for (final c in doc.chapters)
+              for (final u in c.units) ...u.images,
+          ].isNotEmpty && [
+            for (final c in doc.chapters)
+              for (final u in c.units)
+                if (u.firstPhoto != null) u,
+          ].isEmpty);
+      expect(diagramOnly, isNotEmpty,
+          reason: 'sanity: at least one manual is still diagram-only');
+      for (final doc in diagramOnly) {
+        expect(buildTrainingIndexPhotoEntries(doc), isEmpty);
+      }
+    });
+
+    test('Words To Know yields only its photo-backed terms', () {
+      final doc = kBarrioTrainingDocs['training_general_words']!;
+      final entries = buildTrainingIndexPhotoEntries(doc);
+      expect(entries, isNotEmpty,
+          reason: 'build 32 gave some of its cards real photographs');
+      for (final entry in entries) {
+        expect(entry.assetPath, contains('_photos/'),
+            reason: '${entry.title}: the grid shows photographs, never '
+                'diagram art');
+      }
     });
   });
 }

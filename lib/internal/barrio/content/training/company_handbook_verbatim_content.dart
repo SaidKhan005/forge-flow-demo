@@ -177,8 +177,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
           runLength: 3,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c2_u0.webp',
-              caption: 'Diagram: Raymonds Legacy',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c2_u0.webp',
+              caption: 'A fine dining legacy. Photo: Raymonds, St. John\'s',
               afterParagraph: -1,
             ),
           ],
@@ -212,8 +212,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
           runLength: 3,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c2_u1.webp',
-              caption: 'Diagram: Raymonds Legacy',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c2_u1.webp',
+              caption: 'The room that set the standard. Photo: Raymonds, St. John\'s',
               afterParagraph: -1,
             ),
           ],
@@ -730,8 +730,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'hours, please do not hesitate to reach out to your manager.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c8_u0.webp',
-              caption: 'Diagram: CLOCKING IN/OUT',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c8_u0.webp',
+              caption: 'Clock in, clock out. Photo: Pedrofuocoandrade, CC BY 3.0',
               afterParagraph: -1,
             ),
           ],
@@ -1086,8 +1086,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'shift and staff must be on break to consume a meal.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c9_u5.webp',
-              caption: 'Diagram: BREAKS',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c9_u5.webp',
+              caption: 'Taking a break. Photo: Jeff Marks, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -1129,8 +1129,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'Tipout = 4% Net Sales To The House',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c9_u7.webp',
-              caption: 'Diagram: TIPS, GRATUITY, AND TIPOUT',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c9_u7.webp',
+              caption: 'Tips and tipout. Photo: Topher, CC0 1.0',
               afterParagraph: -1,
             ),
           ],
@@ -1158,8 +1158,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'you connect them with the right person who can assist further.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c10_u0.webp',
-              caption: 'Diagram: ANSWERING THE PHONE',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c10_u0.webp',
+              caption: 'Greeting callers warmly. Photo: Bill Branson, Public domain',
               afterParagraph: -1,
             ),
           ],
@@ -1327,8 +1327,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'recorded and the corresponding chit has been printed.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c10_u7.webp',
-              caption: 'Diagram: RINGING IN PRODUCT',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c10_u7.webp',
+              caption: 'Ring it in first. Photo: PattayaPatrol, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -1394,8 +1394,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'collective commitment to maintaining high standards.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c10_u9.webp',
-              caption: 'Diagram: CHECKLISTS AND DEPARTMENT GUIDELINES',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c10_u9.webp',
+              caption: 'Follow the checklists. Photo: U.S. Marine Corps, Public domain',
               afterParagraph: -1,
             ),
           ],
@@ -1639,8 +1639,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'with our products and services.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c11_u8.webp',
-              caption: 'Diagram: PRODUCT KNOWLEDGE',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c11_u8.webp',
+              caption: 'Know the menu. Photo: Unknown photographer (author not stated on Wikimedia Commons; Wiki Loves Monuments 2012 entry), CC BY-SA 3.0',
               afterParagraph: -1,
             ),
           ],
@@ -1692,8 +1692,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'violation, disciplinary action will follow.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c12_u0.webp',
-              caption: 'Diagram: PERSONAL APPEARANCE',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c12_u0.webp',
+              caption: 'Polished and professional. Photo: Florian Plag, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -1722,8 +1722,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'Legado issued apron, non-slip fully-enclosed shoes.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c12_u1.webp',
-              caption: 'Diagram: UNIFORM/DRESS CODE',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c12_u1.webp',
+              caption: 'The Barrio uniform. Photo: Florian Plag, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -1755,8 +1755,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '- Please wash your hands after using the restroom every time.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c12_u2.webp',
-              caption: 'Diagram: PERSONAL HYGIENE REQUIREMENTS',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c12_u2.webp',
+              caption: 'Wash hands every time. Photo: Sgt. Grace L. Waladkewics, Public domain',
               afterParagraph: -1,
             ),
           ],
@@ -1800,8 +1800,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'access designated areas available to guests only.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c13_u0.webp',
-              caption: 'Diagram: STAFF AREAS',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c13_u0.webp',
+              caption: 'Staff areas, on duty only. Photo: Lynn Friedman, CC BY-NC-ND 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -2951,8 +2951,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'completely out',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c16_u24.webp',
-              caption: 'Diagram: PORTABLE FIRE EXTINGUISHERS',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c16_u24.webp',
+              caption: 'Know your extinguisher. Photo: Roman Eisele, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -3039,8 +3039,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
           runLength: 3,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c16_u28.webp',
-              caption: 'Diagram: FOOD SAFETY',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c16_u28.webp',
+              caption: 'Check the temperature. Photo: cyclonebill, CC BY-SA 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -3100,8 +3100,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               afterParagraph: 0,
             ),
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c16_u30.webp',
-              caption: 'Diagram: FOOD SAFETY (cont.)',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c16_u30.webp',
+              caption: 'Store raw below ready to eat. Photo: Lance Cheung, USDA, Public domain',
               afterParagraph: -1,
             ),
           ],
@@ -3138,8 +3138,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '9. Close toe shoes.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c17_u0.webp',
-              caption: 'Diagram: Good Practices',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c17_u0.webp',
+              caption: 'Good grooming practices. Photo: New Zealand Defence Force, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -4255,8 +4255,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
           runLength: 2,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c22_u3.webp',
-              caption: 'Diagram: SUPPLIER LABEL REQUIREMENTS',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c22_u3.webp',
+              caption: 'Read supplier labels. Photo: Petr Kadlec, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -4609,8 +4609,8 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               afterParagraph: 0,
             ),
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c23_u5.webp',
-              caption: 'Diagram: Pictograms',
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c23_u5.webp',
+              caption: 'Spot the pictograms. Photo: Petr Kadlec, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],

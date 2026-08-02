@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+30
+version: 1.0.0+32
 
 environment:
   sdk: ^3.9.2
@@ -53,18 +53,18 @@ dependencies:
   flutter_secure_storage: ^10.0.0
   timezone: ^0.10.1
   qr_flutter: 4.1.0
-  # Phase 11A.4b — Gemini fallback LLM provider (server-side only,
+  # Phase 11A.4b Ã¢â‚¬â€ Gemini fallback LLM provider (server-side only,
   # used by the advisor proxy in tool/advisor_proxy/. The client app
-  # never holds the key — see Hard Promise #7 in CLAUDE.md). Pure
+  # never holds the key Ã¢â‚¬â€ see Hard Promise #7 in CLAUDE.md). Pure
   # Dart, no platform plugins.
   google_generative_ai: ^0.4.7
   # HTTP client for the Anthropic Messages API adapter
   # (tool/advisor_proxy/anthropic_http_complete_fn.dart). Server-side
-  # only — same Hard Promise #7 boundary as the Gemini provider.
+  # only Ã¢â‚¬â€ same Hard Promise #7 boundary as the Gemini provider.
   # Promoted from transitive to direct so the proxy bootstrap can
   # take a stable dependency on it.
   http: ^1.6.0
-  # Phase 10a.0 — realtime push channel client. Cross-platform
+  # Phase 10a.0 Ã¢â‚¬â€ realtime push channel client. Cross-platform
   # WebSocket abstraction so the realtime subscription works on
   # native (mobile/desktop) and web targets through a single API.
   # Used by `lib/services/realtime/realtime_subscription.dart`; the
@@ -72,16 +72,16 @@ dependencies:
   web_socket_channel: ^3.0.1
   firebase_messaging: ^16.2.0
   flutter_local_notifications: ^20.1.0
-  # MP1 — Crashlytics crash reporting (V1 launch blocker).
+  # MP1 Ã¢â‚¬â€ Crashlytics crash reporting (V1 launch blocker).
   firebase_crashlytics: ^5.2.0
-  # MP2 — in-app update / version-compatibility check.
+  # MP2 Ã¢â‚¬â€ in-app update / version-compatibility check.
   url_launcher: ^6.3.0
   package_info_plus: ^8.1.0
-  # MP4 — iOS push denied recovery: open app settings.
+  # MP4 Ã¢â‚¬â€ iOS push denied recovery: open app settings.
   app_settings: ^5.1.1
-  # MP5 — Universal Links / App Links deep link handling.
+  # MP5 Ã¢â‚¬â€ Universal Links / App Links deep link handling.
   app_links: ^6.3.4
-  # MP6 — French (Quebec) localizations.
+  # MP6 Ã¢â‚¬â€ French (Quebec) localizations.
   flutter_localizations:
     sdk: flutter
   intl: ^0.20.0
@@ -90,7 +90,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  # Pressure-preview Phase 4 — flutter integration_test driver for the
+  # Pressure-preview Phase 4 Ã¢â‚¬â€ flutter integration_test driver for the
   # operator-facing emulator click-path under
   # `integration_test/phase_4_emulator/`. Demo-mode walkthrough only
   # (HP #2 + HP #10). Runs against a connected Android emulator; never
@@ -98,7 +98,7 @@ dev_dependencies:
   integration_test:
     sdk: flutter
 
-  # Wave 2 Q-2b — Patrol native UI driver for the in-app notification
+  # Wave 2 Q-2b Ã¢â‚¬â€ Patrol native UI driver for the in-app notification
   # surface soak harness under `integration_test/in_app_notifications/`
   # and the driver at `tool/in_app_notification_soak/`. Test-only;
   # never ships in a release binary. Bumps `flutter_test`-shaped tests
@@ -110,7 +110,7 @@ dev_dependencies:
   # `dart analyze` or `flutter test` invocations.
   patrol: ^4.5.0
 
-  # Phase 10a.0 — virtualized clock for the realtime back-off /
+  # Phase 10a.0 Ã¢â‚¬â€ virtualized clock for the realtime back-off /
   # poll-tick tests. Bundled transitively by flutter_test; promoted to
   # a direct dev dep so depend_on_referenced_packages stays clean.
   fake_async: ^1.3.1
@@ -125,16 +125,16 @@ dev_dependencies:
   flutter_native_splash: ^2.4.4
   yaml: ^3.1.3
 
-  # Wave-2 lane G — engineering-bar metrics tooling.
+  # Wave-2 lane G Ã¢â‚¬â€ engineering-bar metrics tooling.
   # `dart_code_linter` is the maintained successor to the discontinued
   # `dart_code_metrics` package (the upstream was discontinued ~2 years
   # ago in favor of the commercial DCM tool; Bancolombia forked the
   # last open-source release and maintain it as `dart_code_linter`,
-  # latest 4.0.3 as of 2026-05). Backs the §5.2 engineering bars from
+  # latest 4.0.3 as of 2026-05). Backs the Ã‚Â§5.2 engineering bars from
   # `docs/_audits/code_health/code_hardening_plan_2026_05_21.md`:
-  # source-lines-of-code ≤ 80, cyclomatic-complexity ≤ 12,
-  # maximum-nesting-level ≤ 5, number-of-parameters ≤ 7. Configured
-  # advisory-only in `analysis_options.yaml` — does NOT fail `dart
+  # source-lines-of-code Ã¢â€°Â¤ 80, cyclomatic-complexity Ã¢â€°Â¤ 12,
+  # maximum-nesting-level Ã¢â€°Â¤ 5, number-of-parameters Ã¢â€°Â¤ 7. Configured
+  # advisory-only in `analysis_options.yaml` Ã¢â‚¬â€ does NOT fail `dart
   # analyze`. Runbook: `runbooks/dart_code_metrics_runbook.md`.
   dart_code_linter: ^4.0.3
 
@@ -211,12 +211,10 @@ flutter:
     - assets/internal/barrio/training/training_bold_by_design_diagrams/
     - assets/internal/barrio/training/training_cheers_responsibility_diagrams/
     - assets/internal/barrio/training/training_clover_sop_diagrams/
-    - assets/internal/barrio/training/training_drink_specs_diagrams/
     - assets/internal/barrio/training/training_general_words_diagrams/
     - assets/internal/barrio/training/training_host_manual_diagrams/
     - assets/internal/barrio/training/training_labour_cost_diagrams/
     - assets/internal/barrio/training/training_mastering_metrics_diagrams/
-    - assets/internal/barrio/training/training_menu_concept_diagrams/
     - assets/internal/barrio/training/training_strong_foundation_diagrams/
     - assets/internal/barrio/training/training_suggestive_selling_diagrams/
     - assets/internal/barrio/training/training_table_manicuring_diagrams/
@@ -231,6 +229,17 @@ flutter:
     - assets/internal/barrio/training/training_menu_concept_photos/
     - assets/internal/barrio/training/training_strong_foundation_photos/
     - assets/internal/barrio/training/training_three_pillars_photos/
+    - assets/internal/barrio/training/coffee_training_photos/
+    - assets/internal/barrio/training/jim_taylor_labor_model_photos/
+    - assets/internal/barrio/training/latin_american_dishes_photos/
+    - assets/internal/barrio/training/latin_american_ingredients_photos/
+    - assets/internal/barrio/training/training_cheers_responsibility_photos/
+    - assets/internal/barrio/training/training_general_words_photos/
+    - assets/internal/barrio/training/training_host_manual_photos/
+    - assets/internal/barrio/training/training_labour_cost_photos/
+    - assets/internal/barrio/training/training_suggestive_selling_photos/
+    - assets/internal/barrio/training/training_table_manicuring_photos/
+    - assets/internal/barrio/training/training_tequila_photos/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

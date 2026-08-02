@@ -7,10 +7,15 @@
 //
 // Diagram coverage after the accuracy cull (2026-07-31): forced/nonsensical
 // auto-icons were removed (566 of 977 across all manuals), leaving only the
-// illustrations that clearly fit their card. The guarded counts are now
-// 63 Company Handbook + 41 Food Safety = 104 diagrams. If a diagram is
-// intentionally added or cut, update these numbers deliberately (that is
-// the point of the guard).
+// illustrations that clearly fit their card.
+//
+// Build 32 (2026-08-02) then replaced 142 of the surviving illustrations with
+// real openly-licensed photographs matched to what each card teaches, so the
+// guarded counts drop to 44 Company Handbook + 28 Food Safety = 72 diagrams.
+// The cards that lost a diagram did not lose their picture: they gained a
+// photograph, which the photo guards cover. If a diagram is intentionally
+// added or cut, update these numbers deliberately (that is the point of the
+// guard).
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/internal/barrio/content/company_handbook_content.dart';
@@ -41,18 +46,18 @@ void main() {
               if (_isDiagram(image)) image,
       ];
 
-  test('Company Handbook carries exactly its 63 approved diagrams', () {
+  test('Company Handbook carries exactly its 44 approved diagrams', () {
     final diagrams = diagramsIn(handbook);
-    expect(diagrams, hasLength(63));
+    expect(diagrams, hasLength(44));
     for (final image in diagrams) {
       expect(image.assetPath, startsWith(_kHandbookDiagramDir));
       expect(image.assetPath, endsWith('.webp'));
     }
   });
 
-  test('Food Safety carries exactly its 41 approved diagrams', () {
+  test('Food Safety carries exactly its 28 approved diagrams', () {
     final diagrams = diagramsIn(foodSafety);
-    expect(diagrams, hasLength(41));
+    expect(diagrams, hasLength(28));
     for (final image in diagrams) {
       expect(image.assetPath, startsWith(_kFoodSafetyDiagramDir));
       expect(image.assetPath, endsWith('.webp'));
@@ -61,7 +66,7 @@ void main() {
 
   test('every diagram leads its card and carries an honest alt caption', () {
     final all = [...diagramsIn(handbook), ...diagramsIn(foodSafety)];
-    expect(all, hasLength(104));
+    expect(all, hasLength(72));
     for (final image in all) {
       // afterParagraph -1 renders the diagram before the first paragraph:
       // the picture sets context, then the verbatim text follows.

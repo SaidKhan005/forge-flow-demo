@@ -282,8 +282,8 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'regardless of when they return.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_strong_foundation_diagrams/training_strong_foundation_c4_u3.webp',
-              caption: 'Diagram: Service',
+              assetPath: 'assets/internal/barrio/training/training_strong_foundation_photos/training_strong_foundation_c4_u3.webp',
+              caption: 'A warm welcome. Photo: zoetnet, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -337,8 +337,8 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'competitive market.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_strong_foundation_diagrams/training_strong_foundation_c4_u5.webp',
-              caption: 'Diagram: Predictable Hours of Operation',
+              assetPath: 'assets/internal/barrio/training/training_strong_foundation_photos/training_strong_foundation_c4_u5.webp',
+              caption: 'Reliable open hours. Photo: Andy Li, CC0',
               afterParagraph: -1,
             ),
           ],
@@ -483,8 +483,8 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
           runLength: 2,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_strong_foundation_diagrams/training_strong_foundation_c6_u3.webp',
-              caption: 'Diagram: Systems and Training',
+              assetPath: 'assets/internal/barrio/training/training_strong_foundation_photos/training_strong_foundation_c6_u3.webp',
+              caption: 'Systems and training. Photo: Hadley Chittum, DC Central Kitchen, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],

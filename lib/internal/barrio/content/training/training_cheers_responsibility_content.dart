@@ -422,8 +422,8 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'elements.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_diagrams/training_cheers_responsibility_c1_u4.webp',
-              caption: 'Diagram: Identification',
+              assetPath: 'assets/internal/barrio/training/training_cheers_responsibility_photos/training_cheers_responsibility_c1_u4.webp',
+              caption: 'Checking ID to verify age. Photo: Tech.Co (formerly Tech Cocktail), CC BY-ND 2.0',
               afterParagraph: -1,
             ),
           ],

@@ -90,8 +90,8 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               'Cheese, 6 or 8 Tortillas',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c0_u3.webp',
-              caption: 'Diagram: Mains',
+              assetPath: 'assets/internal/barrio/training/training_menu_concept_photos/training_menu_concept_c0_u3.webp',
+              caption: 'Lomo Saltado, a main. Photo: WikiHes, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -108,8 +108,8 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               'Half Chicken - Ancho Marinade',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_menu_concept_diagrams/training_menu_concept_c0_u4.webp',
-              caption: 'Diagram: Big Dish',
+              assetPath: 'assets/internal/barrio/training/training_menu_concept_photos/training_menu_concept_c0_u4.webp',
+              caption: 'Whole fried fish. Photo: Lunita28mx, CC BY 4.0',
               afterParagraph: -1,
             ),
           ],

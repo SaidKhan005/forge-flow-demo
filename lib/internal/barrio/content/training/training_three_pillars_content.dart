@@ -168,8 +168,8 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'guests feel cared for and valued.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c1_u4.webp',
-              caption: 'Diagram: Cleanliness and Organization',
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_photos/training_three_pillars_c1_u4.webp',
+              caption: 'Clean, organized dining room. Photo: White House Photographic Office (NARA), Public domain',
               afterParagraph: -1,
             ),
           ],
@@ -221,8 +221,8 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'throughout their visit.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c2_u0.webp',
-              caption: 'Diagram: Service',
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_photos/training_three_pillars_c2_u0.webp',
+              caption: 'Service that feels genuine. Photo: Tomwsulcer, CC0',
               afterParagraph: -1,
             ),
           ],
@@ -244,8 +244,8 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'builds connection between the guest and the restaurant.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c2_u1.webp',
-              caption: 'Diagram: Menu Knowledge',
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_photos/training_three_pillars_c2_u1.webp',
+              caption: 'Servers know the menu. Photo: Alan Light, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],

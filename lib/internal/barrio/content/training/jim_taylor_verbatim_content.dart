@@ -81,8 +81,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'of work. Covers are honest. Tables aren\'t.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_diagrams/jim_taylor_labor_model_c1_u1.webp',
-              caption: 'Diagram: Cover - one guest served',
+              assetPath: 'assets/internal/barrio/training/jim_taylor_labor_model_photos/jim_taylor_labor_model_c1_u1.webp',
+              caption: 'One guest, one cover. Photo: Ministry of Information Photo Division photographer, Public domain',
               afterParagraph: -1,
             ),
           ],

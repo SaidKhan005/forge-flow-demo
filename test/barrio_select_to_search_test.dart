@@ -102,22 +102,38 @@ void main() {
           matching: find.byType(SelectionArea),
         ),
       );
-      final toolbar = area.contextMenuBuilder!(
+      // Branded menu (2026-07-31 operator request): the generic system
+      // popup was replaced with the Barrio glass surface, so the builder
+      // now returns a TextSelectionToolbar carrying our own action
+      // widgets rather than an AdaptiveTextSelectionToolbar of
+      // buttonItems. The contract under test is unchanged: exactly two
+      // actions, and none of the native defaults.
+      final menu = area.contextMenuBuilder!(
         tester.element(regionFinder),
         region,
-      ) as AdaptiveTextSelectionToolbar;
-
-      final items = toolbar.buttonItems!;
-      expect(items.map((item) => item.label),
-          containsAll(<String>['Ask chat', 'Search the web']),
-          reason: 'the selection menu offers Ask chat and Search the web');
-      // Operator curation (2026-07-29): only those two actions, so the
-      // native Copy / Select all defaults are dropped.
-      expect(items.map((item) => item.type),
-          isNot(contains(ContextMenuButtonType.copy)),
-          reason: 'Copy is removed; only the two custom actions remain');
-      expect(items.length, 2,
+      );
+      expect(menu, isA<TextSelectionToolbar>(),
+          reason: 'the reader floats its own branded selection surface');
+      final toolbar = menu as TextSelectionToolbar;
+      expect(toolbar.children.length, 2,
           reason: 'exactly two actions: Ask chat and Search the web');
+
+      // Render the actions on their own to read their labels: the live
+      // toolbar draws in a platform overlay the test binding cannot find.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Column(mainAxisSize: MainAxisSize.min, children: toolbar.children),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('Ask chat'), findsOneWidget);
+      expect(find.text('Search the web'), findsOneWidget);
+      // Operator curation (2026-07-29): the native Copy / Select all
+      // defaults stay dropped.
+      expect(find.text('Copy'), findsNothing);
+      expect(find.text('Select all'), findsNothing);
       expect(tester.takeException(), isNull);
     } finally {
       debugDefaultTargetPlatformOverride = null;

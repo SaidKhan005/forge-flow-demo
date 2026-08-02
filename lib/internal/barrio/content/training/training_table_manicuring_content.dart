@@ -129,8 +129,8 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'that guests remain content throughout their visit.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_table_manicuring_diagrams/training_table_manicuring_c2_u2.webp',
-              caption: 'Diagram: Beverage Refills',
+              assetPath: 'assets/internal/barrio/training/training_table_manicuring_photos/training_table_manicuring_c2_u2.webp',
+              caption: 'Refilling with a tray. Photo: Shixart1985, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -180,8 +180,8 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'discomfort and minimize any hazards.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_table_manicuring_diagrams/training_table_manicuring_c2_u5.webp',
-              caption: 'Diagram: Spot Cleaning',
+              assetPath: 'assets/internal/barrio/training/training_table_manicuring_photos/training_table_manicuring_c2_u5.webp',
+              caption: 'Quick spot cleaning. Photo: Michael Coghlan, CC BY-SA 2.0',
               afterParagraph: -1,
             ),
           ],
