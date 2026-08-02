@@ -101,7 +101,7 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
           id: 'training_coffee_c1_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Roasting (cont.)',
+          title: 'Darker Roasts',
           body: 'Medium dark roast coffee is crafted by cooking the beans at '
               'lower temperatures for extended periods, achieving a '
               'remarkable balance that makes it versatile for all brewing '
@@ -294,7 +294,7 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
           id: 'training_coffee_c5_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Colombian Coffee (cont.)',
+          title: 'Hand Picking and Washing',
           body: 'The labor-intensive practices of Colombian coffee cultivation '
               'are integral to its premium quality, distinguishing it from '
               'other coffee-producing regions that often incorporate Robusta '
@@ -481,7 +481,7 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
           id: 'training_coffee_c9_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Cleaning & Maintenance (cont.)',
+          title: 'Water Back Flush',
           body: '- GROUP HEAD BACK FLUSHING: This simple yet effective '
               'maintenance procedure not only keeps your machine in top shape '
               'but also enhances the quality of your espresso extraction. '
@@ -512,7 +512,7 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
           id: 'training_coffee_c9_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Cleaning & Maintenance (cont.)',
+          title: 'Shampoo Back Flush',
           body: '- GROUP HEAD BACK FLUSHING WITH HEAD CLEAN SHAMPOO: Every few '
               'days, you should perform a thorough backflush with this '
               'shampoo. Begin by scrubbing the group head with a dedicated '
@@ -541,7 +541,7 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
           id: 'training_coffee_c9_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Cleaning & Maintenance (cont.)',
+          title: 'Grinder Cleaning',
           body: '- GRINDER CLEANING AND MAINTENANCE: Several times each week, '
               'at the end of the day, it\'s important to turn off the grinder, '
               'shut off the bean flow, and empty the hopper of any remaining '
@@ -624,7 +624,7 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
           id: 'training_coffee_c10_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Drinks (cont.)',
+          title: 'Flat White and Latte',
           body: '- FLAT WHITE: To create the perfect flat white, it\'s essential '
               'that the milk is textured just right - smooth and velvety with '
               'minimal froth, allowing for a secure pour without any spills. '
@@ -659,7 +659,7 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
           id: 'training_coffee_c10_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Drinks (cont.)',
+          title: 'Cappuccino',
           body: '- CAPPUCCINO: Begin by gently spooning the thick, textured top '
               'milk into your cappuccino cup. Next, pour the hot, lightly '
               'textured milk through the center of the frothed milk, or you '
@@ -719,7 +719,7 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
           id: 'training_coffee_c11_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Our Coffee (cont.)',
+          title: 'Drip and Decaf',
           body: '- BIRD WITH NO NAME - DRIP COFFEE GRIND: Introducing the "Bird '
               'with No Name," a Brazilian coffee expertly ground for drip '
               'brewing, perfect for your daily cup. This delightful blend '
@@ -836,7 +836,7 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
           id: 'training_coffee_c13_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Words to Know (cont.)',
+          title: 'Blind Filter to Drip',
           body: '- BLIND FILTER: A solid filter basket that effectively cleans '
               'the internal group head and valves of your espresso machine. '
               'This seamless, hole-less design prevents water from flowing '
@@ -880,7 +880,7 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
           id: 'training_coffee_c13_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Words to Know (cont.)',
+          title: 'Grinds to French Press',
           body: '- DRIP GRIND: A medium grind size that resembles standard '
               'granulated sugar or rough sand.\n'
               '\n'
@@ -917,7 +917,7 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
           id: 'training_coffee_c13_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Words to Know (cont.)',
+          title: 'Grinder to Hopper',
           body: '- GRINDER: A device designed to crush or cut whole coffee '
               'beans into smaller particles. By increasing the surface area '
               'of the beans, it allows hot water to effectively extract their '
@@ -956,7 +956,7 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
           id: 'training_coffee_c13_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Words to Know (cont.)',
+          title: 'Instant to Pour Over',
           body: '- INSTANT COFFEE: A convenient beverage crafted from real '
               'brewed coffee beans, which have been expertly dehydrated into '
               'a soluble powder or crystalline form. With a simple addition '
@@ -992,7 +992,7 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
           id: 'training_coffee_c13_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Words to Know (cont.)',
+          title: 'Purge to Stretching',
           body: '- PURGE: Releasing a brief burst of steam both before and '
               'after frothing from the steam wand. This simple step helps to '
               'eliminate trapped condensation and remove any milk residue '
@@ -1033,7 +1033,7 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
           id: 'training_coffee_c13_u6',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Words to Know (cont.)',
+          title: 'Tamper to Whole Bean',
           body: '- TAMP MAT: A durable, non-slip silicone or rubber mat used in '
               'espresso preparation.\n'
               '\n'

@@ -92,7 +92,7 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
           id: 'training_cheers_responsibility_c0_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Governing Bodies (cont.)',
+          title: 'Liquor And Smoking Laws',
           body: 'The Liquor Corporation Act establishes the NLC and its powers '
               'while also reinforcing the importance of social responsibility '
               'in the management of alcohol sales. The accompanying Liquor '
@@ -168,7 +168,7 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
           id: 'training_cheers_responsibility_c0_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Licenses (cont.)',
+          title: 'Lounge Delivery Hotel',
           body: '- Restaurant/Lounge: A Restaurant/Lounge License authorizes '
               'the licensee to sell to guests at meals, for consumption on '
               'the licensed premises, spirits by the glass and wine and beer '
@@ -193,7 +193,7 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
           id: 'training_cheers_responsibility_c0_u6',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Licenses (cont.)',
+          title: 'Special Events',
           body: '- Special Events: A Special Event License may be issued '
               'authorizing any charitable or non-profit organization raising '
               'funds for charitable purposes that does not hold a subsisting '
@@ -345,7 +345,7 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
           id: 'training_cheers_responsibility_c1_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Signs of Intoxication (cont.)',
+          title: 'Behaviour And Body Signs',
           body: '- Inappropriate sexual advances\n'
               '\n'
               '- Boisterious\n'
@@ -482,7 +482,7 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
           id: 'training_cheers_responsibility_c1_u6',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Valid Forms of ID (cont.)',
+          title: 'Feel Look Ask',
           body: '- FEEL: When evaluating the authenticity of identification '
               'cards, it is essential to be vigilant for telltale signs of '
               'low-quality manufacturing, including imperfections like '
@@ -512,7 +512,7 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
           id: 'training_cheers_responsibility_c1_u7',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Valid Forms of ID (cont.)',
+          title: 'Give Back Fake IDs',
           body: '- GIVE BACK: If you discover that a guest is using a fake ID, '
               'it is your responsibility to deny them service, inform your '
               'fellow staff members, and document the incident accordingly; '
@@ -768,7 +768,7 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
           id: 'training_cheers_responsibility_c3_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Drinking and Driving (cont.)',
+          title: 'What Not To Do',
           body: '- Do not take someone\'s keys. This puts you in a '
               'confrontational position with potential risk to you or the '
               'guest. Taking someone\'s keys is classified as theft under the '
@@ -823,7 +823,7 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
           id: 'training_cheers_responsibility_c3_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Liability (cont.)',
+          title: 'Penalties And Insurance',
           body: '- Whether staff attempted to find safe transportation for the '
               'patron (e.g., calling a taxi).\n'
               '\n'

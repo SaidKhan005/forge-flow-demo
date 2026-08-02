@@ -281,7 +281,7 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
           id: 'training_table_manicuring_c3_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Table Manicuring (cont.)',
+          title: 'Everyone Pitches In',
           body: 'Table manicuring stands out for its seamless execution, a '
               'testament to the collaborative spirit of the dining staff. '
               'Rather than resting solely on the shoulders of the assigned '
@@ -399,7 +399,7 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
           id: 'training_table_manicuring_c5_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Benefits of High-Level Execution (cont.)',
+          title: 'Tips And Consistency',
           body: 'A well-executed table manicuring process promotes a sense of '
               'care and respect for guests, directly impacting gratuity and '
               'guest feedback. Guests are more likely to appreciate the '

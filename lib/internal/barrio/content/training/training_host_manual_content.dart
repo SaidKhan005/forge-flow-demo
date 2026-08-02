@@ -159,7 +159,7 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
           id: 'training_host_manual_c3_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Hello\'s (cont.)',
+          title: 'First Impressions',
           body: 'Each guest who walks through the door is making a conscious '
               'decision to choose our restaurant and invest their time and '
               'money into the experience we provide and that we are known '
@@ -216,7 +216,7 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
           id: 'training_host_manual_c4_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Goodbye\'s (cont.)',
+          title: 'Last Impression',
           body: 'As guests walk out the door, let\'s make it a point to thank '
               'them for coming and to wish them a great day/evening/night. '
               'Every guest in the restaurant is part of our experience, '
@@ -533,7 +533,7 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
           id: 'training_host_manual_c7_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Language (cont.)',
+          title: 'Phrases To Avoid',
           body: '- Using "I don\'t know" can come across as dismissive. Instead, '
               'opting for responses like "That\'s a great question; let me '
               'find out for you" demonstrates both attentiveness and a '
@@ -563,7 +563,7 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
           id: 'training_host_manual_c7_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Language (cont.)',
+          title: 'Words Build Trust',
           body: 'By focusing on solutions and employing positive, reassuring '
               'language and consciously choosing our words and tone, we not '
               'only enhance the guest experience but also cultivate loyalty '
@@ -606,7 +606,7 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
           id: 'training_host_manual_c7_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Feedback (cont.)',
+          title: 'Apologize And Act',
           body: 'Once we\'ve attentively listened to our guests, the next steps '
               'involve accepting responsibility and empathizing with their '
               'experiences. A heartfelt apology can serve as a powerful tool '
@@ -627,7 +627,7 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
           id: 'training_host_manual_c7_u6',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Feedback (cont.)',
+          title: 'Escalate And Follow Up',
           body: 'If the situation appears to be beyond your immediate capacity '
               'to resolve, don\'t hesitate to involve your manager or '
               'supervisor. When doing so, provide them with comprehensive '
@@ -695,7 +695,7 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
           id: 'training_host_manual_c7_u8',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Conflict Resolution (cont.)',
+          title: 'Address It Early',
           body: 'To tackle conflict in a positive way, here are some helpful '
               'steps you can take:\n'
               '\n'
@@ -734,7 +734,7 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
           id: 'training_host_manual_c7_u9',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Conflict Resolution (cont.)',
+          title: 'Solve It Together',
           body: '5. Find Common Ground: It is important to shift your mindset '
               'from confrontation to collaboration and identify shared goals, '
               'interests, or values.\n'
@@ -770,7 +770,7 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
           id: 'training_host_manual_c7_u10',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Conflict Resolution (cont.)',
+          title: 'When To Escalate',
           body: 'In situations where persistent conflicts hinder progress, it\'s '
               'crucial to shift away from direct negotiations and actively '
               'engage a supervisor or manager, ensuring that we document '
@@ -952,7 +952,7 @@ const BarrioTrainingDoc kTrainingHostManual = BarrioTrainingDoc(
           id: 'training_host_manual_c8_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Reservation Procedure (cont.)',
+          title: 'Confirm And Initial',
           body: '7. Confirm the name, date, time, contact information, and any '
               'special notes provided with the guest.\n'
               '\n'

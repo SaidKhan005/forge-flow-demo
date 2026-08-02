@@ -124,7 +124,7 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
           id: 'training_strong_foundation_c2_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Brand Strength (cont.)',
+          title: 'Reputation And Referrals',
           body: 'As guests learn they can depend on a uniform level of '
               'excellence with each visit, a positive reputation begins to '
               'spread organically, fueling both repeat business and '
@@ -235,7 +235,7 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
           id: 'training_strong_foundation_c4_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Food (cont.)',
+          title: 'Portions And Temperature',
           body: 'Consistency extends beyond just flavors; it encompasses every '
               'element of the meal, from portion sizes to presentation. '
               'Uniform portion sizes help manage costs while meeting guests\' '
@@ -422,7 +422,7 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
           id: 'training_strong_foundation_c6_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Buy In (cont.)',
+          title: 'Leading With Clarity',
           body: 'To achieve this transformative level of buy-in, it is crucial '
               'for leaders and managers to nurture an environment that '
               'encourages emotional investment among their teams. Transparent '
@@ -467,7 +467,7 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
           id: 'training_strong_foundation_c6_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Systems and Training (cont.)',
+          title: 'Confidence And Skills',
           body: 'Training stands as a pivotal element that transforms a diverse '
               'group of individuals into a cohesive team, encouraging '
               'collaboration and enhancing interpersonal relationships that '
