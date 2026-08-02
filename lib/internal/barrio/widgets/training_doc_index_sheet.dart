@@ -181,6 +181,20 @@ List<TrainingIndexPhotoEntry> buildTrainingIndexPhotoEntries(
   ];
 }
 
+/// Whether [doc] earns the Photos browse view (2026-07-31). The photo grid
+/// only reads as premium when photos cover a healthy share of the manual's
+/// terms; a half-empty grid looks worse than none. So the browse appears
+/// only where photos back at least half the folded terms. The two food
+/// glossaries clear this easily; a mostly-text glossary that happens to
+/// carry a few concrete photos (e.g. Words To Know) keeps the plain A-Z
+/// sheet while its cards still show those photos inline.
+bool trainingDocHasPhotoBrowse(BarrioTrainingDoc doc) {
+  final termCount = buildTrainingIndexGroups(doc)
+      .fold<int>(0, (sum, g) => sum + g.entries.length);
+  if (termCount == 0) return false;
+  return buildTrainingIndexPhotoEntries(doc).length * 2 >= termCount;
+}
+
 /// The two ways to browse the index sheet.
 enum _IndexView { az, photos }
 
@@ -215,12 +229,16 @@ class _TrainingDocIndexSheetState extends State<TrainingDocIndexSheet> {
   /// A to Z is always the default; the sheet opens on the complete list.
   _IndexView _view = _IndexView.az;
 
+  /// Whether this manual earns the Photos browse (see the shared rule in
+  /// [trainingDocHasPhotoBrowse]).
+  late final bool _hasPhotoBrowse = trainingDocHasPhotoBrowse(widget.doc);
+
   @override
   Widget build(BuildContext context) {
     final accent = widget.accent;
     final termCount =
         _groups.fold<int>(0, (sum, g) => sum + g.entries.length);
-    final showPhotos = _view == _IndexView.photos && _photoEntries.isNotEmpty;
+    final showPhotos = _view == _IndexView.photos && _hasPhotoBrowse;
     return SizedBox(
       height: MediaQuery.sizeOf(context).height * 0.72,
       child: Container(
@@ -240,9 +258,10 @@ class _TrainingDocIndexSheetState extends State<TrainingDocIndexSheet> {
               countNoun: showPhotos ? 'photos' : 'terms',
               accent: accent,
             ),
-            // The toggle exists only where a photo view exists at all
-            // (manuals with zero card photos keep the plain A-Z sheet).
-            if (_photoEntries.isNotEmpty)
+            // The toggle exists only where the photo browse earns its
+            // place (see [_hasPhotoBrowse]); sparse or photo-less manuals
+            // keep the plain A-Z sheet.
+            if (_hasPhotoBrowse)
               _ViewToggle(
                 view: _view,
                 accent: accent,
