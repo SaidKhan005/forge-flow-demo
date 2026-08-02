@@ -12,6 +12,13 @@
 // - Overflowing cards show the bottom fade cue; it disappears at the
 //   end of the card; short cards never show it.
 //
+// T10 slideshow guard (2026-08-02): a card whose picture holder carries
+// a photo slide group adds two visible chevron chips over the picture.
+// Those chips must not cost the reader a single page turn, so the last
+// group below re-proves the whole page-turn grammar with a slideshow
+// card on screen: the right-edge tap, the chip tap, and the horizontal
+// fling each still do exactly what they did before.
+//
 // All at a 390x844 phone viewport. Every test asserts takeException()
 // is null (overflow guard: this screen must not get denser).
 
@@ -20,6 +27,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/internal/barrio/content/company_handbook_content.dart';
 import 'package:forge_and_flow/internal/barrio/content/training/barrio_training_doc.dart';
 import 'package:forge_and_flow/internal/barrio/screens/training_doc_screen.dart';
+import 'package:forge_and_flow/internal/barrio/widgets/handbook_lesson_card.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/learning_carousel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -88,21 +96,98 @@ final _fixtureDoc = BarrioTrainingDoc(
   ],
 );
 
+/// A lead photograph plus its `_2` / `_3` alternate views: the T10 slide
+/// group naming. Card 1 of the slideshow fixture deck carries it.
+const _slideGroupImages = <HandbookUnitImage>[
+  HandbookUnitImage(
+    assetPath: 'assets/internal/barrio/training/fixture_photos/sld_c1_u1.webp',
+    caption: 'Photo: First Creator, CC BY 2.0',
+    afterParagraph: -1,
+  ),
+  HandbookUnitImage(
+    assetPath:
+        'assets/internal/barrio/training/fixture_photos/sld_c1_u1_2.webp',
+    caption: 'Photo: Second Creator, CC BY-SA 4.0',
+    afterParagraph: -1,
+  ),
+  HandbookUnitImage(
+    assetPath:
+        'assets/internal/barrio/training/fixture_photos/sld_c1_u1_3.webp',
+    caption: 'Photo: Third Creator, Public domain',
+    afterParagraph: -1,
+  ),
+];
+
+/// Slideshow fixture manual: FOUR flat cards (so the deck counter reads
+/// 'K of 4') whose first card holds a THREE-slide group (so the holder
+/// counter reads 'K of 3'). The counts differ on purpose: no test below
+/// can confuse a page turn with a slide change.
+const _slideFixtureDoc = BarrioTrainingDoc(
+  id: 'fixture_slide_gesture_doc',
+  title: 'Slideshow Gesture Fixture Manual',
+  sourcePath: 'test://fixture-slides',
+  chapters: [
+    HandbookChapter(
+      id: 'sld_ch1',
+      title: 'Slide Steps',
+      subtitle: 'slideshow fixture section',
+      iconCodePoint: 0xe533,
+      units: [
+        HandbookUnit(
+          id: 'sld_c1_u1',
+          type: HandbookUnitType.explainer,
+          title: 'Slideshow Card',
+          body: 'Short slideshow fixture body.',
+          images: _slideGroupImages,
+        ),
+        HandbookUnit(
+          id: 'sld_c1_u2',
+          type: HandbookUnitType.explainer,
+          title: 'Plain Card Two',
+          body: 'Short slideshow fixture body two.',
+        ),
+        HandbookUnit(
+          id: 'sld_c1_u3',
+          type: HandbookUnitType.explainer,
+          title: 'Plain Card Three',
+          body: 'Short slideshow fixture body three.',
+        ),
+        HandbookUnit(
+          id: 'sld_c1_u4',
+          type: HandbookUnitType.explainer,
+          title: 'Plain Card Four',
+          body: 'Short slideshow fixture body four.',
+        ),
+      ],
+    ),
+  ],
+);
+
 void main() {
   const phoneSize = Size(390, 844);
 
-  Future<void> pumpDoc(WidgetTester tester) async {
+  Future<void> pumpFixture(WidgetTester tester, BarrioTrainingDoc doc) async {
     SharedPreferences.setMockInitialValues({});
     tester.view.physicalSize = phoneSize;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(
-      MaterialApp(home: TrainingDocScreen(doc: _fixtureDoc)),
-    );
+    await tester.pumpWidget(MaterialApp(home: TrainingDocScreen(doc: doc)));
     // Restore setState frame, then the hero fade + carousel entrance.
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 800));
   }
+
+  Future<void> pumpDoc(WidgetTester tester) => pumpFixture(tester, _fixtureDoc);
+
+  Future<void> pumpSlideDoc(WidgetTester tester) =>
+      pumpFixture(tester, _slideFixtureDoc);
+
+  /// The slide chip inside the card, never the carousel's own gutter
+  /// chevron (which is a sibling of the card, not a descendant).
+  Finder slideChip(IconData icon) => find.descendant(
+        of: find.byType(HandbookLessonCard),
+        matching: find.byIcon(icon),
+      );
 
   Finder cardScroll(int index) =>
       find.byKey(PageStorageKey<String>('learning_card_scroll_$index'));
@@ -253,5 +338,53 @@ void main() {
     expect(cueOpacity(tester, 1), 0.0,
         reason: 'a card that fits must not claim more content below');
     expect(tester.takeException(), isNull);
+  });
+
+  group('with a photo slideshow card on screen (T10)', () {
+    testWidgets('a right-edge tap still turns exactly one card',
+        (tester) async {
+      await pumpSlideDoc(tester);
+      expect(find.text('1 of 4'), findsOneWidget);
+      expect(find.text('1 of 3'), findsOneWidget,
+          reason: 'card 1 must be showing the slide holder');
+
+      await tapEdge(tester, right: true);
+
+      expect(find.text('2 of 4'), findsOneWidget,
+          reason: 'the slide chips must not cost the reader a page turn');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a next-photo chip tap advances the slide and never turns '
+        'the page', (tester) async {
+      await pumpSlideDoc(tester);
+      expect(find.text('1 of 4'), findsOneWidget);
+      expect(find.text('1 of 3'), findsOneWidget);
+
+      await tester.tap(slideChip(Icons.chevron_right_rounded));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('2 of 3'), findsOneWidget,
+          reason: 'the chip must advance the slide');
+      expect(find.text('1 of 4'), findsOneWidget,
+          reason: 'the chip must NOT turn the page: child-first arena');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a clearly horizontal fling still changes the page',
+        (tester) async {
+      await pumpSlideDoc(tester);
+      expect(find.text('1 of 4'), findsOneWidget);
+
+      await tester.fling(find.byType(PageView), const Offset(-250, 0), 1200);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+
+      expect(find.text('2 of 4'), findsOneWidget,
+          reason: 'the holder adds no drag recognizer, so the pager keeps '
+              'every horizontal fling');
+      expect(tester.takeException(), isNull);
+    });
   });
 }

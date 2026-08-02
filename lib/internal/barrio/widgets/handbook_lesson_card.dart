@@ -722,11 +722,23 @@ class _UnitBody extends StatelessWidget {
     // single return replaces the old per-image afterParagraph
     // interleaving, so no image can double-render. Cards with no images
     // (handled above) are unchanged.
+    //
+    // Slide grouping (T10, 2026-08-02): a lead photograph plus its
+    // numbered alternate views collapses into ONE picture holder that
+    // slides. Every other image, and every lone photograph, keeps
+    // rendering as its own [_UnitImage], exactly as it does today.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final image in unit.images)
-          _UnitImage(image: image, cardTitle: unit.title),
+        for (final group in barrioPhotoSlideGroups(unit.images))
+          if (group.length == 1)
+            _UnitImage(image: group.single, cardTitle: unit.title)
+          else
+            _UnitPhotoSlides(
+              slides: group,
+              cardTitle: unit.title,
+              accent: accent,
+            ),
         _renderRun(paragraphs, linked, keyed),
       ],
     );
@@ -1118,6 +1130,71 @@ class _BodySegment {
   const _BodySegment(this.start, this.end, {this.term, this.mark});
 }
 
+/// Partitions a unit's images into render groups, in source order.
+///
+/// A group of one renders as a plain [_UnitImage], exactly as every
+/// picture does today. A group of two or more is a SLIDE GROUP: a lead
+/// photograph plus its alternate views of the same subject, rendered in
+/// one [_UnitPhotoSlides] holder.
+///
+/// What counts as an alternate is the content pipeline's naming
+/// convention and nothing else: the lead keeps
+/// `<folder>/<unit_id>.webp` and each extra view is
+/// `<folder>/<unit_id>_2.webp`, `_3.webp`, sitting immediately after the
+/// lead in the unit's image list. That convention IS the wiring
+/// contract: a second photograph named anything else stays a separate
+/// stacked picture.
+///
+/// Deliberately narrow, and verified against the whole corpus on
+/// 2026-08-02: 758 image lists, 28 of them holding two or more
+/// uncaptioned photographs (source-document figures such as the eight
+/// stacked `bar_manual/03..10.webp` scans), and ZERO slide groups. A
+/// bare "two or more photographs" rule would have turned all 28 of those
+/// cards into slideshows on the spot; unrelated page scans are not
+/// alternate views of one subject, and that change was never approved.
+///
+/// Diagrams never join a group: a house-style pictogram and a photograph
+/// are different teaching visuals (see [HandbookUnitPhotos]).
+///
+/// Public so the corpus guard in `barrio_photo_slideshow_test.dart` can
+/// keep proving that number stays at zero until the approved second
+/// photographs are wired in.
+List<List<HandbookUnitImage>> barrioPhotoSlideGroups(
+  List<HandbookUnitImage> images,
+) {
+  final groups = <List<HandbookUnitImage>>[];
+  var i = 0;
+  while (i < images.length) {
+    final lead = images[i];
+    final group = <HandbookUnitImage>[lead];
+    i++;
+    if (!HandbookUnitPhotos.isDiagram(lead)) {
+      while (i < images.length &&
+          !HandbookUnitPhotos.isDiagram(images[i]) &&
+          _isSlideAlternateOf(images[i].assetPath, lead.assetPath)) {
+        group.add(images[i]);
+        i++;
+      }
+    }
+    groups.add(group);
+  }
+  return groups;
+}
+
+/// Whether [path] is `<stem>_<n>.<ext>` beside the lead `<stem>.<ext>`.
+/// Requiring the lead to be present is what keeps a unit id that already
+/// ends in digits (`..._c16_u30.webp`) from reading as somebody else's
+/// alternate.
+bool _isSlideAlternateOf(String path, String leadPath) {
+  final dot = leadPath.lastIndexOf('.');
+  if (dot <= 0) return false;
+  final stem = leadPath.substring(0, dot);
+  final extension = leadPath.substring(dot);
+  if (!path.startsWith('${stem}_') || !path.endsWith(extension)) return false;
+  final index = path.substring(stem.length + 1, path.length - extension.length);
+  return index.isNotEmpty && int.tryParse(index) != null;
+}
+
 /// One content picture inside a unit body: rounded corners, full card
 /// width, tap to open the full-screen viewer. The [Image.asset]
 /// errorBuilder keeps widget tests (no bundled assets) from throwing.
@@ -1147,8 +1224,12 @@ class _UnitImage extends StatelessWidget {
             child: GestureDetector(
             onTap: () => BarrioTrainingImageViewer.open(
               context,
-              assetPath: image.assetPath,
-              caption: image.caption,
+              slides: [
+                BarrioTrainingImageSlide(
+                  assetPath: image.assetPath,
+                  caption: image.caption,
+                ),
+              ],
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
@@ -1187,6 +1268,301 @@ class _UnitImage extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// A slide group inside a unit body: two or more views of the SAME
+/// subject sharing one picture holder, shown one at a time.
+///
+/// Gesture grammar (T10, 2026-08-02), and the reason this holder looks
+/// the way it does. The reading deck turns pages with a strongly
+/// horizontal drag recognizer plus invisible edge tap zones
+/// (`learning_carousel.dart`). An inner horizontal [PageView] would
+/// claim those page-turn swipes across most of the visible card, which
+/// is exactly the arena regression the 2026-07 fixes cleaned up. So this
+/// holder adds NO drag recognizer at all. Slides advance from two small
+/// visible chevron chips on the picture's edges: plain child
+/// [GestureDetector]s, the same proven recipe as [_BookmarkToggle], so
+/// they win only inside their own 32px bounds and every other tap still
+/// reaches the reader's edge zones. No wrap-around: each chip is simply
+/// absent at its end of the group.
+///
+/// Tapping the picture itself still opens the full-screen viewer,
+/// unchanged, at the slide on screen. Real swipe paging lives there:
+/// that is a separate route with none of the deck's recognizers.
+///
+/// Degrade rule: a card with one photograph or none never reaches this
+/// widget ([barrioPhotoSlideGroups] hands it a group of one, rendered by
+/// [_UnitImage]), so today's single-picture cards keep today's tree
+/// exactly: no chips, no dots, no counter.
+class _UnitPhotoSlides extends StatefulWidget {
+  /// The lead photograph and its alternate views, in source order.
+  final List<HandbookUnitImage> slides;
+
+  /// Owning card title, the honest fallback when a slide has no caption.
+  final String cardTitle;
+
+  /// The owning manual's identity color, used for the active dot (the
+  /// same accent the body's numeric fact pops use).
+  final Color accent;
+
+  const _UnitPhotoSlides({
+    required this.slides,
+    required this.cardTitle,
+    required this.accent,
+  });
+
+  @override
+  State<_UnitPhotoSlides> createState() => _UnitPhotoSlidesState();
+}
+
+class _UnitPhotoSlidesState extends State<_UnitPhotoSlides> {
+  int _index = 0;
+
+  HandbookUnitImage get _slide => widget.slides[_index];
+
+  /// Screen-reader contract (rec #12): the literal source caption when
+  /// the picture has one, else `Photo: <card title>` (the same honest
+  /// fallback [_UnitImage] uses), then the plain-English position. The
+  /// phrasing mirrors the reading deck's 'Card X of Y'.
+  String get _semanticLabel {
+    final base = _slide.caption ?? 'Photo: ${widget.cardTitle}';
+    final stem =
+        base.endsWith('.') ? base.substring(0, base.length - 1) : base;
+    return '$stem. Photo ${_index + 1} of ${widget.slides.length}';
+  }
+
+  /// Moves to [next]. Never wraps: the chips are hidden at the ends, and
+  /// this guard means nothing else can walk off either end either.
+  void _show(int next) {
+    if (next < 0 || next >= widget.slides.length) return;
+    HapticFeedback.selectionClick();
+    setState(() => _index = next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Accessibility (rec #12): reduce motion swaps the picture
+    // instantly, the same rule the carousel entrance and the staggered
+    // options follow. Nothing here ever autoplays.
+    final swapDuration = MediaQuery.of(context).disableAnimations
+        ? Duration.zero
+        : const Duration(milliseconds: 180);
+    final caption = _slide.caption;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildHolder(context, swapDuration),
+          if (caption != null) ...[
+            const SizedBox(height: 6),
+            // Excluded from semantics: the holder's label above IS this
+            // literal caption, so it must not read twice (rec #12).
+            ExcludeSemantics(
+              child: Text(
+                caption,
+                style: GoogleFonts.ibmPlexSans(
+                  fontSize: 11,
+                  fontStyle: FontStyle.italic,
+                  color: BarrioColors.textMuted,
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          _SlidePositionStrip(
+            count: widget.slides.length,
+            index: _index,
+            accent: widget.accent,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The picture plus its two edge chips. The chips sit ABOVE the
+  /// picture's tap target in the stack and hit-test opaque, so a chip
+  /// tap advances the slide and never opens the viewer.
+  Widget _buildHolder(BuildContext context, Duration swapDuration) {
+    final last = widget.slides.length - 1;
+    return Semantics(
+      button: true,
+      image: true,
+      label: _semanticLabel,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          GestureDetector(
+            onTap: () => BarrioTrainingImageViewer.open(
+              context,
+              slides: [
+                for (final slide in widget.slides)
+                  BarrioTrainingImageSlide(
+                    assetPath: slide.assetPath,
+                    caption: slide.caption,
+                  ),
+              ],
+              initialIndex: _index,
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: AnimatedSwitcher(
+                duration: swapDuration,
+                child: _buildSlideImage(context),
+              ),
+            ),
+          ),
+          if (_index > 0)
+            Positioned(
+              left: 8,
+              child: _SlideChevron(
+                forward: false,
+                onTap: () => _show(_index - 1),
+              ),
+            ),
+          if (_index < last)
+            Positioned(
+              right: 8,
+              child: _SlideChevron(
+                forward: true,
+                onTap: () => _show(_index + 1),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSlideImage(BuildContext context) {
+    return LayoutBuilder(
+      // Keyed by asset so the switcher knows one slide replaced another.
+      key: ValueKey<String>(_slide.assetPath),
+      builder: (context, constraints) {
+        // Perf (premium audit A1): decode at the holder's on-screen
+        // pixel width, not the source resolution. A full-size decode of
+        // a 1400px webp costs megabytes, and a slide group multiplies
+        // that by the number of slides.
+        final cacheWidth = constraints.hasBoundedWidth
+            ? (constraints.maxWidth * MediaQuery.devicePixelRatioOf(context))
+                .round()
+                .clamp(1, 4096)
+            : null;
+        return Image.asset(
+          _slide.assetPath,
+          width: double.infinity,
+          fit: BoxFit.fitWidth,
+          cacheWidth: cacheWidth,
+          errorBuilder: (context, error, stackTrace) => Container(
+            width: double.infinity,
+            height: 120,
+            color: const Color(0x0F16243B),
+            child: Icon(
+              Icons.image_not_supported_outlined,
+              size: 28,
+              color: BarrioColors.textMuted.withValues(alpha: 0.6),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// One slide-advance chip on a picture edge.
+///
+/// A plain child tap target on the [_BookmarkToggle] recipe: opaque, so
+/// it wins inside its own bounds, and no drag recognizer, so the reading
+/// deck's page-turn arena is untouched.
+class _SlideChevron extends StatelessWidget {
+  /// True for the next-photo chip on the right edge.
+  final bool forward;
+  final VoidCallback onTap;
+
+  const _SlideChevron({required this.forward, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: forward ? 'Next photo' : 'Previous photo',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            // The viewer close-chip recipe: soft cream on a hairline
+            // navy border, so it stays legible over any photograph.
+            color: BarrioColors.shellMid.withValues(alpha: 0.82),
+            border: Border.all(color: const Color(0x2216243B)),
+          ),
+          child: Icon(
+            forward ? Icons.chevron_right_rounded : Icons.chevron_left_rounded,
+            size: 20,
+            color: BarrioColors.textPrimary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Position chrome under a slide holder: one dot per slide plus the
+/// plain 'K of N' counter.
+///
+/// The dots are decoration and are excluded from semantics; the counter
+/// carries position for screen readers, so it never reads twice.
+class _SlidePositionStrip extends StatelessWidget {
+  final int count;
+  final int index;
+  final Color accent;
+
+  const _SlidePositionStrip({
+    required this.count,
+    required this.index,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        ExcludeSemantics(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < count; i++)
+                Container(
+                  margin: const EdgeInsets.only(right: 5),
+                  width: 5,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: i == index
+                        ? accent.withValues(alpha: 0.9)
+                        // Hairline navy on the white card, the same
+                        // resting weight as the card's own border.
+                        : const Color(0x2216243B),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          '${index + 1} of $count',
+          style: GoogleFonts.ibmPlexMono(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            letterSpacing: 0.5,
+            color: BarrioColors.textMuted,
+          ),
+        ),
+      ],
     );
   }
 }

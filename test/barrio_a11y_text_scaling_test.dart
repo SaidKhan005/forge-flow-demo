@@ -357,9 +357,13 @@ void main() {
           scaledApp(
             scale,
             const BarrioTrainingImageViewer(
-              assetPath: 'assets/does_not_exist.png',
-              caption: 'A literal source caption long enough to wrap when '
-                  'the text scale doubles on a narrow phone.',
+              slides: [
+                BarrioTrainingImageSlide(
+                  assetPath: 'assets/does_not_exist.png',
+                  caption: 'A literal source caption long enough to wrap when '
+                      'the text scale doubles on a narrow phone.',
+                ),
+              ],
             ),
           ),
         );

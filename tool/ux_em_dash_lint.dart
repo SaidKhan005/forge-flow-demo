@@ -70,6 +70,8 @@ const List<String> kUxCopyRoots = <String>[
   'lib/internal/barrio/screens/training_doc_screen.dart',
   'lib/internal/barrio/services/barrio_bookmarks_service.dart',
   'lib/internal/barrio/services/barrio_term_links.dart',
+  // Full-screen picture viewer + its slide paging copy (2026-08-02).
+  'lib/internal/barrio/widgets/barrio_training_image_viewer.dart',
 ];
 
 /// The banned code point: EM DASH (U+2014).

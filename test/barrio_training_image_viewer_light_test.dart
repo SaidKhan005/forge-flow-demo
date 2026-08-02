@@ -11,8 +11,12 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: BarrioTrainingImageViewer(
-            assetPath: 'x',
-            caption: 'Photo: Test, CC BY 2.0',
+            slides: [
+              BarrioTrainingImageSlide(
+                assetPath: 'x',
+                caption: 'Photo: Test, CC BY 2.0',
+              ),
+            ],
           ),
         ),
       );
