@@ -177,6 +177,11 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               caption: 'Clean, organized dining room. Photo: White House Photographic Office (NARA), Public domain',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_photos/training_three_pillars_c1_u4_2.webp',
+              caption: 'Photo: TSgt Caycee Watson, U.S. Air National Guard, Public domain',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -230,6 +235,11 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               caption: 'Service that feels genuine. Photo: Tomwsulcer, CC0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_photos/training_three_pillars_c2_u0_2.webp',
+              caption: 'Photo: Unknown photographer (1949, Sweden), Public domain',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -251,6 +261,11 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/training_three_pillars_photos/training_three_pillars_c2_u1.webp',
               caption: 'Servers know the menu. Photo: Alan Light, CC BY 2.0',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_three_pillars_photos/training_three_pillars_c2_u1_2.webp',
+              caption: 'Photo: Library of Congress (photographer unknown), Public domain',
               afterParagraph: -1,
             ),
           ],

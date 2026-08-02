@@ -41,6 +41,10 @@ const _kReadBody = 'First paragraph of the fixture body.\n\n'
     'Second paragraph, which carries the picture.\n\n'
     'Third paragraph after the picture.';
 
+/// A photograph plus a house-style diagram pictogram: two SEPARATE
+/// picture holders, because a diagram never joins a photograph's slide
+/// group (T10, 2026-08-02). That keeps this fixture testing the
+/// picture-first stacking order rather than the slide holder.
 const _kReadUnit = HandbookUnit(
   id: 'fixture_read_unit',
   type: HandbookUnitType.explainer,
@@ -54,6 +58,7 @@ const _kReadUnit = HandbookUnit(
     ),
     HandbookUnitImage(
       assetPath: 'assets/internal/barrio/training/fixture/02.webp',
+      caption: 'Diagram: the fixture pictogram',
       afterParagraph: 1,
     ),
   ],

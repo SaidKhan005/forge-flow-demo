@@ -1715,6 +1715,11 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               caption: 'The kitchen under service pressure. Photo: Lars Plougmann, CC BY-SA 2.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_bold_by_design_photos/training_bold_by_design_c8_u0_2.webp',
+              caption: 'Photo: Colin and Sarah Northway, CC BY 2.0',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(

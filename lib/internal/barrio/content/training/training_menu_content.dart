@@ -99,6 +99,11 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               caption: 'Lomo Saltado, a main. Photo: WikiHes, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_menu_concept_photos/training_menu_concept_c0_u3_2.webp',
+              caption: 'Photo: Dtarazona, CC BY-SA 3.0',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -115,6 +120,11 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/training_menu_concept_photos/training_menu_concept_c0_u4.webp',
               caption: 'Whole fried fish. Photo: Lunita28mx, CC BY 4.0',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_menu_concept_photos/training_menu_concept_c0_u4_2.webp',
+              caption: 'Photo: Ix kimiaranda, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],

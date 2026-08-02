@@ -383,6 +383,11 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               caption: 'Epazote herb. Photo: Forest & Kim Starr, CC BY 3.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_photos/training_latin_ingredients_c1_u7_2.webp',
+              caption: 'Photo: Stanislav Doronenko, CC BY 2.5',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -396,6 +401,11 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/latin_american_ingredients_photos/training_latin_ingredients_c1_u8.webp',
               caption: 'Frijoles, stewed beans. Photo: Salvador alc, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_photos/training_latin_ingredients_c1_u8_2.webp',
+              caption: 'Photo: Badagnani, CC BY 3.0',
               afterParagraph: -1,
             ),
           ],
@@ -477,6 +487,11 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/latin_american_ingredients_photos/training_latin_ingredients_c2_u0.webp',
               caption: 'Jicama root. Photo: Ken Mayer, CC BY 2.0',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_photos/training_latin_ingredients_c2_u0_2.webp',
+              caption: 'Photo: eliazar, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -734,6 +749,11 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               caption: 'Queso fresco. Photo: Nsaum75, CC BY-SA 3.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_photos/training_latin_ingredients_c3_u3_2.webp',
+              caption: 'Photo: Geoff, CC BY-SA 3.0',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -882,6 +902,11 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/latin_american_ingredients_photos/training_latin_ingredients_c3_u11.webp',
               caption: 'Tamarind pods. Photo: Leslie Seaton, CC BY 2.0',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_photos/training_latin_ingredients_c3_u11_2.webp',
+              caption: 'Photo: David E Mead, CC0',
               afterParagraph: -1,
             ),
           ],

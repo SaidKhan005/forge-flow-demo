@@ -697,6 +697,11 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               caption: 'Kitchen workflow. Photo: PattayaPatrol, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_labour_cost_photos/training_labour_cost_c8_u8_2.webp',
+              caption: 'Photo: Visitor7, CC BY-SA 3.0',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -854,6 +859,11 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               caption: 'Kitchen ticket times. Photo: TheeErin, CC BY-NC-SA 2.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_labour_cost_photos/training_labour_cost_c8_u15_2.webp',
+              caption: 'Photo: juicyrai, CC BY-NC-ND 2.0',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
@@ -875,6 +885,11 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/training_labour_cost_photos/training_labour_cost_c8_u16.webp',
               caption: 'Suggesting a pairing. Photo: Alpha (avlxyz), CC BY-NC 2.0',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_labour_cost_photos/training_labour_cost_c8_u16_2.webp',
+              caption: 'Photo: Alan Light, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],

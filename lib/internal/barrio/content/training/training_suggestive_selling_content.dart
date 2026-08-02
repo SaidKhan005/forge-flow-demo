@@ -320,6 +320,11 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               caption: 'Taste to sell it. Photo: Masala Cha, CC BY-NC 2.0',
               afterParagraph: -1,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_photos/training_suggestive_selling_c4_u1_2.webp',
+              caption: 'Photo: Seaman Whitney Walker, U.S. Navy, Public domain',
+              afterParagraph: -1,
+            ),
           ],
         ),
         HandbookUnit(
