@@ -192,8 +192,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'closed-toe shoes to ensure a hygienic environment.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c2_u0.webp',
-              caption: 'Diagram: Personal Hygiene',
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c2_u0.webp',
+              caption: 'Clean attire, good hygiene. Photo: Marcbarrafon, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -277,8 +277,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               '- After cleaning.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c2_u2.webp',
-              caption: 'Diagram: Did You Wash Your Hands1/2',
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c2_u2.webp',
+              caption: 'Wash your hands often. Photo: Beat Ruest, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -1521,8 +1521,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
           runLength: 2,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c8_u2.webp',
-              caption: 'Diagram: What To Do If Someone Has A Reaction',
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c8_u2.webp',
+              caption: 'Find and use the EpiPen. Photo: AngelHM, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -1673,8 +1673,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'and viruses.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c9_u4.webp',
-              caption: 'Diagram: Controlling Time and Temperature',
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c9_u4.webp',
+              caption: 'Check food temperatures. Photo: U.S. Air Force / Airman 1st Class Zachary Kee, Public domain',
               afterParagraph: -1,
             ),
           ],
@@ -1819,8 +1819,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'leftovers safely and deliciously.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c11_u3.webp',
-              caption: 'Diagram: Safe Reheating Practices',
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c11_u3.webp',
+              caption: 'Checking reheat temperature. Photo: U.S. Department of Agriculture (USDAgov), Public domain',
               afterParagraph: -1,
             ),
           ],
@@ -1916,8 +1916,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               afterParagraph: 3,
             ),
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c12_u1.webp',
-              caption: 'Diagram: Four Steps For Creating An Ice Bath',
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c12_u1.webp',
+              caption: 'Setting up an ice bath. Photo: leighblackall, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -1998,8 +1998,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'and enjoyable for as long as possible.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c14_u0.webp',
-              caption: 'Diagram: Dry Storage',
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c14_u0.webp',
+              caption: 'Organized dry storage. Photo: Shixart1985, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -2033,8 +2033,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
           runLength: 3,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c14_u1.webp',
-              caption: 'Diagram: Refrigerator Storage',
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c14_u1.webp',
+              caption: 'Storing food by shelf. Photo: U.S. Department of Agriculture (Lance Cheung), Public domain',
               afterParagraph: -1,
             ),
           ],
@@ -2321,8 +2321,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               afterParagraph: 4,
             ),
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c17_u1.webp',
-              caption: 'Diagram: Five Step Process For Cleaning And Sanitation',
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c17_u1.webp',
+              caption: 'Clean then sanitize surfaces. Photo: U.S. Navy / Mass Communication Specialist Seaman Sam McNeely, Public domain',
               afterParagraph: -1,
             ),
           ],
@@ -2375,8 +2375,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'harmful pathogens.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c17_u3.webp',
-              caption: 'Diagram: When To Clean And Sanitize',
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c17_u3.webp',
+              caption: 'Clean and sanitize surfaces. Photo: Spc. Daniel P. Shook, Public domain',
               afterParagraph: -1,
             ),
           ],
@@ -2510,8 +2510,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'minimizes waste while maximizing quality.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c19_u0.webp',
-              caption: 'Diagram: Ingredients',
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c19_u0.webp',
+              caption: 'Store bar ingredients properly. Photo: Daderot, CC0',
               afterParagraph: -1,
             ),
           ],
@@ -2545,8 +2545,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'task to prevent cross-contamination.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c19_u2.webp',
-              caption: 'Diagram: Bar Cleanliness',
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c19_u2.webp',
+              caption: 'Keep the bar clean. Photo: Matti Blume, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -2587,8 +2587,8 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'that prioritizes safety alongside service.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c20_u0.webp',
-              caption: 'Diagram: Food Servers Role',
+              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c20_u0.webp',
+              caption: 'Servers protect the food. Photo: Shixart1985, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],

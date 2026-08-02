@@ -339,8 +339,8 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'finished dishes.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c1_u5.webp',
-              caption: 'Photo: Legado Mexicano, CC BY-SA 4.0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_photos/training_latin_ingredients_c1_u5.webp',
+              caption: 'Cotija cheese. Photo: Legado Mexicano, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -374,8 +374,8 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'petroleum or camphor.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c1_u7.webp',
-              caption: 'Photo: Vegan Feast Catering, CC BY 2.0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_photos/training_latin_ingredients_c1_u7.webp',
+              caption: 'Epazote herb. Photo: Forest & Kim Starr, CC BY 3.0',
               afterParagraph: -1,
             ),
           ],
@@ -389,8 +389,8 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'often describes seasoned, stewed pinto or black beans.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c1_u8.webp',
-              caption: 'Photo: Drywontonmee at English Wikipedia, CC BY 2.5, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_photos/training_latin_ingredients_c1_u8.webp',
+              caption: 'Frijoles, stewed beans. Photo: Salvador alc, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -470,8 +470,8 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'but the white flesh can be eaten raw or cooked.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c2_u0.webp',
-              caption: 'Photo: Eric in SF, CC BY-SA 3.0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_photos/training_latin_ingredients_c2_u0.webp',
+              caption: 'Jicama root. Photo: Ken Mayer, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -679,8 +679,8 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'or brown as it reaches full ripeness.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c3_u0.webp',
-              caption: 'Photo: Jonathan Cutrer, CC0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_photos/training_latin_ingredients_c3_u0.webp',
+              caption: 'Poblano peppers. Photo: Jonathan Cutrer, CC0',
               afterParagraph: -1,
             ),
           ],
@@ -707,8 +707,8 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
           body: 'the Spanish word for octopus.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c3_u2.webp',
-              caption: 'Photo: Daderot, CC0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_photos/training_latin_ingredients_c3_u2.webp',
+              caption: 'Pulpo, octopus. Photo: KJRSeattle, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -725,8 +725,8 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'refreshing balance without melting or becoming gooey.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c3_u3.webp',
-              caption: 'Photo: Geoff, CC BY-SA 3.0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_photos/training_latin_ingredients_c3_u3.webp',
+              caption: 'Queso fresco. Photo: Nsaum75, CC BY-SA 3.0',
               afterParagraph: -1,
             ),
           ],
@@ -745,8 +745,8 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'flavor that enhances a wide range of dishes.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c3_u4.webp',
-              caption: 'Photo: Fumikas Sagisavas, CC0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_photos/training_latin_ingredients_c3_u4.webp',
+              caption: 'Quinoa, three varieties. Photo: Fumikas Sagisavas, CC0',
               afterParagraph: -1,
             ),
           ],
@@ -853,8 +853,8 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'spaghetti or linguine, most commonly used in Peruvian cuisine.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c3_u10.webp',
-              caption: 'Photo: Valereee, CC0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_photos/training_latin_ingredients_c3_u10.webp',
+              caption: 'Tallarines, long noodles. Photo: Bodhi Peace, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -875,8 +875,8 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'profile.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c3_u11.webp',
-              caption: 'Photo: Ivar Leidus, CC BY-SA 4.0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_photos/training_latin_ingredients_c3_u11.webp',
+              caption: 'Tamarind pods. Photo: Leslie Seaton, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -982,8 +982,8 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'traditionally enjoyed through a metal straw.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c4_u4.webp',
-              caption: 'Photo: Siarhei Besarab, CC BY-SA 4.0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_photos/training_latin_ingredients_c4_u4.webp',
+              caption: 'Yerba mate in gourd. Photo: Lexspion, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -996,8 +996,8 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
           body: 'a starchy root vegetable native to South America. SEE CASSAVA.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c4_u5.webp',
-              caption: 'Photo: David Monniaux, CC BY-SA 3.0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_photos/training_latin_ingredients_c4_u5.webp',
+              caption: 'Yuca, cassava root. Photo: Dappasolomon001, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],

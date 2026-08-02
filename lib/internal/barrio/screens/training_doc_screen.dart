@@ -132,6 +132,11 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   /// words. Null or empty means nothing is selected.
   String? _selectedText;
 
+  /// Handle on the reader's [SelectionArea] so the tap-away listener can
+  /// clear a lingering highlight (2026-07-31 operator report).
+  final GlobalKey<SelectionAreaState> _selectionKey =
+      GlobalKey<SelectionAreaState>();
+
   late final AnimationController _heroController = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 700),
@@ -384,28 +389,84 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     BuildContext context,
     SelectableRegionState selectableRegionState,
   ) {
-    return AdaptiveTextSelectionToolbar.buttonItems(
-      anchors: selectableRegionState.contextMenuAnchors,
-      buttonItems: <ContextMenuButtonItem>[
-        ContextMenuButtonItem(
+    final anchors = selectableRegionState.contextMenuAnchors;
+    void run(void Function(String) launch) {
+      final selection = _selectedText?.trim() ?? '';
+      selectableRegionState.hideToolbar();
+      if (selection.isEmpty) return;
+      launch(selection);
+    }
+
+    // Branded selection menu (2026-07-31 operator request): the default
+    // AdaptiveTextSelectionToolbar renders a generic light-cream system
+    // popup that reads as off-brand next to the premium reader. This is
+    // the same two actions on the Barrio glass surface, with the manual
+    // accent glyphs and IBM Plex labels, floated at the selection anchor
+    // (TextSelectionToolbar owns the above/below overflow placement; the
+    // toolbarBuilder swaps the container for our own).
+    return TextSelectionToolbar(
+      anchorAbove: anchors.primaryAnchor,
+      anchorBelow: anchors.secondaryAnchor ?? anchors.primaryAnchor,
+      toolbarBuilder: (context, child) => _BarrioSelectionSurface(child: child),
+      children: <Widget>[
+        _BarrioSelectionAction(
+          icon: Icons.chat_bubble_outline_rounded,
           label: 'Ask chat',
-          onPressed: () {
-            final selection = _selectedText?.trim() ?? '';
-            selectableRegionState.hideToolbar();
-            if (selection.isEmpty) return;
-            _launchAskChat(selection);
-          },
+          accent: widget.accent,
+          onPressed: () => run(_launchAskChat),
         ),
-        ContextMenuButtonItem(
+        _BarrioSelectionAction(
+          icon: Icons.travel_explore_rounded,
           label: 'Search the web',
-          onPressed: () {
-            final selection = _selectedText?.trim() ?? '';
-            selectableRegionState.hideToolbar();
-            if (selection.isEmpty) return;
-            _launchWebSearch(selection);
-          },
+          accent: widget.accent,
+          onPressed: () => run(_launchWebSearch),
         ),
       ],
+    );
+  }
+
+  /// The reading deck, wrapped in the text-selection plumbing.
+  ///
+  /// Select-any-word-to-search (2026-07-29 operator request): the whole
+  /// deck is a text selection region, so a reader can long-press an
+  /// unfamiliar word (for example a Spanish term like 'Amatitan') to
+  /// select it and then pick "Search the web" from the selection menu.
+  /// Selection is a long-press or drag gesture; every reading gesture
+  /// still works because each lives on a recognizer deeper than this
+  /// region: a plain tap still turns the page (the carousel edge tap
+  /// zones), a clearly horizontal swipe still moves between cards, a
+  /// near-vertical drag still scrolls a long card, term-link taps still
+  /// open the definition popover, and an image tap still zooms.
+  Widget _buildSelectableDeck(Color accent) {
+    return SelectionArea(
+      key: _selectionKey,
+      onSelectionChanged: (content) => _selectedText = content?.plainText,
+      contextMenuBuilder: _buildSelectionContextMenu,
+      // Tap-away clears the highlight (2026-07-31 operator report: a
+      // selection stuck around after tapping elsewhere). The carousel's
+      // deeper recognizers (page turn, term links, image zoom) win the
+      // gesture arena, so SelectionArea never receives the winning tap; a
+      // raw pointer listener sits outside the arena and always fires.
+      // Selection gestures still work: the pointer-down that begins a
+      // long-press or drag clears the previous highlight, then forms the
+      // new one. The floating menu and drag handles live in the app
+      // overlay, not this subtree, so using them never lands here.
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) {
+          if ((_selectedText ?? '').isEmpty) return;
+          _selectionKey.currentState?.selectableRegion.clearSelection();
+          _selectedText = null;
+        },
+        child: LearningCarousel(
+          key: _carouselKey,
+          cardCount: _deck.length,
+          initialPage: _initialPage,
+          onPageChanged: _onCardPageChanged,
+          accent: accent,
+          cardBuilder: _buildDeckCard,
+        ),
+      ),
     );
   }
 
@@ -631,33 +692,7 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
                 },
               ),
               const SizedBox(height: 8),
-              Expanded(
-                // Select-any-word-to-search (2026-07-29 operator request):
-                // the whole reading deck is a text selection region, so a
-                // reader can long-press an unfamiliar word (for example a
-                // Spanish term like 'Amatitan') to select it and then pick
-                // "Search the web" from the selection menu, or Copy it.
-                // Selection is a long-press or drag gesture; every reading
-                // gesture still works because each lives on a recognizer
-                // deeper than this region: a plain tap still turns the page
-                // (the carousel edge tap zones), a clearly horizontal swipe
-                // still moves between cards, a near-vertical drag still
-                // scrolls a long card, term-link taps still open the
-                // definition popover, and an image tap still zooms.
-                child: SelectionArea(
-                  onSelectionChanged: (content) =>
-                      _selectedText = content?.plainText,
-                  contextMenuBuilder: _buildSelectionContextMenu,
-                  child: LearningCarousel(
-                    key: _carouselKey,
-                    cardCount: _deck.length,
-                    initialPage: _initialPage,
-                    onPageChanged: _onCardPageChanged,
-                    accent: accent,
-                    cardBuilder: _buildDeckCard,
-                  ),
-                ),
-              ),
+              Expanded(child: _buildSelectableDeck(accent)),
             ],
           ),
         ),
@@ -1305,6 +1340,79 @@ class _PartLabel extends StatelessWidget {
             color: accent.withValues(alpha: 0.80),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The branded container for the reading-text selection menu (2026-07-31).
+/// Replaces the system toolbar's generic light-cream card with the Barrio
+/// glass surface, rounded corners and the one soft neutral lift, so the
+/// popup reads as part of the premium reader (matches the web-search
+/// dialog surface). [TextSelectionToolbar] hands us the arranged action
+/// row as [child]; we only own the frame around it.
+class _BarrioSelectionSurface extends StatelessWidget {
+  final Widget child;
+
+  const _BarrioSelectionSurface({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: BarrioColors.glassFill,
+        borderRadius: BorderRadius.circular(BarrioRadii.card),
+        border: Border.all(
+          color: BarrioColors.textPrimary.withValues(alpha: 0.06),
+        ),
+        boxShadow: barrioSoftShadow(y: 8, blur: 22, opacity: 0.14),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: child,
+    );
+  }
+}
+
+/// One action inside the branded selection menu: the manual accent glyph
+/// beside an IBM Plex label, sized to a comfortable 44px tap target.
+class _BarrioSelectionAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color accent;
+  final VoidCallback onPressed;
+
+  const _BarrioSelectionAction({
+    required this.icon,
+    required this.label,
+    required this.accent,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        foregroundColor: BarrioColors.textPrimary,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        minimumSize: const Size(0, 44),
+        shape: const RoundedRectangleBorder(),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 18, color: accent),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: GoogleFonts.ibmPlexSans(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: BarrioColors.textPrimary,
+            ),
+          ),
+        ],
       ),
     );
   }

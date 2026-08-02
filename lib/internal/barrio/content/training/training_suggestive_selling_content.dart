@@ -311,8 +311,8 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'experience.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c4_u1.webp',
-              caption: 'Diagram: Menu Knowledge',
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_photos/training_suggestive_selling_c4_u1.webp',
+              caption: 'Taste to sell it. Photo: Masala Cha, CC BY-NC 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -445,8 +445,8 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
           runLength: 2,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_diagrams/training_suggestive_selling_c4_u6.webp',
-              caption: 'Diagram: Pick Your Moments',
+              assetPath: 'assets/internal/barrio/training/training_suggestive_selling_photos/training_suggestive_selling_c4_u6.webp',
+              caption: 'Well timed dessert. Photo: Shixart1985, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],

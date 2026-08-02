@@ -40,8 +40,8 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
           runLength: 3,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c0_u0.webp',
-              caption: 'Photo: Ralf Roletschek, CC BY-SA 3.0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/training_tequila_photos/training_tequila_c0_u0.webp',
+              caption: 'Tequila, a regulated spirit. Photo: Antonio Cavallo, Public domain',
               afterParagraph: -1,
             ),
           ],
@@ -67,8 +67,8 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
           runLength: 3,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c0_u1.webp',
-              caption: 'Photo: Tomascastelazo, CC BY-SA 4.0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/training_tequila_photos/training_tequila_c0_u1.webp',
+              caption: 'Blue Weber agave. Photo: Tomascastelazo, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -136,8 +136,8 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
           runLength: 3,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c1_u0.webp',
-              caption: 'Photo: sergio niebla from Cd. Victoria, Tamaulipas, Mexico, CC BY-SA 2.0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/training_tequila_photos/training_tequila_c1_u0.webp',
+              caption: 'The agave pina. Photo: Gzzz, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -171,8 +171,8 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
           runLength: 3,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c1_u1.webp',
-              caption: 'Photo: Gzzz, CC BY-SA 4.0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/training_tequila_photos/training_tequila_c1_u1.webp',
+              caption: 'Baking the agave. Photo: ORGP, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -193,8 +193,8 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
           runLength: 3,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c1_u2.webp',
-              caption: 'Photo: ORGP, CC BY-SA 4.0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/training_tequila_photos/training_tequila_c1_u2.webp',
+              caption: 'Aging in oak. Photo: Juan Carlos Fonseca Mata, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -215,8 +215,8 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
           body: 'All Tequila falls into one of these five categories:',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c2_u0.webp',
-              caption: 'Photo: Anonymous editor2066, CC BY-SA 4.0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/training_tequila_photos/training_tequila_c2_u0.webp',
+              caption: 'Classes of tequila. Photo: Chris Woodrich, CC BY 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -288,8 +288,8 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'complexity of añejo.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c2_u3.webp',
-              caption: 'Photo: Ralf Roletschek, CC BY-SA 3.0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/training_tequila_photos/training_tequila_c2_u3.webp',
+              caption: 'Reposado, rested. Photo: ORGP, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -378,8 +378,8 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
           runLength: 2,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c3_u0.webp',
-              caption: 'Photo: Rkolarsky, CC BY-SA 3.0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/training_tequila_photos/training_tequila_c3_u0.webp',
+              caption: 'The classic margarita. Photo: Akke Monasso, CC BY-SA 3.0',
               afterParagraph: -1,
             ),
           ],
@@ -406,8 +406,8 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
           runLength: 2,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_tequila_diagrams/training_tequila_c3_u1.webp',
-              caption: 'Photo: Missvain, CC BY 4.0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/training_tequila_photos/training_tequila_c3_u1.webp',
+              caption: 'A spicy margarita riff. Photo: Sarah Stierch, CC BY 4.0',
               afterParagraph: -1,
             ),
           ],

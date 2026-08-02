@@ -552,8 +552,8 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'allowing standards to slip.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c8_u2.webp',
-              caption: 'Diagram: Staff Training',
+              assetPath: 'assets/internal/barrio/training/training_labour_cost_photos/training_labour_cost_c8_u2.webp',
+              caption: 'Coaching the team. Photo: Lance Cheung / USDA, Public domain',
               afterParagraph: -1,
             ),
           ],
@@ -688,8 +688,8 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'obstacles.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c8_u8.webp',
-              caption: 'Diagram: Layout/Work Flow',
+              assetPath: 'assets/internal/barrio/training/training_labour_cost_photos/training_labour_cost_c8_u8.webp',
+              caption: 'Kitchen workflow. Photo: PattayaPatrol, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -735,8 +735,8 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'seating, ultimately resulting in slower table turns.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c8_u10.webp',
-              caption: 'Diagram: Table Turns',
+              assetPath: 'assets/internal/barrio/training/training_labour_cost_photos/training_labour_cost_c8_u10.webp',
+              caption: 'Resetting a table. Photo: Elyaqim Mosheh Adam, CC BY-SA 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -845,8 +845,8 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'execute efficiently.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c8_u15.webp',
-              caption: 'Diagram: Chit Times',
+              assetPath: 'assets/internal/barrio/training/training_labour_cost_photos/training_labour_cost_c8_u15.webp',
+              caption: 'Kitchen ticket times. Photo: TheeErin, CC BY-NC-SA 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -868,8 +868,8 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'check.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c8_u16.webp',
-              caption: 'Diagram: Upselling/Cross-Selling',
+              assetPath: 'assets/internal/barrio/training/training_labour_cost_photos/training_labour_cost_c8_u16.webp',
+              caption: 'Suggesting a pairing. Photo: Alpha (avlxyz), CC BY-NC 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -945,8 +945,8 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'enhance both efficiency and profitability.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_labour_cost_diagrams/training_labour_cost_c8_u20.webp',
-              caption: 'Diagram: Menu Design',
+              assetPath: 'assets/internal/barrio/training/training_labour_cost_photos/training_labour_cost_c8_u20.webp',
+              caption: 'Menu design. Photo: Pixel.la Free Stock Photos, CC0',
               afterParagraph: -1,
             ),
           ],

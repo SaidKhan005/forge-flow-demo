@@ -122,8 +122,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
           runLength: 2,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/coffee_training_diagrams/training_coffee_c1_u1.webp',
-              caption: 'Photo: Sage Ross, CC BY-SA 3.0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/coffee_training_photos/training_coffee_c1_u1.webp',
+              caption: 'Reading the roast level. Photo: Sage Ross, CC BY-SA 3.0',
               afterParagraph: -1,
             ),
           ],
@@ -487,8 +487,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
           runLength: 4,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/coffee_training_diagrams/training_coffee_c9_u1.webp',
-              caption: 'Photo: EspressoExpresso, CC BY-SA 4.0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/coffee_training_photos/training_coffee_c9_u1.webp',
+              caption: 'Scrubbing the group head. Photo: jonathanpoh, CC BY-NC-ND 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -516,8 +516,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
           runLength: 4,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/coffee_training_diagrams/training_coffee_c9_u2.webp',
-              caption: 'Photo: massage-techniques, CC BY-SA 2.0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/coffee_training_photos/training_coffee_c9_u2.webp',
+              caption: 'Backflushing with cleaner. Photo: takc, CC BY-NC-SA 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -539,8 +539,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
           runLength: 4,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/coffee_training_diagrams/training_coffee_c9_u3.webp',
-              caption: 'Photo: Fletcher, CC BY 4.0, via Wikimedia Commons',
+              assetPath: 'assets/internal/barrio/training/coffee_training_photos/training_coffee_c9_u3.webp',
+              caption: 'End of day grinder cleaning. Photo: Andy Ciordia, CC BY-NC 2.0',
               afterParagraph: -1,
             ),
           ],

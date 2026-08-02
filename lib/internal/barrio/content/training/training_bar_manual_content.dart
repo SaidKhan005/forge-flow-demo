@@ -252,8 +252,8 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'portion sizes, allergies, and any modifications available.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c4_u3.webp',
-              caption: 'Diagram: Features',
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c4_u3.webp',
+              caption: 'Sharing the daily feature. Photo: kurmanstaff, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -288,8 +288,8 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'dining occasion.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c4_u5.webp',
-              caption: 'Diagram: Order Accuracy',
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c4_u5.webp',
+              caption: 'Writing the order accurately. Photo: Alan Light, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -348,8 +348,8 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'enhancing the flow of our teamwork.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c4_u8.webp',
-              caption: 'Diagram: Chits',
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c4_u8.webp',
+              caption: 'Chits on the service pass. Photo: Visitor7, CC BY-SA 3.0',
               afterParagraph: -1,
             ),
           ],
@@ -388,8 +388,8 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'don\'t hesitate to involve a manager for support.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c4_u10.webp',
-              caption: 'Diagram: Kitchen Communication',
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c4_u10.webp',
+              caption: 'Communicating with the kitchen. Photo: CNEcija12345, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -427,8 +427,8 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'they are ready.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c4_u13.webp',
-              caption: 'Diagram: Running Food',
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c4_u13.webp',
+              caption: 'Running food to the table. Photo: Shixart1985, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -1101,8 +1101,8 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'beginning and end of each shift.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c6_u8.webp',
-              caption: 'Diagram: Temperature Logs',
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c6_u8.webp',
+              caption: 'Filling out temperature logs. Photo: USDAgov (U.S. Department of Agriculture), Public domain',
               afterParagraph: -1,
             ),
           ],
@@ -1168,8 +1168,8 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'inviting atmosphere throughout your restaurant.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c6_u12.webp',
-              caption: 'Diagram: Washroom Checks',
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c6_u12.webp',
+              caption: 'Keeping washrooms pristine. Photo: Kgbo, CC BY-SA 3.0',
               afterParagraph: -1,
             ),
           ],
@@ -1346,8 +1346,8 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
           runLength: 2,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c7_u3.webp',
-              caption: 'Diagram: Goodbye\'s',
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c7_u3.webp',
+              caption: 'A warm goodbye at the door. Photo: Hughcanbefound, CC BY-SA 3.0',
               afterParagraph: -1,
             ),
           ],
@@ -1421,8 +1421,8 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'and beyond to tailor every moment just for them.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c7_u6.webp',
-              caption: 'Diagram: Celebrations',
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c7_u6.webp',
+              caption: 'A personalized celebration card. Photo: Ruth and Dave, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -1700,8 +1700,8 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'greeted at the door!',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c8_u0.webp',
-              caption: 'Diagram: Greeting Guests',
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c8_u0.webp',
+              caption: 'Greeting guests at the door. Photo: World Travel & Tourism Council, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -1739,8 +1739,8 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'best assistance!',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c8_u2.webp',
-              caption: 'Diagram: Answering The Phone',
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c8_u2.webp',
+              caption: 'Answering the phone warmly. Photo: Suburban Eye Care, CC BY 2.0',
               afterParagraph: -1,
             ),
           ],
@@ -1945,8 +1945,8 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'experience!',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c9_u4.webp',
-              caption: 'Diagram: Bar Service',
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c9_u4.webp',
+              caption: 'Bar service, same standard. Photo: Raymonds, St. John\'s',
               afterParagraph: -1,
             ),
           ],
@@ -2083,8 +2083,8 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'that keeps them coming back for more.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c10_u4.webp',
-              caption: 'Diagram: Cross-Selling',
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c10_u4.webp',
+              caption: 'Cross-selling, dessert and coffee. Photo: JIP, CC BY-SA 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -2111,8 +2111,8 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'and the establishment.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c10_u5.webp',
-              caption: 'Diagram: Upselling',
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c10_u5.webp',
+              caption: 'Upselling to the larger cut. Photo: Nenad Stojkovic, CC BY 4.0',
               afterParagraph: -1,
             ),
           ],
@@ -2305,8 +2305,8 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'operations.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_diagrams/training_bar_manual_c12_u1.webp',
-              caption: 'Diagram: Weekly Cleaning',
+              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c12_u1.webp',
+              caption: 'Weekly deep clean behind the bar. Photo: Bruno Girin, CC BY-SA 2.0',
               afterParagraph: -1,
             ),
           ],
