@@ -553,7 +553,7 @@ Controlling temperature in the kitchen is paramount to achieving culinary succes
 3. Place your probe or thermometer tip into the center of the ice slurry and mix gently. Stirring helps spread heat evenly and prevents your thermometer from touching ice, the container walls, or the bottom (which will give you inaccurate temperature readings).
 4. In an ice bath, your thermometer should read 32 degrees F (0 degrees C). If it doesn't, follow the manufacturer's adjustment instructions. However, before calibrating a digital, instant-read thermometer, verify that the reading falls within the manufacturer's accuracy range. If it does, adjustment isn't needed.
 
-![](assets/internal/barrio/training/food_safety_manual/07.webp)
+![Diagram: four steps to a proper ice bath for calibrating a thermometer](assets/internal/barrio/training/food_safety_manual/07.webp)
 
 ## Thermometer Ice Bath Calibration
 
@@ -640,11 +640,11 @@ Cleaning is defined as the removal of dirt, food, grease, or any debris from a s
 4. **Soak in sanitizer.** Soak the surface in your chosen sanitizer following the manufacturer's instructions. You can wash counters with bleach water or use hot water at 82 degrees C for sanitation.
 5. **Air-dry.** Allow the sanitized surface to air dry.
 
-![](assets/internal/barrio/training/food_safety_manual/09.webp)
+![Diagram: food waste being scraped off a counter](assets/internal/barrio/training/food_safety_manual/09.webp)
 
-![](assets/internal/barrio/training/food_safety_manual/10.webp)
+![Diagram: a counter being washed with soapy water and a sponge](assets/internal/barrio/training/food_safety_manual/10.webp)
 
-![](assets/internal/barrio/training/food_safety_manual/11.webp)
+![Diagram: sanitizer being sprayed across a washed counter](assets/internal/barrio/training/food_safety_manual/11.webp)
 
 ### Important Things To Consider In Sanitation
 

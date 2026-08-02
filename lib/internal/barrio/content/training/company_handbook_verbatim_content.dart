@@ -440,6 +440,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
             ),
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/07.webp',
+              caption: 'Diagram: the six POCKIT values, one per colour band',
               afterParagraph: 3,
             ),
           ],
@@ -3132,6 +3133,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/12.webp',
+              caption: 'Diagram: good food handler practices beside poor ones, head to toe',
               afterParagraph: 0,
             ),
             HandbookUnitImage(
@@ -4646,6 +4648,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/17.webp',
+              caption: 'Diagram: the WHMIS pictograms and the hazard each one stands for',
               afterParagraph: 0,
             ),
             HandbookUnitImage(

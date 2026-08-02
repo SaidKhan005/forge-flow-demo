@@ -1938,6 +1938,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/food_safety_manual/07.webp',
+              caption: 'Diagram: four steps to a proper ice bath for calibrating a thermometer',
               afterParagraph: 3,
             ),
             HandbookUnitImage(
@@ -2335,14 +2336,17 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/food_safety_manual/09.webp',
+              caption: 'Diagram: food waste being scraped off a counter',
               afterParagraph: 4,
             ),
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/food_safety_manual/10.webp',
+              caption: 'Diagram: a counter being washed with soapy water and a sponge',
               afterParagraph: 4,
             ),
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/food_safety_manual/11.webp',
+              caption: 'Diagram: sanitizer being sprayed across a washed counter',
               afterParagraph: 4,
             ),
             HandbookUnitImage(
