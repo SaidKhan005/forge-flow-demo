@@ -130,6 +130,32 @@ if has_changed '^lib/screens/|^lib/widgets/|^lib/operator_web/|^lib/admin/screen
   run_lint dart run tool/ux_em_dash_lint.dart
 fi
 
+# Barrio generated-content drift: lib/internal/barrio/content/training/**
+# is generator OUTPUT. If a source markdown or a manifest moved without a
+# regenerate, or a generated .dart was hand-edited, the next clean
+# generator run silently reverts curated work (that is how 44 culled
+# photos came back after PR #1534). --check renders in memory and
+# compares; it writes nothing. ~0.4s. Skipped when no working python is
+# available so a python-less clone can still push; the probe runs an
+# actual interpreter rather than trusting PATH, because the Windows Store
+# `python` stub resolves on PATH and then refuses to run.
+if has_changed '^lib/internal/barrio/content/training/.*\.dart$|^tool/barrio_training_content_generator\.py$|^tool/barrio_training_(diagrams_manifest|card_titles|image_removals)\.json$|^docs/Knowledge_graph_docs/'; then
+  barrio_py=""
+  for candidate in python python3 py; do
+    if "$candidate" -c "" >/dev/null 2>&1; then
+      barrio_py="$candidate"
+      break
+    fi
+  done
+  if [ -n "$barrio_py" ]; then
+    run_lint "$barrio_py" tool/barrio_training_content_generator.py --check
+  else
+    echo
+    echo "[forge-flow pre-push] No working python found; skipping barrio content drift check."
+    echo "  Run it manually: python tool/barrio_training_content_generator.py --check"
+  fi
+fi
+
 # Ignore-justification bar: every `// ignore:` carries rationale, not
 # just the diagnostic name. Scoped to lib/** + tool/** Dart sources.
 if has_changed '^lib/.*\.dart$|^tool/.*\.dart$'; then

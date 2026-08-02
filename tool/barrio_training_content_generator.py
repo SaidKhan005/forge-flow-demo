@@ -5,6 +5,18 @@ Rewrites every file listed in DOCS under lib/internal/barrio/content/training/;
 regeneration must be byte-identical unless a source markdown changed. Verify
 word-for-word fidelity afterwards with `python tool/barrio_training_verbatim_check.py`.
 
+Add `--check` to render every file in memory and compare it to what is on
+disk without writing anything; it exits non-zero if a real run would change
+a committed file. That is the drift guard the pre-push hook runs, and the
+standing acceptance test for this generator: on a clean checkout, a run
+must leave `git status --porcelain` empty.
+
+Curation of the pictures rides two manifests next to this file, never a
+hand edit of the generated Dart: barrio_training_diagrams_manifest.json
+adds or replaces images, barrio_training_image_removals.json records the
+extracted photos curation deliberately dropped. Both hard-stop on a stale
+entry rather than silently skipping it.
+
 Body text is carried word-for-word from the source markdown. Markdown syntax
 markers (heading #, bold **, italic wrappers, code fences, list dashes kept)
 are formatting, not words; headings become card/chapter titles.
@@ -15,7 +27,7 @@ words: each becomes a HandbookUnitImage on its unit with `afterParagraph` =
 the 0-based index of the blank-line-separated paragraph of the emitted unit
 body after which the image sits (-1 = before the first paragraph).
 """
-import json, re, os, textwrap
+import json, re, os, sys, textwrap
 
 KG = 'docs/Knowledge_graph_docs'
 OUT = 'lib/internal/barrio/content/training'
@@ -64,6 +76,42 @@ if os.path.exists(_CARD_TITLES_PATH):
 # Manifest unit ids actually reached during this run (see
 # check_card_title_manifest).
 _CARD_TITLES_SEEN = set()
+
+# Extracted images the curation deliberately DROPPED, keyed by the same
+# FINAL (post-split) unit id. Entry shape:
+#
+#     "<unit_id>": {"drop": ["assets/.../latin_american_dishes/01.webp"],
+#                   "reason": "<why the card no longer shows it>"}
+#
+# WHY THIS EXISTS AS ITS OWN FILE. The diagram manifest already carries a
+# "replace": true flag that drops a unit's extracted images. That flag
+# lives ON the replacement entry, so re-pointing the replacement at a new
+# asset silently takes the drop instruction with it. That is exactly what
+# happened: PR #1534 rewrote 44 Latin dishes/ingredients entries to the
+# new *_photos/ assets and lost "replace": true on all 44, so the next
+# clean generator run resurrected 44 culled extractor photos (+206 lines)
+# over curated content. Recording the DROP separately from the
+# REPLACEMENT means editing one can never quietly undo the other.
+#
+# Same tripwire posture as the card-title manifest: every listed path must
+# still be emitted by the extractor for that unit, every unit id must be
+# reached, and a removal may never leave a card with no image at all. A
+# stale entry is a hard stop, never a silent skip. See
+# drop_extracted_images / check_image_removal_manifest below and
+# tool/barrio_training_image_removals.README.md for the authoring rules.
+# Pure {unit_id: entry} map with NO documentation keys, for the same
+# reason as the card-title manifest.
+_IMAGE_REMOVALS_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    'barrio_training_image_removals.json')
+IMAGE_REMOVALS = {}
+if os.path.exists(_IMAGE_REMOVALS_PATH):
+    with open(_IMAGE_REMOVALS_PATH, encoding='utf-8') as _rf:
+        IMAGE_REMOVALS = json.load(_rf)
+
+# Removal manifest unit ids actually reached during this run (see
+# check_image_removal_manifest).
+_IMAGE_REMOVALS_SEEN = set()
 
 DOCS = [
     dict(md='Barrio Building A Strong Foundation.md', id='training_strong_foundation',
@@ -534,6 +582,66 @@ def check_card_title_manifest():
             f'this guard exists to prevent).')
 
 
+def drop_extracted_images(unit_id, u_images):
+    """Extracted images for one card, minus the ones curation dropped.
+
+    Same posture as card_title_for: a manifest that no longer lines up
+    with the parsed source is a hard stop, never a silent skip.
+
+      * drift tripwire - every path listed under `drop` must actually be
+        emitted by the extractor for this unit right now. A path that no
+        longer appears means the source markdown, the extraction, or the
+        unit ids moved, and the entry is describing a card that no longer
+        exists. Silently accepting it would let a real photo the operator
+        wants disappear the day its unit id shifts onto this entry.
+    """
+    entry = IMAGE_REMOVALS.get(unit_id)
+    if entry is None:
+        return u_images
+    _IMAGE_REMOVALS_SEEN.add(unit_id)
+    present = [p for p, _c, _a in u_images]
+    stale = [p for p in entry['drop'] if p not in present]
+    if stale:
+        raise SystemExit(
+            f'{unit_id}: image-removal manifest drift. These path(s) are '
+            f'listed for removal but the extractor no longer emits them on '
+            f'this card: {", ".join(stale)}. Emitted here now: '
+            f'{", ".join(present) or "(none)"}. Unit ids shift when a source '
+            f'doc or a split constant changes; re-point or delete the entry '
+            f'before regenerating.')
+    dropped = set(entry['drop'])
+    return [img for img in u_images if img[0] not in dropped]
+
+
+def check_image_removals_kept_a_picture(unit_id, u_images):
+    """A removal may never leave a card with no image at all.
+
+    Every entry in the removal manifest exists because a curated image
+    took the dropped photo's place. If that replacement is later deleted
+    from the diagram manifest, the removal would silently strip the card
+    bare instead of swapping its picture. Stop instead.
+    """
+    if unit_id in IMAGE_REMOVALS and not u_images:
+        raise SystemExit(
+            f'{unit_id}: the image-removal manifest dropped this card\'s '
+            f'only picture(s) and nothing replaced them, so the card would '
+            f'render with no image. Restore the curated replacement in '
+            f'tool/barrio_training_diagrams_manifest.json, or delete the '
+            f'removal entry if the card is meant to lose its picture.')
+
+
+def check_image_removal_manifest():
+    """Every removal manifest unit id must have been reached by this run."""
+    missing = sorted(set(IMAGE_REMOVALS) - _IMAGE_REMOVALS_SEEN)
+    if missing:
+        raise SystemExit(
+            f'image-removal manifest: {len(missing)} unit id(s) never '
+            f'appeared in this run: {", ".join(missing)}. Unit ids shift '
+            f'when a source doc or a split constant changes; re-point or '
+            f'delete each stale entry (a culled photo silently coming back '
+            f'is the failure this guard exists to prevent).')
+
+
 def emit(doc, chapters, part_of=None):
     """chapters: list of (title, units, subtitle?) where units = (title, body).
 
@@ -600,6 +708,10 @@ def emit(doc, chapters, part_of=None):
             # extractor's photos for this unit are dropped) — used to swap out
             # an inaccurate/off-brand extracted photo with an accurate one.
             unit_id = f"{doc['id']}_c{ci}_u{ui}"
+            # Extracted photos curation deliberately dropped come out
+            # BEFORE the manifest injection below, so the drop is recorded
+            # independently of whatever replacement is wired today.
+            u_images = drop_extracted_images(unit_id, u_images)
             if unit_id in DIAGRAM_IMAGES:
                 manifest_images = [
                     (e['assetPath'], e.get('caption'), e['afterParagraph'])
@@ -609,6 +721,7 @@ def emit(doc, chapters, part_of=None):
                     u_images = manifest_images
                 else:
                     u_images = list(u_images) + manifest_images
+            check_image_removals_kept_a_picture(unit_id, u_images)
             # Authored continuation-card titles ride the same unit id as the
             # diagram manifest above; guards live in card_title_for.
             u_title = card_title_for(unit_id, u_title, run_idx)
@@ -861,7 +974,61 @@ def split_chapters(chapters):
     return out
 
 
-os.makedirs(OUT, exist_ok=True)
+def rendered_bytes(out_path, text):
+    """`text` encoded with the line endings the checkout already uses.
+
+    The generated files are stored in git with LF, but a Windows clone
+    with core.autocrlf=true materializes them as CRLF. Writing LF
+    unconditionally therefore left all 24 generated files reported
+    modified by `git status` on every run, even the ones whose content
+    had not changed by a single character, which buried real drift in
+    noise. Match whatever the checkout produced instead: CRLF if the file
+    on disk already uses it, LF for a brand new file (and on any platform
+    that checks out LF).
+    """
+    data = text.encode('utf-8')
+    if os.path.exists(out_path):
+        with open(out_path, 'rb') as f:
+            existing = f.read()
+        if b'\r\n' in existing:
+            data = data.replace(b'\n', b'\r\n')
+    return data
+
+
+def write_generated(out_path, text):
+    """Write one generated file. Returns True when the bytes changed.
+
+    An unchanged file is not rewritten at all, so its mtime stays put and
+    nothing downstream (git, build caches) sees a phantom edit.
+    """
+    data = rendered_bytes(out_path, text)
+    if os.path.exists(out_path):
+        with open(out_path, 'rb') as f:
+            if f.read() == data:
+                return False
+    with open(out_path, 'wb') as f:
+        f.write(data)
+    return True
+
+
+def check_generated(out_path, text):
+    """Would a real run change this file? Reports without touching it."""
+    if not os.path.exists(out_path):
+        return True
+    with open(out_path, 'rb') as f:
+        return f.read() != rendered_bytes(out_path, text)
+
+
+_ARGS = sys.argv[1:]
+CHECK_ONLY = '--check' in _ARGS
+_UNKNOWN = [a for a in _ARGS if a != '--check']
+if _UNKNOWN:
+    raise SystemExit(f'unknown argument(s): {", ".join(_UNKNOWN)}. '
+                     f'Usage: barrio_training_content_generator.py [--check]')
+
+if not CHECK_ONLY:
+    os.makedirs(OUT, exist_ok=True)
+drifted = []
 for doc in DOCS:
     text = load_md(doc['md'])
     if doc['kind'] == 'prose':
@@ -874,12 +1041,35 @@ for doc in DOCS:
     chapters = split_chapters(chapters)
     part_of = parts_for(doc['id'], chapters)
     out_path = os.path.join(OUT, doc.get('out', doc['id'] + '_content.dart'))
-    with open(out_path, 'w', encoding='utf-8', newline='\n') as f:
-        f.write(emit(doc, chapters, part_of))
+    emitted = emit(doc, chapters, part_of)
+    if CHECK_ONLY:
+        changed = check_generated(out_path, emitted)
+        if changed:
+            drifted.append(out_path)
+    else:
+        changed = write_generated(out_path, emitted)
     n_units = sum(len(c[1]) for c in chapters)
-    print(f'{doc["id"]}: {len(chapters)} chapters, {n_units} units -> {out_path}')
+    if not CHECK_ONLY:
+        print(f'{doc["id"]}: {len(chapters)} chapters, {n_units} units '
+              f'-> {out_path}{"" if changed else " (unchanged)"}')
 
 check_card_title_manifest()
-if CARD_TITLES:
+check_image_removal_manifest()
+if CHECK_ONLY:
+    if drifted:
+        raise SystemExit(
+            'barrio content drift: a generator run would change '
+            f'{len(drifted)} committed file(s):\n  '
+            + '\n  '.join(drifted)
+            + '\n\nThe content files under lib/internal/barrio/content/training/'
+              ' are generated output. Either the source markdown or a manifest '
+              'changed and the files were not regenerated, or a generated file '
+              'was hand-edited (curation belongs in '
+              'tool/barrio_training_diagrams_manifest.json or '
+              'tool/barrio_training_image_removals.json, never in the .dart). '
+              'Run: python tool/barrio_training_content_generator.py')
+    print(f'barrio content check: all {len(DOCS)} generated file(s) match a '
+          f'fresh generator run.')
+elif CARD_TITLES:
     print(f'card titles: {len(CARD_TITLES)} continuation card(s) retitled '
           f'from the manifest')

@@ -1,0 +1,266 @@
+{
+  "training_latin_dishes_c0_u0": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/01.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c0_u2": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/03.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c0_u3": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/04.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c0_u4": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/05.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c0_u5": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/06.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c0_u6": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/07.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c1_u3": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/16.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c1_u4": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/17.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c1_u6": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/19.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c1_u7": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/20.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c1_u9": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/22.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c1_u10": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/23.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c1_u12": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/24.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c2_u2": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/27.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c2_u3": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/28.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c2_u4": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/29.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c2_u5": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/30.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c2_u7": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/32.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c2_u11": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/36.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c3_u0": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/37.webp"
+    ],
+    "reason": "Extractor photo was inaccurate for this term; the accurate curated photograph replaced it (PIC-1 fix, PR #1514)."
+  },
+  "training_latin_dishes_c3_u1": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/38.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c3_u2": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/39.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c3_u3": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/40.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c3_u4": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/41.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c3_u5": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/42.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c3_u7": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/44.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c3_u8": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/45.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c3_u9": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/46.webp"
+    ],
+    "reason": "Extractor photo was inaccurate for this term; the accurate curated photograph replaced it (PIC-1 fix, PR #1514)."
+  },
+  "training_latin_dishes_c4_u1": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/50.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c4_u2": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/51.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c4_u3": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/52.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_dishes_c4_u7": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_dishes/56.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_ingredients_c1_u5": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_ingredients/18.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_ingredients_c1_u7": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_ingredients/20.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_ingredients_c1_u8": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_ingredients/21.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_ingredients_c2_u0": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_ingredients/25.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_ingredients_c3_u0": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_ingredients/36.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_ingredients_c3_u2": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_ingredients/38.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_ingredients_c3_u3": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_ingredients/39.webp"
+    ],
+    "reason": "Extractor photo was inaccurate for this term; the accurate curated photograph replaced it (PIC-1 fix, PR #1514)."
+  },
+  "training_latin_ingredients_c3_u4": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_ingredients/40.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_ingredients_c3_u10": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_ingredients/46.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_ingredients_c3_u11": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_ingredients/47.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_ingredients_c4_u4": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_ingredients/52.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_latin_ingredients_c4_u5": {
+    "drop": [
+      "assets/internal/barrio/training/latin_american_ingredients/53.webp"
+    ],
+    "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  }
+}
