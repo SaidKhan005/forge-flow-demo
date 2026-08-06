@@ -4152,6 +4152,14 @@
       "caption": "Ancient vines at Sauzal in Maule, still on their own roots. Chile never had phylloxera, so vines like these were never pulled up. Photo: Alder Yarrow, CC BY-SA 4.0"
     }
   ],
+  "training_wine_c15_u0": [
+    {
+      "afterParagraph": -1,
+      "assetPath": "assets/internal/barrio/training/training_wine_diagrams/training_wine_c15_u0.webp",
+      "caption": "Diagram: Chile's Central Valley. Maipo, Cachapoal, Colchagua, Curico and Maule all run east to west, from the Andes down to the Pacific. This map covers the Central Valley only, not all of Chile. Map: Nicols Arce, CC BY-SA 4.0",
+      "replace": true
+    }
+  ],
   "training_wine_c16_u1": [
     {
       "afterParagraph": -1,

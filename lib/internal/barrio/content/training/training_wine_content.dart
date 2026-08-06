@@ -2222,8 +2222,9 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'appellation system must account for.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/wine_training/12.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/training_wine_diagrams/training_wine_c15_u0.webp',
+              caption: 'Diagram: Chile\'s Central Valley. Maipo, Cachapoal, Colchagua, Curico and Maule all run east to west, from the Andes down to the Pacific. This map covers the Central Valley only, not all of Chile. Map: Nicols Arce, CC BY-SA 4.0',
+              afterParagraph: -1,
             ),
           ],
         ),
