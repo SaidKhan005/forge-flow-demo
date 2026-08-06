@@ -11,7 +11,7 @@
 //     text (best-effort textual check, heuristic documented below);
 //   * `correctIndex` is in range, options are 3 to 4 and unique, and
 //     `whyLine`/`prompt` are non-empty;
-//   * every chapter of all three manuals has at least one question
+//   * every chapter of every covered manual has at least one question
 //     (target 2 to 3 per chapter);
 //   * no operator-facing string contains an em dash (UX no-em-dash law).
 //
@@ -35,14 +35,17 @@ import 'package:forge_and_flow/internal/barrio/content/training/barrio_training_
 import 'package:forge_and_flow/internal/barrio/content/training/training_coffee_content.dart';
 import 'package:forge_and_flow/internal/barrio/content/training/training_food_safety_content.dart';
 import 'package:forge_and_flow/internal/barrio/content/training/training_latin_dishes_content.dart';
+import 'package:forge_and_flow/internal/barrio/content/training/training_wine_content.dart';
 
 const int _emDash = 0x2014;
 
-/// The three manuals the quiz slice covers, keyed by their doc id.
+/// The manuals the quiz bank covers, keyed by their doc id. Wine joined the
+/// original three on 2026-08-06 at the same per-chapter density.
 const Map<String, BarrioTrainingDoc> _docsUnderTest = <String, BarrioTrainingDoc>{
   'training_food_safety': kTrainingFoodSafety,
   'training_coffee': kTrainingCoffee,
   'training_latin_dishes': kTrainingLatinDishes,
+  'training_wine': kTrainingWine,
 };
 
 /// Common English function words dropped before textual containment.
@@ -94,10 +97,15 @@ void main() {
     chapterIds[entry.key] = chapters;
   }
 
-  test('registry covers exactly the three approved manuals', () {
+  test('registry covers exactly the approved manuals', () {
     expect(
       kBarrioQuizBanks.keys.toSet(),
-      <String>{'training_food_safety', 'training_coffee', 'training_latin_dishes'},
+      <String>{
+        'training_food_safety',
+        'training_coffee',
+        'training_latin_dishes',
+        'training_wine',
+      },
     );
     for (final docId in kBarrioQuizBanks.keys) {
       expect(_docsUnderTest.containsKey(docId), isTrue,
@@ -174,7 +182,8 @@ void main() {
     }
   });
 
-  test('every chapter of all three manuals has at least one question', () {
+  test('every chapter of every covered manual has at least one question',
+      () {
     for (final bank in kBarrioQuizBanks.values) {
       final covered = bank.questionsByChapter.keys.toSet();
       for (final chapterId in chapterIds[bank.docId]!) {

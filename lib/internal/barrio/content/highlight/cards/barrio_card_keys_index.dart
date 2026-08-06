@@ -91,6 +91,7 @@ import 'barrio_card_keys_training_strong_foundation.dart';
 import 'barrio_card_keys_training_suggestive_selling.dart';
 import 'barrio_card_keys_training_table_manicuring.dart';
 import 'barrio_card_keys_training_three_pillars.dart';
+import 'barrio_card_keys_training_wine.dart';
 
 /// Per-CARD curated key phrases, keyed by [HandbookUnit.id].
 ///
@@ -104,6 +105,13 @@ import 'barrio_card_keys_training_three_pillars.dart';
 /// whole-word, non-overlapping, inside a single paragraph. A phrase that
 /// failed any of those would not have highlighted at all, silently, which is
 /// why the check runs before the data ships rather than after.
+///
+/// EXTENDED 2026-08-06: the Wine Training manual, authored to the same
+/// contract against the same pre-ship check. Wine is the first doc to carry
+/// per-card phrases WITHOUT a per-manual list behind it, which makes the
+/// partial-coverage rule visible: a wine card with an entry highlights its
+/// own phrases, and a wine card without one highlights nothing at all,
+/// exactly as it did before this data landed.
 ///
 /// Cards outside these manuals, and the handful of very short cards that were
 /// skipped, still fall through to the per-manual list below, so coverage can
@@ -126,6 +134,7 @@ const Map<String, List<String>> kBarrioCardKeysByUnit = <String, List<String>>{
   ...kBarrioCardKeysTrainingSuggestiveSelling,
   ...kBarrioCardKeysTrainingTableManicuring,
   ...kBarrioCardKeysTrainingThreePillars,
+  ...kBarrioCardKeysTrainingWine,
 };
 
 /// The key phrases to emphasize inside [unitId]'s body.
