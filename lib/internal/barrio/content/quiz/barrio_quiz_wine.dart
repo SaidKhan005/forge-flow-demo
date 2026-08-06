@@ -684,5 +684,112 @@ const BarrioQuizBank kBarrioQuizWine = BarrioQuizBank(
       answerEvidence: 'warm, well-drained gravelly soils ideal for late-ripening '
           'cabernet sauvignon',
     ),
+    // ---- c15: Chilean Wine Regions ------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c15_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c15',
+      prompt: 'Chilean wine regions have historically been named after what?',
+      options: <String>[
+        'The rivers that flow from the Andes to the sea',
+        'The family that founded each winery',
+        'The grape planted most widely there',
+        'The year the first vines went in',
+      ],
+      correctIndex: 0,
+      whyLine: 'Chile\'s regions take their names from the rivers running '
+          'perpendicular to the coast, Andes to sea.',
+      sourceUnitId: 'training_wine_c15_u0',
+      answerEvidence: 'named after the rivers flowing perpendicular to the coast',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c15_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c15',
+      prompt: 'Which valley was Chile\'s first cool-climate vineyard area?',
+      options: <String>[
+        'Casablanca Valley',
+        'Colchagua',
+        'Upper Maipo',
+        'Curico',
+      ],
+      correctIndex: 0,
+      whyLine: 'Casablanca Valley was Chile\'s first cool-climate vineyard area, '
+          'a bowl-shaped valley near the coast.',
+      sourceUnitId: 'training_wine_c15_u10',
+      answerEvidence: 'Chile\'s first cool-climate vineyard area',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c15_q2',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c15',
+      prompt: 'Leyda established itself as a premier Chilean region for which '
+          'two grapes?',
+      options: <String>[
+        'Sauvignon Blanc and Pinot Noir',
+        'Cabernet Sauvignon and Carmenere',
+        'Malbec and Tannat',
+        'Glera and Macabeo',
+      ],
+      correctIndex: 0,
+      whyLine: 'Cooled by the Pacific, Leyda became a premier region for '
+          'Sauvignon Blanc and Pinot Noir.',
+      sourceUnitId: 'training_wine_c15_u11',
+      answerEvidence: 'a premier region for Sauvignon Blanc and Pinot Noir',
+    ),
+    // ---- c16: Chilean Wine Varietals ----------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c16_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c16',
+      prompt: 'How would you describe a Chilean Cabernet Sauvignon to a guest?',
+      options: <String>[
+        'Black currant, fresh berries, violets, and chocolate',
+        'Green apple, lime, and wet stone',
+        'Rose petal, lychee, and orange peel',
+        'Toasted bread, almond, and cream',
+      ],
+      correctIndex: 0,
+      whyLine: 'Chilean Cabernet Sauvignon is full-bodied and intense, with '
+          'black currant, fresh berries, violets, and chocolate.',
+      sourceUnitId: 'training_wine_c16_u0',
+      answerEvidence: 'notes of black currant, fresh berries, violets, and '
+          'chocolate',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c16_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c16',
+      prompt: 'Which grape was Carmenere long mistaken for in Chile?',
+      options: <String>[
+        'Merlot',
+        'Syrah',
+        'Pinot Noir',
+        'Tempranillo',
+      ],
+      correctIndex: 0,
+      whyLine: 'Carmenere was long mistaken for Merlot until DNA testing proved '
+          'Chilean Merlot was actually Carmenere.',
+      sourceUnitId: 'training_wine_c16_u1',
+      answerEvidence: 'it was long mistaken for Merlot',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c16_q2',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c16',
+      prompt: 'A guest orders ceviche. Which Chilean white is the standout '
+          'match?',
+      options: <String>[
+        'Sauvignon Blanc from Casablanca or San Antonio',
+        'An oaked Chardonnay from Casablanca',
+        'A sweet Riesling from Maule',
+        'A Carmenere from Colchagua',
+      ],
+      correctIndex: 0,
+      whyLine: 'Chilean Sauvignon Blanc\'s high acidity and green jalapeno hint '
+          'complement citrus-marinated seafood.',
+      sourceUnitId: 'training_wine_c16_u3',
+      answerEvidence: 'an exceptional pairing for ceviche',
+    ),
   ],
 );
