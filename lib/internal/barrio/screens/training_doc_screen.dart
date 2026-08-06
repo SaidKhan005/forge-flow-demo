@@ -26,6 +26,7 @@ import '../widgets/barrio_term_definition_sheet.dart';
 import '../widgets/handbook_chapter_rail.dart';
 import '../widgets/handbook_lesson_card.dart';
 import '../widgets/learning_carousel.dart';
+import '../widgets/training_doc_highlights_sheet.dart';
 import '../widgets/training_doc_index_sheet.dart';
 import '../widgets/training_doc_search_sheet.dart';
 import 'barrio_flashcard_review_screen.dart';
@@ -139,9 +140,22 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   final BarrioHighlightAnchorRegistry _anchors =
       BarrioHighlightAnchorRegistry();
 
-  /// The reader's marked passages in THIS manual, grouped by the card
-  /// they live in. Loaded with the rest of the persisted state; a new
-  /// mark lands here and in storage at the same time.
+  /// Every marked passage in THIS manual, oldest first: the one source
+  /// of truth for both the painted cards and the review sheet. Loaded
+  /// with the rest of the persisted state; a new mark lands here and in
+  /// storage at the same time.
+  ///
+  /// A [ValueNotifier] because the review sheet (Slice D) is a route of
+  /// its own and the manage sheet opens ON TOP of it. A `setState` here
+  /// rebuilds this screen, not a sheet above it, so the list would keep
+  /// showing a mark the reader had just recoloured or removed.
+  final ValueNotifier<List<BarrioHighlight>> _highlights =
+      ValueNotifier<List<BarrioHighlight>>(const <BarrioHighlight>[]);
+
+  /// [_highlights] indexed by the card each mark lives in, so building a
+  /// deck card is one map lookup instead of a walk over every mark.
+  /// Derived, never assigned on its own: [_applyHighlights] is the only
+  /// writer and it keeps the two in step.
   Map<String, List<BarrioHighlight>> _highlightsByUnit =
       const <String, List<BarrioHighlight>>{};
 
@@ -316,7 +330,7 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     setState(() {
       _bookmarkKeys.addAll(savedKeys);
       _markerColor = markerColor;
-      _highlightsByUnit = _groupByUnit(highlights);
+      _applyHighlights(highlights);
       if (restore) {
         _applyPosition(position.chapterIndex, position.unitInChapter);
       }
@@ -522,8 +536,27 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     return grouped;
   }
 
+  /// Publishes [next] as the reader's marks and rebuilds the per-card
+  /// index from it, so the two can never disagree. Call from inside a
+  /// `setState`, or through [_setHighlights].
+  void _applyHighlights(List<BarrioHighlight> next) {
+    final marks = List<BarrioHighlight>.unmodifiable(next);
+    _highlights.value = marks;
+    _highlightsByUnit = _groupByUnit(marks);
+  }
+
+  /// Publishes a changed mark list, so the deck repaints on the next
+  /// frame and any open review sheet re-reads it. The lesson card's span
+  /// memo keys on the resolved plan, so a new mark, a recolour, a note,
+  /// a removal and a restore each land immediately instead of waiting
+  /// for a cache eviction.
+  void _setHighlights(List<BarrioHighlight> next) {
+    setState(() => _applyHighlights(next));
+  }
+
   /// Marks the reader's current selection (Kindle-style highlights,
-  /// Slice B), in the marker colour they used last.
+  /// Slice B), in [color] or, by default, the marker colour they used
+  /// last. Returns the new mark's id, or null when nothing was marked.
   ///
   /// The selection can span several paragraphs, bullets, or table cells,
   /// so the anchor registry reports one segment per rendered chunk it
@@ -533,7 +566,14 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   /// the device store after; a store that cannot write leaves the mark
   /// on screen for this session and says nothing, exactly like every
   /// other reading fact this screen keeps.
-  Future<void> _highlightSelection(SelectableRegionState region) async {
+  ///
+  /// Picking a marker from the selection toolbar (Slice D) also MOVES
+  /// the reader's marker: reaching for a pen is choosing it, and the
+  /// next passage they mark gets the same one.
+  Future<String?> _highlightSelection(
+    SelectableRegionState region, {
+    String? color,
+  }) async {
     final unitId = _anchors.selectedUnitId();
     final unit = unitId == null ? null : _unitsById[unitId];
     final segments = unit == null
@@ -542,63 +582,49 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     region.hideToolbar();
     _selectionKey.currentState?.selectableRegion.clearSelection();
     _selectedText = null;
-    if (unit == null || segments.isEmpty) return;
+    if (unit == null || segments.isEmpty) return null;
 
+    final marker = color != null && isBarrioHighlightColor(color)
+        ? color
+        : _markerColor;
     final highlight = BarrioHighlight.create(
       unitId: unit.id,
       segments: segments,
-      color: _markerColor,
+      color: marker,
     );
     HapticFeedback.lightImpact();
-    setState(() {
-      _highlightsByUnit = <String, List<BarrioHighlight>>{
-        ..._highlightsByUnit,
-        unit.id: <BarrioHighlight>[
-          ...?_highlightsByUnit[unit.id],
-          highlight,
-        ],
-      };
-    });
+    _markerColor = marker;
+    _setHighlights(<BarrioHighlight>[..._highlights.value, highlight]);
     await BarrioHighlightsService.add(widget.doc.id, highlight);
     await BarrioHighlightsService.setLastColor(highlight.color);
+    return highlight.id;
+  }
+
+  /// Marks the selection and opens the note editor on it in one go
+  /// (Slice D): the reader who reached for "Add note" wanted to write,
+  /// not to mark and then go looking for the mark again.
+  Future<void> _highlightSelectionAndNote(SelectableRegionState region) async {
+    final id = await _highlightSelection(region);
+    if (id == null || !mounted) return;
+    await _openNoteSheet(id);
   }
 
   /// The mark carrying [highlightId], or null when it is no longer on
   /// this screen (removed in another sheet, or from a manual the reader
   /// has since left).
   BarrioHighlight? _highlightById(String highlightId) {
-    for (final marks in _highlightsByUnit.values) {
-      for (final mark in marks) {
-        if (mark.id == highlightId) return mark;
-      }
+    for (final mark in _highlights.value) {
+      if (mark.id == highlightId) return mark;
     }
     return null;
-  }
-
-  /// Publishes a changed set of marks for one card, so the deck repaints
-  /// on the next frame. The lesson card's span memo keys on the resolved
-  /// plan, so a recolour, a note, a removal and a restore each land
-  /// immediately instead of waiting for a cache eviction.
-  void _publishMarks(String unitId, List<BarrioHighlight> marks) {
-    setState(() {
-      final next = <String, List<BarrioHighlight>>{..._highlightsByUnit};
-      if (marks.isEmpty) {
-        next.remove(unitId);
-      } else {
-        next[unitId] = marks;
-      }
-      _highlightsByUnit = next;
-    });
   }
 
   /// Swaps one mark for an edited copy of itself, in place, so stored
   /// order (oldest first) is preserved: it decides which of two marks
   /// covering the same words paints on top.
   void _replaceMark(BarrioHighlight updated) {
-    final marks = _highlightsByUnit[updated.unitId];
-    if (marks == null) return;
-    _publishMarks(updated.unitId, <BarrioHighlight>[
-      for (final mark in marks)
+    _setHighlights(<BarrioHighlight>[
+      for (final mark in _highlights.value)
         if (mark.id == updated.id) updated else mark,
     ]);
   }
@@ -610,7 +636,16 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   /// one paints and persists as it is tapped) and closes itself before
   /// handing off to the note editor or to removal, so those two never
   /// run behind a sheet the reader can no longer see past.
-  Future<void> _openHighlightActions(String highlightId) async {
+  ///
+  /// [beforeRemove] runs after this sheet closes and before the mark is
+  /// removed. The review sheet passes its own dismiss there: removal's
+  /// only way back is the Undo in a SnackBar, and a SnackBar sits UNDER
+  /// a modal sheet, so an Undo offered with the list still open could
+  /// not be taken.
+  Future<void> _openHighlightActions(
+    String highlightId, {
+    VoidCallback? beforeRemove,
+  }) async {
     final highlight = _highlightById(highlightId);
     if (highlight == null) return;
     HapticFeedback.lightImpact();
@@ -628,6 +663,7 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
         },
         onRemove: () {
           Navigator.of(sheetContext).pop();
+          beforeRemove?.call();
           _removeHighlight(highlight);
         },
       ),
@@ -677,12 +713,12 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   /// No confirm dialog: removal is one tap and the SnackBar's Undo puts
   /// the very same record back, id, colour, note, words and all.
   Future<void> _removeHighlight(BarrioHighlight highlight) async {
-    final marks = _highlightsByUnit[highlight.unitId];
-    if (marks == null) return;
-    _publishMarks(highlight.unitId, <BarrioHighlight>[
-      for (final mark in marks)
+    final next = <BarrioHighlight>[
+      for (final mark in _highlights.value)
         if (mark.id != highlight.id) mark,
-    ]);
+    ];
+    if (next.length == _highlights.value.length) return;
+    _setHighlights(next);
     await BarrioHighlightsService.remove(widget.doc.id, highlight.id);
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -706,20 +742,25 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   /// about the mark itself, including its note, comes back untouched.
   Future<void> _restoreHighlight(BarrioHighlight highlight) async {
     if (!mounted) return;
-    _publishMarks(highlight.unitId, <BarrioHighlight>[
-      ...?_highlightsByUnit[highlight.unitId],
-      highlight,
-    ]);
+    _setHighlights(<BarrioHighlight>[..._highlights.value, highlight]);
     await BarrioHighlightsService.add(widget.doc.id, highlight);
   }
 
   /// Builds the reading text selection menu (select-any-word action,
-  /// 2026-07-29 operator curation: no Copy/Select all). "Highlight"
-  /// marks the selection in the reader's last marker colour, "Ask chat"
-  /// opens ChatGPT and "Search the web" opens Google, the latter two
-  /// seeded with the highlighted words in the in-app browser through the
-  /// same launch paths the surface uses elsewhere. Each action dismisses
-  /// the menu first; an empty or whitespace-only selection does nothing.
+  /// 2026-07-29 operator curation: no Copy/Select all).
+  ///
+  /// The marker toolbar (Slice D, 2026-08-06) is two rows:
+  ///   * the pens: one dot per marker colour, tap one to mark the
+  ///     selection in it, plus "Add note" which marks and opens the
+  ///     note editor in one move,
+  ///   * the actions: "Highlight" marks in the pen the reader last used
+  ///     (the ringed dot), "Ask chat" opens ChatGPT and "Search the web"
+  ///     opens Google, the latter two seeded with the selected words in
+  ///     the in-app browser through the same launch paths the surface
+  ///     uses elsewhere.
+  ///
+  /// Each action dismisses the menu first; an empty or whitespace-only
+  /// selection does nothing.
   Widget _buildSelectionContextMenu(
     BuildContext context,
     SelectableRegionState selectableRegionState,
@@ -735,36 +776,22 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     // Branded selection menu (2026-07-31 operator request): the default
     // AdaptiveTextSelectionToolbar renders a generic light-cream system
     // popup that reads as off-brand next to the premium reader. This is
-    // the same two actions on the Barrio glass surface, with the manual
-    // accent glyphs and IBM Plex labels, floated at the selection anchor
-    // (TextSelectionToolbar owns the above/below overflow placement; the
-    // toolbarBuilder swaps the container for our own).
-    return TextSelectionToolbar(
+    // the reader's own actions on the Barrio glass surface, with the
+    // manual accent glyphs and IBM Plex labels, floated at the selection
+    // anchor.
+    return _BarrioMarkerToolbar(
       anchorAbove: anchors.primaryAnchor,
       anchorBelow: anchors.secondaryAnchor ?? anchors.primaryAnchor,
-      toolbarBuilder: (context, child) => _BarrioSelectionSurface(child: child),
-      children: <Widget>[
-        // Highlight leads: marking what you just read is the reading
-        // action, and the other two send the reader out of the manual.
-        _BarrioSelectionAction(
-          icon: Icons.border_color_rounded,
-          label: 'Highlight',
-          accent: widget.accent,
-          onPressed: () => _highlightSelection(selectableRegionState),
-        ),
-        _BarrioSelectionAction(
-          icon: Icons.chat_bubble_outline_rounded,
-          label: 'Ask chat',
-          accent: widget.accent,
-          onPressed: () => run(_launchAskChat),
-        ),
-        _BarrioSelectionAction(
-          icon: Icons.travel_explore_rounded,
-          label: 'Search the web',
-          accent: widget.accent,
-          onPressed: () => run(_launchWebSearch),
-        ),
-      ],
+      accent: widget.accent,
+      markerColor: _markerColor,
+      onMarkerPicked: (token) => _highlightSelection(
+        selectableRegionState,
+        color: token,
+      ),
+      onNote: () => _highlightSelectionAndNote(selectableRegionState),
+      onHighlight: () => _highlightSelection(selectableRegionState),
+      onAskChat: () => run(_launchAskChat),
+      onWebSearch: () => run(_launchWebSearch),
     );
   }
 
@@ -847,6 +874,43 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     );
   }
 
+  /// Opens the "Your highlights" review sheet for this manual (Slice D).
+  ///
+  /// A tapped row closes the sheet and jumps the deck to that card. The
+  /// sheet emits pages in the pre-quiz content flatten, exactly like the
+  /// A-Z index, so the conversion below is what keeps a jump landing on
+  /// the same card once a manual grows quick-check quiz cards (the
+  /// #1483 deck contract).
+  ///
+  /// The manage sheet opens ON TOP of this one, so the list stays where
+  /// the reader left it. Removal is the one exception: it closes the
+  /// list, because its Undo lives in a SnackBar and a SnackBar sits
+  /// under a modal sheet.
+  void _openHighlightsSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => TrainingDocHighlightsSheet(
+        doc: widget.doc,
+        accent: widget.accent,
+        highlights: _highlights,
+        onEntryTap: (contentPage) {
+          Navigator.of(sheetContext).pop();
+          _jumpToCard(_deck.deckPageForContentPage(contentPage));
+        },
+        onManageTap: (highlightId) => _openHighlightActions(
+          highlightId,
+          beforeRemove: () {
+            if (Navigator.of(sheetContext).canPop()) {
+              Navigator.of(sheetContext).pop();
+            }
+          },
+        ),
+      ),
+    );
+  }
+
   /// Pushes the flashcard review screen scoped to THIS manual only
   /// (visual-first pass, rec #6: the glossaries' picture-first review
   /// surface gets an entry inside the manual itself, not just the home
@@ -888,6 +952,7 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     _heroController.dispose();
     _activeChapter.dispose();
     _readUnitIds.dispose();
+    _highlights.dispose();
     // Every chunk's selection notifier. Flutter unmounts children before
     // their ancestors, so each card's SelectionListener has already
     // detached by the time this runs.
@@ -1063,15 +1128,18 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
         context: context,
         title: widget.doc.title,
         accentColor: accent,
-        // Chrome diet holds: two quiet icons in the existing bar, no
-        // new persistent chrome. The A-Z index shows only on the three
-        // TERM glossaries.
+        // Chrome diet holds: quiet icons in the existing bar, no new
+        // persistent chrome. The A-Z index shows only on the three TERM
+        // glossaries, and "Your highlights" only once this manual holds
+        // a mark, so nobody is offered a door to an empty room.
         trailing: _HeaderActions(
           onSearchTap: _openSearchSheet,
           onWebSearchTap: _openWebSearch,
           onIndexTap: _kTermManualIds.contains(widget.doc.id)
               ? _openIndexSheet
               : null,
+          onHighlightsTap:
+              _highlights.value.isEmpty ? null : _openHighlightsSheet,
         ),
       ),
       body: _TrainingDocBackground(
@@ -1098,17 +1166,20 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
 }
 
 /// The header's quiet navigation icons: search-this-manual and
-/// search-the-web on every manual, plus the A-Z term index only when
-/// [onIndexTap] is provided (TERM manuals).
+/// search-the-web on every manual, the A-Z term index only when
+/// [onIndexTap] is provided (TERM manuals), and "Your highlights" only
+/// when [onHighlightsTap] is provided (this manual holds a mark).
 class _HeaderActions extends StatelessWidget {
   final VoidCallback onSearchTap;
   final VoidCallback onWebSearchTap;
   final VoidCallback? onIndexTap;
+  final VoidCallback? onHighlightsTap;
 
   const _HeaderActions({
     required this.onSearchTap,
     required this.onWebSearchTap,
     this.onIndexTap,
+    this.onHighlightsTap,
   });
 
   @override
@@ -1117,8 +1188,31 @@ class _HeaderActions extends StatelessWidget {
     // the icons step up from 22 to 28 so the two search glyphs read more
     // clearly, while explicit 48x48 constraints keep a comfortable tap
     // target. The A-Z index (TERM manuals only) grows with them so all
-    // three stay a matched set. Three 48px buttons still fit the bar with
-    // room for the title at phone width, so nothing crowds or overflows.
+    // three stay a matched set.
+    //
+    // THE FOURTH ICON IS RATIONED, and the reason is measured, not
+    // aesthetic. On a 360dp phone (the narrowest the reader supports)
+    // the bar leaves the manual title 160px at two icons, 112px at
+    // three, 64px at four and 16px at five. Every one of those numbers
+    // is measured in `test/barrio_highlights_sheet_test.dart`, so the
+    // budget stops being a matter of opinion.
+    //
+    // "Your highlights" therefore appears only once the reader has
+    // actually marked something in this manual. That is also the honest
+    // rule on its own terms (an entry point to an empty list is a door
+    // to an empty room), and it means every manual on a first read keeps
+    // today's header exactly, and the non-TERM majority never go past
+    // three icons at all. The 64px case is narrow: a TERM glossary the
+    // reader has marked. Those titles already truncate at 112px, so the
+    // fourth icon costs characters off a line that was already cut, not
+    // a readable title turned unreadable.
+    //
+    // A FIFTH ICON DOES NOT FIT, and no tap-target trim buys one: 44px
+    // buttons would free 16px and cost the Material floor. The way to
+    // make room is to move the A-Z index off the bar and onto the hero
+    // eyebrow row, beside the flashcards chip. That is a change to a
+    // shipped affordance's home, so it is the operator's call, not a
+    // side effect of the next slice that wants a glyph.
     const double kIconSize = 28;
     const BoxConstraints kTapTarget =
         BoxConstraints(minWidth: 48, minHeight: 48);
@@ -1157,6 +1251,20 @@ class _HeaderActions extends StatelessWidget {
             constraints: kTapTarget,
             icon: const Icon(
               Icons.sort_by_alpha_rounded,
+              color: BarrioColors.textSecondary,
+            ),
+          ),
+        // Your highlights (Slice D): the same marker glyph the selection
+        // toolbar's Highlight action wears, so the icon reads as "the
+        // things I marked" without a label.
+        if (onHighlightsTap != null)
+          IconButton(
+            tooltip: 'Your highlights',
+            onPressed: onHighlightsTap,
+            iconSize: kIconSize,
+            constraints: kTapTarget,
+            icon: const Icon(
+              Icons.border_color_rounded,
               color: BarrioColors.textSecondary,
             ),
           ),
@@ -1735,12 +1843,241 @@ class _PartLabel extends StatelessWidget {
   }
 }
 
+/// The marker toolbar's height at the default text scale: the pens row
+/// (44 plus 4px of breathing room above and below), the 2px between the
+/// rows, and the actions row (44).
+///
+/// It decides ONE thing: whether the toolbar is drawn above the
+/// selection or below it, the same job `_kToolbarHeight` does inside
+/// Flutter's own [TextSelectionToolbar]. A toolbar that wrapped onto an
+/// extra line at a very large text scale is taller than this and simply
+/// gets the same above/below choice; it is never clipped, because the
+/// rows wrap rather than overflow.
+const double _kBarrioMarkerToolbarHeight = 98.0;
+
+/// The reader's own text-selection toolbar (Kindle-style highlights,
+/// Slice D, 2026-08-06).
+///
+/// WHY THIS IS NOT [TextSelectionToolbar]. That widget lays its children
+/// out as ONE row and pushes whatever does not fit behind an overflow
+/// chevron, silently. Slice B already paid for that once: going from two
+/// actions to three dropped "Search the web" off a 390dp phone, and the
+/// fix was to tighten the padding until three measured 323 of the 344 a
+/// 360dp phone gives. Four marker dots do not fit in the 21 that were
+/// left, so this slice owns the layout instead of squeezing:
+///
+///   * the PENS row: one dot per marker colour (tap one to mark the
+///     selection in it) plus "Add note", which marks and opens the note
+///     editor in one move,
+///   * the ACTIONS row: Slice B's three, unchanged and in the same
+///     order, so a reader who learned where they are still finds them.
+///
+/// Both rows are [Wrap]s, not [Row]s: at the default text scale each
+/// sits on one line, and at a very large text scale the items fall onto
+/// another line rather than overflowing or hiding. Nothing here is ever
+/// behind a chevron.
+///
+/// Placement copies [TextSelectionToolbar]'s own arithmetic (the same
+/// 8px screen padding, the same content distances, the same
+/// [TextSelectionToolbarLayoutDelegate]) so the toolbar floats exactly
+/// where the system one did.
+class _BarrioMarkerToolbar extends StatelessWidget {
+  /// Anchor used when the toolbar is drawn above the selection.
+  final Offset anchorAbove;
+
+  /// Anchor used when the toolbar is drawn below the selection.
+  final Offset anchorBelow;
+
+  /// The manual's accent, for the action glyphs.
+  final Color accent;
+
+  /// The marker the reader used last: its dot wears the ring and the
+  /// tick, and "Highlight" marks in it.
+  final String markerColor;
+
+  /// A marker dot was tapped: mark the selection in that colour.
+  final ValueChanged<String> onMarkerPicked;
+
+  /// Mark the selection and open the note editor on it.
+  final VoidCallback onNote;
+
+  /// Mark the selection in [markerColor].
+  final VoidCallback onHighlight;
+
+  final VoidCallback onAskChat;
+  final VoidCallback onWebSearch;
+
+  const _BarrioMarkerToolbar({
+    required this.anchorAbove,
+    required this.anchorBelow,
+    required this.accent,
+    required this.markerColor,
+    required this.onMarkerPicked,
+    required this.onNote,
+    required this.onHighlight,
+    required this.onAskChat,
+    required this.onWebSearch,
+  });
+
+  /// The gap Flutter's toolbar keeps between the selection and itself.
+  static const double _kContentDistance = 8.0;
+
+  /// The gap Flutter's toolbar keeps from the screen edges.
+  static const double _kScreenPadding = 8.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final anchorAbovePadded =
+        anchorAbove - const Offset(0.0, _kContentDistance);
+    final anchorBelowPadded = anchorBelow +
+        const Offset(0.0, TextSelectionToolbar.kToolbarContentDistanceBelow);
+    final paddingAbove = MediaQuery.paddingOf(context).top + _kScreenPadding;
+    final availableHeight =
+        anchorAbovePadded.dy - _kContentDistance - paddingAbove;
+    final fitsAbove = _kBarrioMarkerToolbarHeight <= availableHeight;
+    // Makes up for the Padding around the layout below.
+    final localAdjustment = Offset(_kScreenPadding, paddingAbove);
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        _kScreenPadding,
+        paddingAbove,
+        _kScreenPadding,
+        _kScreenPadding,
+      ),
+      child: CustomSingleChildLayout(
+        delegate: TextSelectionToolbarLayoutDelegate(
+          anchorAbove: anchorAbovePadded - localAdjustment,
+          anchorBelow: anchorBelowPadded - localAdjustment,
+          fitsAbove: fitsAbove,
+        ),
+        child: _BarrioSelectionSurface(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 4,
+                  children: <Widget>[
+                    for (final token in kBarrioHighlightColorTokens)
+                      _BarrioMarkerDot(
+                        token: token,
+                        chosen: token == markerColor,
+                        onTap: () => onMarkerPicked(token),
+                      ),
+                    _BarrioSelectionAction(
+                      icon: Icons.sticky_note_2_rounded,
+                      label: 'Add note',
+                      accent: accent,
+                      onPressed: onNote,
+                    ),
+                  ],
+                ),
+              ),
+              // A rule between the rows is deliberately absent. A
+              // divider with no child expands to the widest width it is
+              // offered, which would stretch this pill across the whole
+              // screen instead of letting it hug its own content, and
+              // the reader's chrome stays calm.
+              const SizedBox(height: 2),
+              Wrap(
+                alignment: WrapAlignment.center,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: <Widget>[
+                  // Slice B's three, in Slice B's order. The dots above
+                  // choose a pen; "Highlight" reaches for the one already
+                  // in the reader's hand.
+                  _BarrioSelectionAction(
+                    icon: Icons.border_color_rounded,
+                    label: 'Highlight',
+                    accent: accent,
+                    onPressed: onHighlight,
+                  ),
+                  _BarrioSelectionAction(
+                    icon: Icons.chat_bubble_outline_rounded,
+                    label: 'Ask chat',
+                    accent: accent,
+                    onPressed: onAskChat,
+                  ),
+                  _BarrioSelectionAction(
+                    icon: Icons.travel_explore_rounded,
+                    label: 'Search the web',
+                    accent: accent,
+                    onPressed: onWebSearch,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One marker pen in the toolbar: tap it to mark the selection in that
+/// colour and make it the reader's marker from then on.
+///
+/// The same wash-filled, ink-ringed swatch the manage sheet's picker
+/// uses, at the toolbar's 44px tap target. The tick is the non-colour
+/// second cue: which pen is in hand must not be readable by colour alone.
+class _BarrioMarkerDot extends StatelessWidget {
+  final String token;
+  final bool chosen;
+  final VoidCallback onTap;
+
+  const _BarrioMarkerDot({
+    required this.token,
+    required this.chosen,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = barrioHighlightNoteGlyphColor(token);
+    final name = barrioHighlightColorName(token).toLowerCase();
+    return Semantics(
+      button: true,
+      selected: chosen,
+      label: 'Highlight in $name',
+      child: GestureDetector(
+        key: ValueKey<String>('barrio_marker_dot_$token'),
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Center(
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: barrioHighlightWash(token),
+                border: Border.all(
+                  color: chosen ? ink : BarrioColors.hairline,
+                  width: chosen ? 2.5 : 1,
+                ),
+              ),
+              child:
+                  chosen ? Icon(Icons.check_rounded, size: 15, color: ink) : null,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// The branded container for the reading-text selection menu (2026-07-31).
 /// Replaces the system toolbar's generic light-cream card with the Barrio
 /// glass surface, rounded corners and the one soft neutral lift, so the
 /// popup reads as part of the premium reader (matches the web-search
-/// dialog surface). [TextSelectionToolbar] hands us the arranged action
-/// row as [child]; we only own the frame around it.
+/// dialog surface). [_BarrioMarkerToolbar] hands us its two arranged
+/// rows as [child]; we only own the frame around them.
 class _BarrioSelectionSurface extends StatelessWidget {
   final Widget child;
 
@@ -1767,16 +2104,21 @@ class _BarrioSelectionSurface extends StatelessWidget {
 /// beside an IBM Plex label, sized to a comfortable 44px tap target.
 ///
 /// The horizontal padding is deliberately tight, and that is a fix, not
-/// a preference. [TextSelectionToolbar] does not wrap: an action that
-/// does not fit on one row is pushed behind an overflow chevron, where a
-/// reader will not look for it. Two actions fit at the roomier 16px
-/// padding; adding Highlight made three, and at 16px "Search the web"
-/// fell off a 390dp phone entirely. At 6px horizontal with a 5px glyph
-/// gap the three measure 94.8 + 91.8 + 136.9 = 323.4 of the 344 a 360dp
-/// phone gives, the narrowest the reader supports.
-/// `barrio_highlight_reader_test.dart` holds that at 360dp, so a fourth
-/// action (Slice D's colour dots) has to solve the row rather than
-/// silently hide something.
+/// a preference. Slice B's toolbar was a [TextSelectionToolbar], which
+/// does not wrap: an action that did not fit on one row was pushed
+/// behind an overflow chevron, where a reader will not look for it. Two
+/// actions fit at the roomier 16px padding; adding Highlight made three,
+/// and at 16px "Search the web" fell off a 390dp phone entirely. At 6px
+/// horizontal with a 5px glyph gap the three measure
+/// 94.8 + 91.8 + 136.9 = 323.4 of the 344 a 360dp phone gives, the
+/// narrowest the reader supports, and
+/// `barrio_highlight_reader_test.dart` holds them there.
+///
+/// Slice D's four marker dots did NOT fit in the 21 that were left, so
+/// they went onto a row of their own in [_BarrioMarkerToolbar] rather
+/// than pushing anything behind a chevron. This padding stays exactly as
+/// Slice B measured it, so the actions row still fits with room to
+/// spare.
 class _BarrioSelectionAction extends StatelessWidget {
   final IconData icon;
   final String label;
