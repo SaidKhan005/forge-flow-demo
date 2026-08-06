@@ -186,6 +186,20 @@ class BarrioHighlight {
     return 'h_${millis}_$tail';
   }
 
+  /// The same mark, repainted and/or renoted. Everything that anchors
+  /// the highlight to the page (id, card, words, offsets, when it was
+  /// made) is carried through unchanged: recolouring and noting are the
+  /// only two things a reader can edit about a mark they already made.
+  BarrioHighlight copyWith({String? color, String? note}) => BarrioHighlight(
+        version: version,
+        id: id,
+        unitId: unitId,
+        color: color ?? this.color,
+        note: note ?? this.note,
+        createdAt: createdAt,
+        segments: segments,
+      );
+
   /// The whole marked passage as one string: every segment's words in
   /// reading order, single-space joined (segments come from separate
   /// paragraphs, bullets, or table cells, so they never abut).

@@ -65,6 +65,26 @@ Color barrioHighlightWash(String token) {
   return base.withValues(alpha: kBarrioHighlightWashAlpha);
 }
 
+/// How far a marker colour is pulled toward the body's darkest ink to
+/// become a legible glyph. 0.45 keeps every marker recognisably its own
+/// colour while clearing the 3:1 non-text contrast floor: gold, the
+/// palest of the four and the only one at risk, measures 4.89:1 on the
+/// white glass card. `test/barrio_highlight_manage_test.dart` measures
+/// all four rather than assuming.
+const double _kNoteGlyphInk = 0.45;
+
+/// The full-strength colour of the note indicator drawn after a marked
+/// passage that carries a note.
+///
+/// Not the wash: a 30%-alpha gold pictogram on white is not a thing a
+/// reader can see. It is the marker colour darkened toward the body ink,
+/// so the glyph still says WHICH mark it belongs to and is still legible.
+Color barrioHighlightNoteGlyphColor(String token) {
+  final base = kBarrioHighlightMarkerColors[token] ??
+      kBarrioHighlightMarkerColors[kBarrioHighlightDefaultColor]!;
+  return Color.lerp(base, BarrioColors.textPrimary, _kNoteGlyphInk)!;
+}
+
 // ---------------------------------------------------------------------------
 // Resolution: stored highlights to per-chunk paint runs
 // ---------------------------------------------------------------------------
@@ -111,13 +131,66 @@ class BarrioHighlightRun {
   String toString() => 'BarrioHighlightRun($highlightId, $color, $start-$end)';
 }
 
-/// What one card has to paint: marked runs per rendered chunk, plus the
-/// highlights this build could not place at all.
+/// Where a highlight's note glyph goes, and what it says.
+///
+/// The lesson card draws a tiny marker-coloured glyph right after the
+/// last words a noted highlight covers, so a reader can see at a glance
+/// which of their marks they wrote something on. Tapping it opens the
+/// same actions sheet tapping the mark itself opens.
+///
+/// [note] is carried (not just "has a note") for two reasons: the glyph
+/// reads it out to a screen reader, and the lesson card's span memo
+/// keys on this plan, so editing a note has to change the plan or the
+/// edit would not reach the screen until something else evicted the
+/// cache entry.
+@immutable
+class BarrioHighlightNoteMark {
+  /// The highlight this note belongs to.
+  final String highlightId;
+
+  /// Marker colour token, as stored: the glyph paints in it.
+  final String color;
+
+  /// The reader's note, exactly as they wrote it.
+  final String note;
+
+  /// UTF-16 offset into the chunk where the glyph is inserted: the end
+  /// of the last words this highlight covers in this chunk.
+  final int offset;
+
+  const BarrioHighlightNoteMark({
+    required this.highlightId,
+    required this.color,
+    required this.note,
+    required this.offset,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BarrioHighlightNoteMark &&
+          other.highlightId == highlightId &&
+          other.color == color &&
+          other.note == note &&
+          other.offset == offset;
+
+  @override
+  int get hashCode => Object.hash(highlightId, color, note, offset);
+
+  @override
+  String toString() =>
+      'BarrioHighlightNoteMark($highlightId, $color, @$offset)';
+}
+
+/// What one card has to paint: marked runs per rendered chunk, the note
+/// glyphs those marks carry, plus the highlights this build could not
+/// place at all.
 ///
 /// VALUE EQUALITY IS LOAD-BEARING. The lesson card memoizes its composed
 /// spans and this plan is part of the memo key, so `==` must see a new
-/// highlight, a recolour, and a moved offset. It compares every run of
-/// every chunk: id, colour token, and both offsets.
+/// highlight, a recolour, a moved offset, and a note written or edited.
+/// It compares every run of every chunk (id, colour token, both offsets)
+/// AND every note glyph (id, colour token, note text, offset).
 @immutable
 class BarrioHighlightPlan {
   /// Nothing marked. The plan every card without highlights carries, and
@@ -126,6 +199,7 @@ class BarrioHighlightPlan {
   static const BarrioHighlightPlan empty = BarrioHighlightPlan._(
     <int, List<BarrioHighlightRun>>{},
     <String>[],
+    <int, List<BarrioHighlightNoteMark>>{},
   );
 
   final Map<int, List<BarrioHighlightRun>> _byChunk;
@@ -135,15 +209,26 @@ class BarrioHighlightPlan {
   /// coming from an earlier version of the manual (Slice D).
   final List<String> orphanIds;
 
-  const BarrioHighlightPlan._(this._byChunk, this.orphanIds);
+  final Map<int, List<BarrioHighlightNoteMark>> _notesByChunk;
+
+  const BarrioHighlightPlan._(
+    this._byChunk,
+    this.orphanIds,
+    this._notesByChunk,
+  );
 
   /// True when this card has nothing to paint.
-  bool get isEmpty => _byChunk.isEmpty;
+  bool get isEmpty => _byChunk.isEmpty && _notesByChunk.isEmpty;
 
   /// The marked runs of chunk [chunkIndex], in offset order, never
   /// overlapping. Empty when that chunk carries no mark.
   List<BarrioHighlightRun> forChunk(int chunkIndex) =>
       _byChunk[chunkIndex] ?? const <BarrioHighlightRun>[];
+
+  /// The note glyphs chunk [chunkIndex] carries, in offset order. Empty
+  /// when no highlight ending in that chunk has a note.
+  List<BarrioHighlightNoteMark> noteMarksFor(int chunkIndex) =>
+      _notesByChunk[chunkIndex] ?? const <BarrioHighlightNoteMark>[];
 
   /// Chunk indices carrying at least one run, ascending.
   Iterable<int> get markedChunks => _byChunk.keys;
@@ -171,17 +256,24 @@ class BarrioHighlightPlan {
   }) {
     if (highlights.isEmpty || chunks.isEmpty) return empty;
     final orphans = <String>[];
-    final owners = _paintOwners(highlights, chunks, orphans);
+    final notes = <int, List<BarrioHighlightNoteMark>>{};
+    final owners = _paintOwners(highlights, chunks, orphans, notes);
     return BarrioHighlightPlan._(
       owners.isEmpty
           ? const <int, List<BarrioHighlightRun>>{}
           : Map<int, List<BarrioHighlightRun>>.unmodifiable(_coalesce(owners)),
       List<String>.unmodifiable(orphans),
+      notes.isEmpty
+          ? const <int, List<BarrioHighlightNoteMark>>{}
+          : Map<int, List<BarrioHighlightNoteMark>>.unmodifiable(
+              _freezeNotes(notes),
+            ),
     );
   }
 
   /// Per chunk, which run owns each character, plus [orphans] filled in
-  /// with every highlight that could not be placed.
+  /// with every highlight that could not be placed and [notes] filled in
+  /// with one glyph per placed highlight that carries a note.
   ///
   /// A character array rather than a range list because two marks may
   /// cover the same words and the paint side needs runs that do not
@@ -190,10 +282,16 @@ class BarrioHighlightPlan {
   /// means when they mark over their own mark. The arrays are small by
   /// construction (a chunk is one paragraph, list row, or table cell)
   /// and only ever built for a card that actually has marks.
+  ///
+  /// A note glyph is anchored on where the highlight was PLACED, before
+  /// the newer-wins fold above. A mark another mark now covers keeps its
+  /// glyph, so the note the reader wrote stays one tap away instead of
+  /// disappearing under someone else's colour.
   static Map<int, List<BarrioHighlightRun?>> _paintOwners(
     List<BarrioHighlight> highlights,
     List<BarrioBodyChunk> chunks,
     List<String> orphans,
+    Map<int, List<BarrioHighlightNoteMark>> notes,
   ) {
     final owners = <int, List<BarrioHighlightRun?>>{};
     for (final highlight in highlights) {
@@ -217,8 +315,49 @@ class BarrioHighlightPlan {
           slots[i] = run;
         }
       }
+      if (!highlight.hasNote) continue;
+      final (chunkIndex, offset) = _noteAnchor(placed);
+      (notes[chunkIndex] ??= <BarrioHighlightNoteMark>[]).add(
+        BarrioHighlightNoteMark(
+          highlightId: highlight.id,
+          color: highlight.color,
+          note: highlight.note,
+          offset: offset,
+        ),
+      );
     }
     return owners;
+  }
+
+  /// Where a noted highlight's glyph goes: the end of the LAST words it
+  /// covers, in reading order across the card. Re-anchoring can move a
+  /// segment to a different chunk, so this reads the placed positions
+  /// rather than trusting the stored segment order.
+  static (int, int) _noteAnchor(List<(int, int, int)> placed) {
+    var chunkIndex = placed.first.$1;
+    var offset = placed.first.$3;
+    for (final (chunk, _, end) in placed) {
+      if (chunk > chunkIndex || (chunk == chunkIndex && end > offset)) {
+        chunkIndex = chunk;
+        offset = end;
+      }
+    }
+    return (chunkIndex, offset);
+  }
+
+  /// Note glyphs sorted by offset inside each chunk and frozen, so the
+  /// composition order is deterministic and the plan stays immutable.
+  static Map<int, List<BarrioHighlightNoteMark>> _freezeNotes(
+    Map<int, List<BarrioHighlightNoteMark>> notes,
+  ) {
+    final out = <int, List<BarrioHighlightNoteMark>>{};
+    final chunkIndices = notes.keys.toList()..sort();
+    for (final chunkIndex in chunkIndices) {
+      final marks = notes[chunkIndex]!
+        ..sort((a, b) => a.offset.compareTo(b.offset));
+      out[chunkIndex] = List<BarrioHighlightNoteMark>.unmodifiable(marks);
+    }
+    return out;
   }
 
   /// Every `(chunkIndex, start, end)` [highlight] covers on the body as
@@ -305,9 +444,18 @@ class BarrioHighlightPlan {
     if (identical(this, other)) return true;
     if (other is! BarrioHighlightPlan) return false;
     if (other._byChunk.length != _byChunk.length) return false;
+    if (other._notesByChunk.length != _notesByChunk.length) return false;
     if (!listEquals(other.orphanIds, orphanIds)) return false;
     for (final entry in _byChunk.entries) {
       if (!listEquals(other._byChunk[entry.key], entry.value)) return false;
+    }
+    // Note glyphs are composed in the same memoized pass as the wash, so
+    // a note written or edited right now has to be visible here or the
+    // card would keep replaying the picture from before it was written.
+    for (final entry in _notesByChunk.entries) {
+      if (!listEquals(other._notesByChunk[entry.key], entry.value)) {
+        return false;
+      }
     }
     return true;
   }
@@ -318,6 +466,10 @@ class BarrioHighlightPlan {
         Object.hashAll(orphanIds),
         Object.hashAllUnordered(<Object>[
           for (final entry in _byChunk.entries)
+            Object.hash(entry.key, Object.hashAll(entry.value)),
+        ]),
+        Object.hashAllUnordered(<Object>[
+          for (final entry in _notesByChunk.entries)
             Object.hash(entry.key, Object.hashAll(entry.value)),
         ]),
       );

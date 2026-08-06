@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -73,6 +74,13 @@ class HandbookLessonCard extends StatefulWidget {
   /// default) adds nothing to the widget tree at all.
   final BarrioHighlightAnchorRegistry? anchorRegistry;
 
+  /// Tapping one of the reader's own marks, by highlight id (Slice C).
+  /// Non-null makes every marked run, and every note glyph, tappable so
+  /// the reading screen can open the manage sheet. Null (the default)
+  /// leaves the marks as pure paint, which is what a curated screen and
+  /// every existing test get.
+  final void Function(String highlightId)? onHighlightTap;
+
   const HandbookLessonCard({
     super.key,
     required this.unit,
@@ -86,6 +94,7 @@ class HandbookLessonCard extends StatefulWidget {
     this.onTermTap,
     this.highlights = const [],
     this.anchorRegistry,
+    this.onHighlightTap,
   });
 
   @override
@@ -376,6 +385,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard>
                   keyTerms: keyTerms,
                   highlights: widget.highlights,
                   anchorRegistry: widget.anchorRegistry,
+                  onHighlightTap: widget.onHighlightTap,
                 ),
                 const SizedBox(height: 12),
                 Row(
@@ -413,6 +423,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard>
                   keyTerms: keyTerms,
                   highlights: widget.highlights,
                   anchorRegistry: widget.anchorRegistry,
+                  onHighlightTap: widget.onHighlightTap,
                 ),
               ],
 
@@ -735,6 +746,11 @@ class _UnitBody extends StatelessWidget {
   /// nothing to the tree.
   final BarrioHighlightAnchorRegistry? anchorRegistry;
 
+  /// Tapping one of the reader's own marks (Slice C). Non-null makes
+  /// every marked run and every note glyph tappable; null leaves them as
+  /// pure paint.
+  final void Function(String highlightId)? onHighlightTap;
+
   const _UnitBody({
     required this.unit,
     required this.accent,
@@ -744,6 +760,7 @@ class _UnitBody extends StatelessWidget {
     this.keyTerms = const [],
     this.highlights = const [],
     this.anchorRegistry,
+    this.onHighlightTap,
   });
 
   static const double _blockGap = 12;
@@ -770,6 +787,7 @@ class _UnitBody extends StatelessWidget {
         answerEvidence: answerEvidence,
         keyTerms: keyTerms,
         highlights: plan,
+        onHighlightTap: onHighlightTap,
       );
 
   @override
@@ -1014,13 +1032,30 @@ class _UnitBody extends StatelessWidget {
     BarrioHighlightPlan plan,
   ) {
     final marks = plan.forChunk(chunk.index);
+    final noteMarks = plan.noteMarksFor(chunk.index);
     final spans = pass.spansFor(
       chunk.text,
-      () => _composeChunk(chunk.text, style, pass, marks),
+      () => _composeChunk(chunk.text, style, pass, marks, noteMarks),
     );
-    final text = spans == null
-        ? Text(chunk.text, style: style)
-        : Text.rich(TextSpan(style: style, children: spans));
+    final Widget text;
+    if (spans == null) {
+      text = Text(chunk.text, style: style);
+    } else if (onHighlightTap == null || marks.isEmpty) {
+      // No mark to tap, or a screen that does not manage marks: the
+      // composed run goes straight to the page, exactly as in Slice B.
+      text = Text.rich(TextSpan(style: style, children: spans));
+    } else {
+      // Marked AND managed: a small stateful widget owns one tap
+      // recognizer per highlight so they are disposed with the chunk.
+      // The memoized run itself stays recognizer-free, which is what
+      // lets a process-lifetime cache hold it safely.
+      text = _HighlightableBodyText(
+        key: ValueKey<String>('barrio_hl_chunk_${unit.id}_${chunk.index}'),
+        style: style,
+        spans: spans,
+        onHighlightTap: onHighlightTap!,
+      );
+    }
     final registry = anchorRegistry;
     if (registry == null) return text;
     return SelectionListener(
@@ -1052,6 +1087,7 @@ class _UnitBody extends StatelessWidget {
     TextStyle style,
     _SpanPass pass,
     List<BarrioHighlightRun> marks,
+    List<BarrioHighlightNoteMark> noteMarks,
   ) {
     final linked = pass.linked;
     final keyed = pass.keyed;
@@ -1111,8 +1147,8 @@ class _UnitBody extends StatelessWidget {
       answers: answerRanges,
       keyTerms: keyTermMatches,
     );
-    if (tiers.isEmpty && marks.isEmpty) return null;
-    return _composeSpans(text, tiers, style, marks);
+    if (tiers.isEmpty && marks.isEmpty && noteMarks.isEmpty) return null;
+    return _composeSpans(text, tiers, style, marks, noteMarks);
   }
 
   /// Exact [start, end) ranges of every answer-evidence phrase in [text],
@@ -1181,6 +1217,7 @@ class _UnitBody extends StatelessWidget {
     _TierMatches tiers,
     TextStyle style,
     List<BarrioHighlightRun> marks,
+    List<BarrioHighlightNoteMark> noteMarks,
   ) {
     // Search highlight: bold navy on a soft tealWarm wash.
     final mark = style.copyWith(
@@ -1224,10 +1261,26 @@ class _UnitBody extends StatelessWidget {
       for (final r in tiers.answers) _BodySegment(r[0], r[1], mark: answerMark),
       for (final k in tiers.keyTerms)
         _BodySegment(k.start, k.end, mark: keyTermMark),
-    ]..sort((a, b) => a.start.compareTo(b.start));
+      // Note glyphs are zero-length insertion points, not spans over
+      // characters, so they can sit anywhere without disturbing the
+      // tiers' sorted, mutually non-overlapping ranges.
+      for (final n in noteMarks) _BodySegment(n.offset, n.offset, note: n),
+    ]..sort(_bySegmentStart);
     final spans = <InlineSpan>[];
     var cursor = 0;
     for (final seg in segments) {
+      final noteMark = seg.note;
+      if (noteMark != null) {
+        // An insertion point already passed by a longer span emits right
+        // where the text stands now: never rewind the cursor, which
+        // would duplicate characters.
+        if (seg.start > cursor) {
+          _emitRun(spans, text, cursor, seg.start, null, marks);
+          cursor = seg.start;
+        }
+        spans.add(_noteGlyphSpan(noteMark, style));
+        continue;
+      }
       if (seg.start > cursor) {
         _emitRun(spans, text, cursor, seg.start, null, marks);
       }
@@ -1250,6 +1303,50 @@ class _UnitBody extends StatelessWidget {
     return spans;
   }
 
+  /// Segment order: by start offset, and at the same offset a note glyph
+  /// comes FIRST so it lands right after the words it belongs to rather
+  /// than after whatever span happens to begin there.
+  static int _bySegmentStart(_BodySegment a, _BodySegment b) {
+    final byStart = a.start.compareTo(b.start);
+    if (byStart != 0) return byStart;
+    final aNote = a.note != null ? 0 : 1;
+    final bNote = b.note != null ? 0 : 1;
+    return aNote.compareTo(bNote);
+  }
+
+  /// The reader's note indicator: a small marker-coloured glyph sitting
+  /// on the text baseline right after the words the note belongs to.
+  ///
+  /// An inline widget, like a term link, so the tap needs no recognizer
+  /// lifecycle of its own. It carries no characters, so the verbatim law
+  /// is untouched: the body still reads word for word.
+  InlineSpan _noteGlyphSpan(BarrioHighlightNoteMark mark, TextStyle style) {
+    final color = barrioHighlightNoteGlyphColor(mark.color);
+    final onTap = onHighlightTap;
+    final size = (style.fontSize ?? 13.5) - 1.5;
+    return WidgetSpan(
+      alignment: PlaceholderAlignment.baseline,
+      baseline: TextBaseline.alphabetic,
+      child: Semantics(
+        button: onTap != null,
+        label: 'Your note: ${mark.note}',
+        child: GestureDetector(
+          key: ValueKey<String>('barrio_highlight_note_${mark.highlightId}'),
+          onTap: onTap == null ? null : () => onTap(mark.highlightId),
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 3, right: 1),
+            child: Icon(
+              Icons.sticky_note_2_rounded,
+              size: size,
+              color: color,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Emits `text[from, to)` styled with [runStyle], split wherever a
   /// reader's marker wash starts or stops.
   ///
@@ -1263,6 +1360,13 @@ class _UnitBody extends StatelessWidget {
   /// A run that ALREADY carries a background (the search-hit wash is the
   /// only one) keeps it on top: the two composite, marker underneath,
   /// search wash over it, so both readings survive.
+  ///
+  /// A marked sub-run is emitted as a [_MarkedTextSpan], which is a
+  /// [TextSpan] that additionally remembers WHICH highlight it belongs
+  /// to. It carries no recognizer: these spans are memoized for the life
+  /// of the process, and a recognizer in a cached span would outlive the
+  /// widget that should have disposed it. [_HighlightableBodyText] turns
+  /// them into tappable spans at render time.
   void _emitRun(
     List<InlineSpan> spans,
     String text,
@@ -1286,7 +1390,8 @@ class _UnitBody extends StatelessWidget {
           TextSpan(text: text.substring(cursor, start), style: runStyle),
         );
       }
-      spans.add(TextSpan(
+      spans.add(_MarkedTextSpan(
+        highlightId: run.highlightId,
         text: text.substring(start, end),
         style: _washed(runStyle, run.color),
       ));
@@ -1361,6 +1466,130 @@ class _UnitBody extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tapping one of the reader's own marks (Kindle-style highlights, Slice C)
+// ---------------------------------------------------------------------------
+
+/// A washed sub-run that remembers which highlight painted it.
+///
+/// Composed into the memoized span pass WITHOUT a recognizer, because
+/// that pass is cached for the life of the process and an entry can be
+/// evicted at any moment: a recognizer stored there would have no owner
+/// to dispose it. [_HighlightableBodyText] replaces each of these with a
+/// plain [TextSpan] carrying a recognizer it owns.
+class _MarkedTextSpan extends TextSpan {
+  final String highlightId;
+
+  const _MarkedTextSpan({
+    required this.highlightId,
+    required String super.text,
+    super.style,
+  });
+}
+
+/// One body chunk that carries at least one of the reader's marks, on a
+/// screen that can manage them.
+///
+/// Stateful for exactly one reason: [TapGestureRecognizer]s need an
+/// owner. One per highlight (not per run, since a mark can be split into
+/// several runs by an emphasis boundary), created on first render and
+/// disposed with the chunk.
+///
+/// GESTURE DEPTH. A span recognizer is claimed by the [RenderParagraph]
+/// under the pointer, which is deeper than the carousel's edge tap zones
+/// and than the card's own arena, exactly like the term links that have
+/// shipped since 2026-07-23. Page turns, edge taps, scrolling and
+/// long-press-to-select all keep working: a long press is claimed by the
+/// selection region's long-press recognizer, which accepts the arena
+/// outright, so the tap recognizer loses it. No card-level recognizer is
+/// registered here (the #1483 lesson).
+class _HighlightableBodyText extends StatefulWidget {
+  final TextStyle style;
+
+  /// The memoized run for this chunk. Reused by identity, so the mapped
+  /// spans below are rebuilt only when the composition actually changes.
+  final List<InlineSpan> spans;
+
+  final void Function(String highlightId) onHighlightTap;
+
+  const _HighlightableBodyText({
+    super.key,
+    required this.style,
+    required this.spans,
+    required this.onHighlightTap,
+  });
+
+  @override
+  State<_HighlightableBodyText> createState() => _HighlightableBodyTextState();
+}
+
+class _HighlightableBodyTextState extends State<_HighlightableBodyText> {
+  final Map<String, TapGestureRecognizer> _recognizers =
+      <String, TapGestureRecognizer>{};
+
+  /// The rendered span run, and the composed run it was built from.
+  /// Held so an identical rebuild hands [Text.rich] the very same spans
+  /// and the paragraph does not relayout for nothing.
+  List<InlineSpan>? _mapped;
+  List<InlineSpan>? _mappedFrom;
+
+  @override
+  void didUpdateWidget(_HighlightableBodyText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(oldWidget.spans, widget.spans)) return;
+    // A mark this chunk no longer carries: its recognizer is about to be
+    // referenced by nothing, so it is disposed now rather than leaked.
+    final live = _highlightIdsIn(widget.spans);
+    for (final id in _recognizers.keys.toList()) {
+      if (live.contains(id)) continue;
+      _recognizers.remove(id)!.dispose();
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final recognizer in _recognizers.values) {
+      recognizer.dispose();
+    }
+    _recognizers.clear();
+    super.dispose();
+  }
+
+  static Set<String> _highlightIdsIn(List<InlineSpan> spans) => <String>{
+        for (final span in spans)
+          if (span is _MarkedTextSpan) span.highlightId,
+      };
+
+  /// The recognizer for one highlight, created once. Its callback reads
+  /// `widget` at tap time, so a rebuilt parent with a new callback is
+  /// picked up without touching the recognizer.
+  TapGestureRecognizer _recognizerFor(String highlightId) =>
+      _recognizers.putIfAbsent(
+        highlightId,
+        () => TapGestureRecognizer()
+          ..onTap = () => widget.onHighlightTap(highlightId),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    if (!identical(_mappedFrom, widget.spans)) {
+      _mappedFrom = widget.spans;
+      _mapped = <InlineSpan>[
+        for (final span in widget.spans)
+          if (span is _MarkedTextSpan)
+            TextSpan(
+              text: span.text,
+              style: span.style,
+              recognizer: _recognizerFor(span.highlightId),
+            )
+          else
+            span,
+      ];
+    }
+    return Text.rich(TextSpan(style: widget.style, children: _mapped));
   }
 }
 
@@ -1470,7 +1699,19 @@ class _SpanCacheKey {
   /// miss the cache and recompose. Highlights that resolved to nothing
   /// (orphans) are in it too, so they cannot be confused with a card
   /// that has no marks.
+  ///
+  /// The plan also carries every NOTE the card's marks hold, because a
+  /// note draws a glyph into this same composed run. Writing a note,
+  /// editing one, and clearing one each change the plan and therefore
+  /// this key, so the glyph appears, changes, or goes on the very next
+  /// frame instead of waiting for an eviction.
   final BarrioHighlightPlan highlights;
+
+  /// The manage-a-mark callback ITSELF, for the same reason [onTermTap]
+  /// is here: a note glyph is an inline widget closing over it, so a
+  /// second screen showing the same card must compose its own spans
+  /// rather than call the first screen's handler.
+  final Object? onHighlightTap;
 
   const _SpanCacheKey({
     required this.unitId,
@@ -1481,6 +1722,7 @@ class _SpanCacheKey {
     required this.answerEvidence,
     required this.keyTerms,
     required this.highlights,
+    required this.onHighlightTap,
   });
 
   @override
@@ -1494,7 +1736,8 @@ class _SpanCacheKey {
         listEquals(other.highlightTerms, highlightTerms) &&
         listEquals(other.answerEvidence, answerEvidence) &&
         listEquals(other.keyTerms, keyTerms) &&
-        other.highlights == highlights;
+        other.highlights == highlights &&
+        other.onHighlightTap == onHighlightTap;
   }
 
   @override
@@ -1507,6 +1750,7 @@ class _SpanCacheKey {
         Object.hashAll(answerEvidence),
         Object.hashAll(keyTerms),
         highlights,
+        onHighlightTap,
       );
 }
 
@@ -1626,12 +1870,18 @@ class _TierMatches {
 /// styled TextSpan using [mark] (a search highlight, numeric fact pop,
 /// quiz answer highlight, or curated key-term emphasis: the caller resolves
 /// which style up front). Styling only; the substring is verbatim.
+///
+/// [note] non-null makes the segment an INSERTION POINT rather than a
+/// span over characters: it is zero-length ([start] == [end]) and emits
+/// the reader's note glyph there, adding a glyph to the line without
+/// touching one character of the body.
 class _BodySegment {
   final int start;
   final int end;
   final BarrioTermMatch? term;
   final TextStyle? mark;
-  const _BodySegment(this.start, this.end, {this.term, this.mark});
+  final BarrioHighlightNoteMark? note;
+  const _BodySegment(this.start, this.end, {this.term, this.mark, this.note});
 }
 
 /// Partitions a unit's images into render groups, in source order.
