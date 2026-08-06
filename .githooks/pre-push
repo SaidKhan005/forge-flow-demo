@@ -156,6 +156,29 @@ if has_changed '^lib/internal/barrio/content/training/.*\.dart$|^tool/barrio_tra
   fi
 fi
 
+# Barrio extractor safety: assets/internal/barrio/training/<doc_id>/ has two
+# writers (this extractor and the real-images pass), so the extractor may only
+# delete files its manifest says it produced. Getting that wrong destroyed 127
+# tracked assets and 8 docs' markers on clean master (2026-08-06). The test
+# builds a synthetic PDF in a temp dir, so unlike the extractor's own --check
+# it does not need the untracked docs/training drop. ~2s.
+if has_changed '^tool/barrio_training_image_extractor(_test)?\.py$|^tool/barrio_training_extracted_assets\.json$'; then
+  barrio_ex_py=""
+  for candidate in python python3 py; do
+    if "$candidate" -c "" >/dev/null 2>&1; then
+      barrio_ex_py="$candidate"
+      break
+    fi
+  done
+  if [ -n "$barrio_ex_py" ]; then
+    run_lint "$barrio_ex_py" tool/barrio_training_image_extractor_test.py
+  else
+    echo
+    echo "[forge-flow pre-push] No working python found; skipping barrio extractor test."
+    echo "  Run it manually: python tool/barrio_training_image_extractor_test.py"
+  fi
+fi
+
 # Ignore-justification bar: every `// ignore:` carries rationale, not
 # just the diagnostic name. Scoped to lib/** + tool/** Dart sources.
 if has_changed '^lib/.*\.dart$|^tool/.*\.dart$'; then
