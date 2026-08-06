@@ -391,23 +391,38 @@ class _PodiumColumn extends StatelessWidget {
                 ],
                 stops: const [0.0, 0.4, 1.0],
               ),
-              border: Border(
-                top: BorderSide(
-                  color: medalColor.withValues(alpha: 0.45),
-                  width: 1.5,
-                ),
-                left: BorderSide(
-                  color: medalColor.withValues(alpha: 0.18),
-                  width: 0.5,
-                ),
-                right: BorderSide(
-                  color: medalColor.withValues(alpha: 0.18),
-                  width: 0.5,
-                ),
-              ),
             ),
             child: Stack(
               children: [
+                // Bright top rail plus faint side hairlines. Painted INSIDE
+                // the rounded clip rather than as the decoration's border:
+                // Flutter asserts in paint() when a non-uniform [Border] is
+                // combined with a borderRadius, which this screen was doing
+                // (found by the reduce-motion widget test added this slice).
+                // The clip rounds the rail's top corners, so the look is the
+                // one the design already intended.
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        border: Border(
+                          top: BorderSide(
+                            color: medalColor.withValues(alpha: 0.45),
+                            width: 1.5,
+                          ),
+                          left: BorderSide(
+                            color: medalColor.withValues(alpha: 0.18),
+                            width: 0.5,
+                          ),
+                          right: BorderSide(
+                            color: medalColor.withValues(alpha: 0.18),
+                            width: 0.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
                 // Specular highlight — top-left light catch
                 Positioned.fill(
                   child: IgnorePointer(

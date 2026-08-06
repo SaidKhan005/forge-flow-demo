@@ -103,13 +103,23 @@ class _HandbookLessonCardState extends State<HandbookLessonCard>
   /// to own an [AnimationController] started by its own `Future.delayed`:
   /// timers nothing owned, which kept firing while the app was backgrounded
   /// and ignored reduce-motion.
-  late final AnimationController _optionStagger = AnimationController(
-    vsync: this,
-    duration: BarrioMotion.stagger,
-  );
+  late final AnimationController _optionStagger;
 
   bool _reduceMotion = false;
   bool _motionDecided = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Built here rather than lazily on the field. Most cards are never
+    // expanded, so a lazy initializer would make `dispose()` the first
+    // touch, and creating a Ticker then does a TickerMode lookup on an
+    // already-deactivated element.
+    _optionStagger = AnimationController(
+      vsync: this,
+      duration: BarrioMotion.stagger,
+    );
+  }
 
   @override
   void didChangeDependencies() {
