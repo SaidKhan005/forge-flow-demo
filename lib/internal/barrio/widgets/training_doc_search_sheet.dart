@@ -65,6 +65,8 @@ class TrainingDocSearchSheet extends StatefulWidget {
   final void Function(String query) onWebSearchRequested;
 
   /// Keystroke debounce, mirroring the home search field (~200ms).
+  /// Deliberately off the [BarrioMotion] scale: it is a typing-speed
+  /// window, not a duration anything animates over.
   final Duration debounce;
 
   const TrainingDocSearchSheet({
@@ -175,8 +177,8 @@ class _TrainingDocSearchSheetState extends State<TrainingDocSearchSheet> {
   Widget build(BuildContext context) {
     // Keyboard-aware: the field and results ride above the keyboard.
     return AnimatedPadding(
-      duration: const Duration(milliseconds: 150),
-      curve: Curves.easeOut,
+      duration: BarrioMotion.fast,
+      curve: BarrioMotion.curve,
       padding:
           EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: SizedBox(
@@ -654,6 +656,32 @@ class _ResultRow extends StatelessWidget {
     required this.onTap,
   });
 
+  /// Row fonts, resolved once per process (audit B12), matching the twin
+  /// row on the home search sliver. Every visible row used to run four
+  /// [GoogleFonts] map lookups per build, and the list rebuilds on each
+  /// debounced keystroke.
+  static final TextStyle _kChapterTitle = GoogleFonts.ibmPlexMono(
+    fontSize: 10.5,
+    letterSpacing: 0.6,
+  );
+
+  static final TextStyle _kUnitTitle = GoogleFonts.ibmPlexSans(
+    fontSize: 14,
+    fontWeight: FontWeight.w600,
+    color: BarrioColors.textPrimary,
+  );
+
+  static final TextStyle _kSnippet = GoogleFonts.ibmPlexSans(
+    fontSize: 12.5,
+    height: 1.35,
+    color: BarrioColors.textMuted,
+  );
+
+  static final TextStyle _kSnippetMatch = _kSnippet.copyWith(
+    fontWeight: FontWeight.w700,
+    color: BarrioColors.textSecondary,
+  );
+
   @override
   Widget build(BuildContext context) {
     // Visual-first pass (rec #9): when the matched card carries a photo,
@@ -710,11 +738,7 @@ class _ResultRow extends StatelessWidget {
       result.chapterTitle,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: GoogleFonts.ibmPlexMono(
-        fontSize: 10.5,
-        letterSpacing: 0.6,
-        color: accent.withValues(alpha: 0.85),
-      ),
+      style: _kChapterTitle.copyWith(color: accent.withValues(alpha: 0.85)),
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -746,11 +770,7 @@ class _ResultRow extends StatelessWidget {
           result.unitTitle,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.ibmPlexSans(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: BarrioColors.textPrimary,
-          ),
+          style: _kUnitTitle,
         ),
         const SizedBox(height: 6),
         _snippetText(),
@@ -759,17 +779,9 @@ class _ResultRow extends StatelessWidget {
   }
 
   Widget _snippetText() {
-    final base = GoogleFonts.ibmPlexSans(
-      fontSize: 12.5,
-      height: 1.35,
-      color: BarrioColors.textMuted,
-    );
-    final bold = base.copyWith(
-      fontWeight: FontWeight.w700,
-      color: BarrioColors.textSecondary,
-    );
     return Text.rich(
-      TextSpan(children: _snippetSpans(result.snippet, base, bold)),
+      TextSpan(
+          children: _snippetSpans(result.snippet, _kSnippet, _kSnippetMatch)),
       maxLines: 3,
       overflow: TextOverflow.ellipsis,
     );

@@ -86,11 +86,12 @@ class _BarrioHomeCenterBubbleState extends State<BarrioHomeCenterBubble> {
     if (widget.dimmed) {
       bubble = Opacity(opacity: 0.38, child: bubble);
     }
-    // Press: gentle scale to 0.92 with spring-back (no neon flare).
+    // Press: one gentle settle, no spring-back and no neon flare. Every
+    // pressable surface in the module shares BarrioMotion.pressScale.
     bubble = AnimatedScale(
-      scale: _pressed ? 0.92 : 1.0,
-      duration: const Duration(milliseconds: 150),
-      curve: Curves.easeOutBack,
+      scale: _pressed ? BarrioMotion.pressScale : 1.0,
+      duration: BarrioMotion.fast,
+      curve: BarrioMotion.curve,
       child: bubble,
     );
     Widget target = RepaintBoundary(
@@ -276,11 +277,12 @@ class _BarrioHomeOrbitBubbleState extends State<BarrioHomeOrbitBubble> {
     } else if (widget.dimmed) {
       bubble = Opacity(opacity: 0.38, child: bubble);
     }
-    // Press: gentle scale to 0.92 with spring-back (no neon flare).
+    // Press: one gentle settle, no spring-back and no neon flare. Every
+    // pressable surface in the module shares BarrioMotion.pressScale.
     bubble = AnimatedScale(
-      scale: _pressed ? 0.92 : 1.0,
-      duration: const Duration(milliseconds: 150),
-      curve: Curves.easeOutBack,
+      scale: _pressed ? BarrioMotion.pressScale : 1.0,
+      duration: BarrioMotion.fast,
+      curve: BarrioMotion.curve,
       child: bubble,
     );
     Widget target = RepaintBoundary(

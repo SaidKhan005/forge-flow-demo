@@ -369,7 +369,8 @@ class _QuizOptionRow extends StatelessWidget {
           behavior: HitTestBehavior.opaque,
           child: ExcludeSemantics(
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
+            duration: BarrioMotion.base,
+            curve: BarrioMotion.curve,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: bgColor,

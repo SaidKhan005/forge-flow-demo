@@ -97,11 +97,11 @@ class LearningCarouselState extends State<LearningCarousel>
 
     _entranceCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 400),
+      duration: BarrioMotion.slow,
     );
     _entranceFade = CurvedAnimation(
       parent: _entranceCtrl,
-      curve: Curves.easeOutCubic,
+      curve: BarrioMotion.curve,
     );
     _entranceSlide = Tween<Offset>(
       begin: const Offset(0.05, 0),
@@ -133,14 +133,18 @@ class LearningCarouselState extends State<LearningCarousel>
   }
 
   /// Called by card widgets after a correct answer to trigger auto-advance.
+  ///
+  /// The 1500ms is a reading dwell, not motion: it is how long the reader
+  /// gets to see the answer feedback before the page turns. Deliberately off
+  /// the [BarrioMotion] scale, which times movement rather than waiting.
   void requestAdvance() {
     _cancelAutoAdvance();
     _autoAdvanceTimer = Timer(const Duration(milliseconds: 1500), () {
       if (!mounted) return;
       if (_currentPage.value < widget.cardCount - 1) {
         _pageController.nextPage(
-          duration: const Duration(milliseconds: 500),
-          curve: Curves.easeInOutCubic,
+          duration: BarrioMotion.slow,
+          curve: BarrioMotion.curve,
         );
       }
     });
@@ -159,8 +163,8 @@ class LearningCarouselState extends State<LearningCarousel>
     if ((target - _currentPage.value).abs() <= 3) {
       _pageController.animateToPage(
         target,
-        duration: const Duration(milliseconds: 350),
-        curve: Curves.easeInOutCubic,
+        duration: BarrioMotion.base,
+        curve: BarrioMotion.curve,
       );
     } else {
       _pageController.jumpToPage(target);
@@ -179,8 +183,8 @@ class LearningCarouselState extends State<LearningCarousel>
     if (target < 0 || target >= widget.cardCount) return;
     _pageController.animateToPage(
       target,
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeOutCubic,
+      duration: BarrioMotion.base,
+      curve: BarrioMotion.curve,
     );
   }
 
@@ -430,7 +434,8 @@ class _CardScrollViewState extends State<_CardScrollView> {
                   key: ValueKey<String>(
                       'learning_overflow_cue_${widget.index}'),
                   opacity: _moreBelow ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 180),
+                  duration: BarrioMotion.fast,
+                  curve: BarrioMotion.curve,
                   child: const DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(

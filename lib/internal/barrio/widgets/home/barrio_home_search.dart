@@ -61,6 +61,8 @@ class BarrioHomeSearchField extends StatefulWidget {
   /// minimum-length rule.
   final ValueChanged<String> onQueryChanged;
 
+  /// Keystroke debounce. Deliberately off the [BarrioMotion] scale: it is a
+  /// typing-speed window, not a duration anything animates over.
   final Duration debounce;
 
   const BarrioHomeSearchField({
@@ -132,8 +134,8 @@ class _BarrioHomeSearchFieldState extends State<BarrioHomeSearchField> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
+        duration: BarrioMotion.fast,
+        curve: BarrioMotion.curve,
         decoration: BoxDecoration(
           // The one deliberately lighter glass rung: a field, not a
           // surface, so a little cream reads through (was shellMid@0.80).
@@ -183,6 +185,20 @@ class _BarrioHomeSearchFieldState extends State<BarrioHomeSearchField> {
     );
   }
 
+  /// Resolved once per process (audit B12). `_onChanged` calls `setState`
+  /// on every keystroke so the clear button can appear, which rebuilt this
+  /// field and allocated both styles through a [GoogleFonts] map lookup on
+  /// every letter typed.
+  static final TextStyle _kInputStyle = GoogleFonts.ibmPlexSans(
+    fontSize: 14.5,
+    color: BarrioColors.textPrimary,
+  );
+
+  static final TextStyle _kHintStyle = GoogleFonts.ibmPlexSans(
+    fontSize: 14.5,
+    color: BarrioColors.textSecondary.withValues(alpha: 0.9),
+  );
+
   Widget _buildTextField() {
     return TextField(
       controller: _controller,
@@ -190,19 +206,13 @@ class _BarrioHomeSearchFieldState extends State<BarrioHomeSearchField> {
       onChanged: _onChanged,
       textInputAction: TextInputAction.search,
       cursorColor: BarrioColors.tealWarm,
-      style: GoogleFonts.ibmPlexSans(
-        fontSize: 14.5,
-        color: BarrioColors.textPrimary,
-      ),
+      style: _kInputStyle,
       decoration: InputDecoration(
         isDense: true,
         border: InputBorder.none,
         contentPadding: const EdgeInsets.symmetric(vertical: 15),
         hintText: 'Search the training library',
-        hintStyle: GoogleFonts.ibmPlexSans(
-          fontSize: 14.5,
-          color: BarrioColors.textSecondary.withValues(alpha: 0.9),
-        ),
+        hintStyle: _kHintStyle,
       ),
     );
   }
@@ -328,6 +338,13 @@ class _EmptyState extends StatelessWidget {
 
   const _EmptyState({required this.query});
 
+  /// Resolved once per process (audit B12): this rebuilds on every
+  /// keystroke that still finds nothing.
+  static final TextStyle _kMessage = GoogleFonts.ibmPlexSans(
+    fontSize: 14,
+    color: BarrioColors.textSecondary,
+  );
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -352,10 +369,7 @@ class _EmptyState extends StatelessWidget {
             Text(
               "No matches for '$query'",
               textAlign: TextAlign.center,
-              style: GoogleFonts.ibmPlexSans(
-                fontSize: 14,
-                color: BarrioColors.textSecondary,
-              ),
+              style: _kMessage,
             ),
           ],
         ),
@@ -376,6 +390,33 @@ class _SearchResultRow extends StatelessWidget {
     required this.accent,
     required this.onTap,
   });
+
+  /// Row fonts, resolved once per process (audit B12). Every visible row
+  /// used to run four [GoogleFonts] map lookups per build, and the whole
+  /// result list rebuilds on each debounced keystroke.
+  static final TextStyle _kDocTitle = GoogleFonts.playfairDisplay(
+    fontSize: 15,
+    fontWeight: FontWeight.w600,
+    color: BarrioColors.textPrimary,
+  );
+
+  /// The only accent-dependent one: [copyWith] the colour rather than
+  /// resolving the family again.
+  static final TextStyle _kChapterTitle = GoogleFonts.ibmPlexMono(
+    fontSize: 10.5,
+    letterSpacing: 0.6,
+  );
+
+  static final TextStyle _kSnippet = GoogleFonts.ibmPlexSans(
+    fontSize: 12.5,
+    height: 1.35,
+    color: BarrioColors.textMuted,
+  );
+
+  static final TextStyle _kSnippetMatch = _kSnippet.copyWith(
+    fontWeight: FontWeight.w700,
+    color: BarrioColors.textSecondary,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -442,20 +483,14 @@ class _SearchResultRow extends StatelessWidget {
           result.docTitle,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.playfairDisplay(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: BarrioColors.textPrimary,
-          ),
+          style: _kDocTitle,
         ),
         const SizedBox(height: 3),
         Text(
           result.chapterTitle,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.ibmPlexMono(
-            fontSize: 10.5,
-            letterSpacing: 0.6,
+          style: _kChapterTitle.copyWith(
             color: accent.withValues(alpha: 0.85),
           ),
         ),
@@ -470,17 +505,8 @@ class _SearchResultRow extends StatelessWidget {
     // inside the sliver's item builder, so only the handful of rows
     // actually on screen ever compute a snippet window.
     final snippet = result.snippet;
-    final base = GoogleFonts.ibmPlexSans(
-      fontSize: 12.5,
-      height: 1.35,
-      color: BarrioColors.textMuted,
-    );
-    final bold = base.copyWith(
-      fontWeight: FontWeight.w700,
-      color: BarrioColors.textSecondary,
-    );
     return Text.rich(
-      TextSpan(children: _snippetSpans(snippet, base, bold)),
+      TextSpan(children: _snippetSpans(snippet, _kSnippet, _kSnippetMatch)),
       maxLines: 3,
       overflow: TextOverflow.ellipsis,
     );

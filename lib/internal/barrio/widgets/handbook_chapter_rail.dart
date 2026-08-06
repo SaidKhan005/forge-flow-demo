@@ -79,7 +79,7 @@ class _HandbookChapterRailState extends State<HandbookChapterRail> {
 
   /// Glide used when the active tile is scrolled into view. Reduce-motion
   /// swaps this for an instant jump (see [_revealActiveTile]).
-  static const Duration _kScrollDuration = Duration(milliseconds: 280);
+  static const Duration _kScrollDuration = BarrioMotion.base;
 
   /// One key per tile: the target for [Scrollable.ensureVisible]. Kept
   /// stable across rebuilds (grown/shrunk in place) so tile element
@@ -139,7 +139,7 @@ class _HandbookChapterRailState extends State<HandbookChapterRail> {
       tileContext,
       alignment: 0.5,
       duration: (animate && !reduceMotion) ? _kScrollDuration : Duration.zero,
-      curve: Curves.easeOut,
+      curve: BarrioMotion.curve,
     );
   }
 
@@ -278,8 +278,8 @@ class _ChapterRailTile extends StatelessWidget {
         onTap: onTap,
         child: ExcludeSemantics(
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
+            duration: BarrioMotion.fast,
+            curve: BarrioMotion.curve,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: _tileDecoration(),
             child: Column(
