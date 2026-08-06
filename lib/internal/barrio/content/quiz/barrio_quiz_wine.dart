@@ -1553,5 +1553,224 @@ const BarrioQuizBank kBarrioQuizWine = BarrioQuizBank(
       sourceUnitId: 'training_wine_c33_u3',
       answerEvidence: 'there is no regulatory threshold for vine age',
     ),
+    // ---- c34: How to Open Wine ----------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c34_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c34',
+      prompt: 'When you present a bottle at the table, which way should the '
+          'label face?',
+      options: <String>[
+        'Facing the guests',
+        'Facing you, so you can read it',
+        'Turned down toward the floor',
+        'It does not matter',
+      ],
+      correctIndex: 0,
+      whyLine: 'Present the bottle with the label facing the guests while you '
+          'introduce the wine.',
+      sourceUnitId: 'training_wine_c34_u0',
+      answerEvidence: 'holding it with the label facing the guests',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c34_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c34',
+      prompt: 'Why do you set the cork to the side after opening?',
+      options: <String>[
+        'So guests can see the cork is moist on the wine end and dry on the outer end',
+        'So the sommelier can reuse it later',
+        'To keep the table looking full',
+        'Because the cork must stay warm',
+      ],
+      correctIndex: 0,
+      whyLine: 'A well-preserved cork is moist on the submerged end and dry '
+          'outside, a simple sign of good storage.',
+      sourceUnitId: 'training_wine_c34_u3',
+      answerEvidence: 'a well-preserved cork will be noticeably moist on the end '
+          'that was submerged in wine',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c34_q2',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c34',
+      prompt: 'From which side is wine poured, and whose glass is filled last?',
+      options: <String>[
+        'From the right, with the host\'s glass filled last',
+        'From the left, with the host\'s glass filled first',
+        'From the right, with the host\'s glass filled first',
+        'From wherever there is space, in any order',
+      ],
+      correctIndex: 0,
+      whyLine: 'Food goes from the left and wine from the right, pouring '
+          'clockwise with the host served last.',
+      sourceUnitId: 'training_wine_c34_u4',
+      answerEvidence: 'wine is poured from the right',
+    ),
+    // ---- c35: How to Open Champagne/Sparkling -------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c35_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c35',
+      prompt: 'Why chill a sparkling wine before opening it?',
+      options: <String>[
+        'It reduces internal pressure and prevents a geyser',
+        'It makes the cork easier to twist off',
+        'It raises the pressure for a louder pop',
+        'It dissolves the wire cage',
+      ],
+      correctIndex: 0,
+      whyLine: 'Chilling lowers the internal pressure, which is what prevents '
+          'the explosive geyser effect.',
+      sourceUnitId: 'training_wine_c35_u0',
+      answerEvidence: 'a step that reduces internal pressure',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c35_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c35',
+      prompt: 'When opening sparkling wine, do you turn the cork or the bottle?',
+      options: <String>[
+        'Rotate the bottle from its base while holding the cork steady',
+        'Twist the cork hard while holding the bottle still',
+        'Shake the bottle until the cork loosens',
+        'Pull the cork straight out with both hands',
+      ],
+      correctIndex: 0,
+      whyLine: 'Never twist the cork itself: it can snap. Turn the bottle from '
+          'the base and hold the cork steady.',
+      sourceUnitId: 'training_wine_c35_u1',
+      answerEvidence: 'never twist the cork itself, as that could cause it to '
+          'snap',
+    ),
+    // ---- c36: How to Pour Champagne/Sparkling -------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c36_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c36',
+      prompt: 'What happens if you pour champagne straight down into an upright '
+          'flute?',
+      options: <String>[
+        'It creates a turbulent rush of carbon dioxide that rapidly overflows',
+        'It loses all of its bubbles instantly',
+        'It warms the wine by several degrees',
+        'It makes the wine taste sweeter',
+      ],
+      correctIndex: 0,
+      whyLine: 'Pouring straight down churns up carbon dioxide, so the glass '
+          'overflows and wine is wasted.',
+      sourceUnitId: 'training_wine_c36_u0',
+      answerEvidence: 'creates a turbulent rush of carbon dioxide that rapidly '
+          'overflows',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c36_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c36',
+      prompt: 'What is the clean way to pour a sparkling wine?',
+      options: <String>[
+        'Tilt the flute and let the wine cascade down the inner side of the glass',
+        'Hold the flute upright and pour as fast as possible',
+        'Fill the glass to the very rim in one go',
+        'Pour into the centre from a height to aerate it',
+      ],
+      correctIndex: 0,
+      whyLine: 'Tilt the flute, rest the bottle lip on the rim, and let the wine '
+          'run down the side to limit foaming.',
+      sourceUnitId: 'training_wine_c36_u0',
+      answerEvidence: 'tilting the flute at a 45-degree angle and resting the '
+          'bottle\'s lip on the rim of the glass',
+    ),
+    // ---- c37: How to Decant Wine --------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c37_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c37',
+      prompt: 'Why decant an older red?',
+      options: <String>[
+        'To pour it away from the sediment',
+        'To warm it up quickly',
+        'To add oxygen so it tastes younger',
+        'To remove its colour',
+      ],
+      correctIndex: 0,
+      whyLine: 'Older reds throw sediment, and stirring it up clouds the wine '
+          'and adds bitter, gritty texture.',
+      sourceUnitId: 'training_wine_c37_u0',
+      answerEvidence: 'gently pouring an older vintage away from the sediment',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c37_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c37',
+      prompt: 'As a practical rule, which reds are worth decanting even with no '
+          'visible sediment?',
+      options: <String>[
+        'Any red that has spent five to ten years in bottle',
+        'Only reds opened on the same day they were bottled',
+        'Only white wines, never reds',
+        'Any red under one year old',
+      ],
+      correctIndex: 0,
+      whyLine: 'A red with five to ten years in bottle has likely thrown enough '
+          'sediment to warrant decanting.',
+      sourceUnitId: 'training_wine_c37_u0',
+      answerEvidence: 'any red wine that has spent five to ten years in bottle',
+    ),
+    // ---- c38: How to Taste Wine ---------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c38_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c38',
+      prompt: 'Why hold a tasting glass by the stem?',
+      options: <String>[
+        'It keeps your hand\'s warmth and finger oils from interfering',
+        'It gives you a stronger grip when swirling',
+        'It makes the wine look darker',
+        'It stops the bowl from cracking',
+      ],
+      correctIndex: 0,
+      whyLine: 'Holding the stem keeps hand warmth and finger oils away from the '
+          'wine\'s temperature and clarity.',
+      sourceUnitId: 'training_wine_c38_u0',
+      answerEvidence: 'holding the glass by the stem keeps your hand\'s warmth '
+          'and any lingering finger oils from interfering',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c38_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c38',
+      prompt: 'A guest points at the legs running down the glass and asks if '
+          'that means the wine is good. What do they actually show?',
+      options: <String>[
+        'Higher levels of alcohol and residual sugar',
+        'That the wine is of higher quality',
+        'That the wine is older than ten years',
+        'That the wine has been filtered',
+      ],
+      correctIndex: 0,
+      whyLine: 'Legs betray alcohol and residual sugar, not quality: their '
+          'viscosity is what makes them creep.',
+      sourceUnitId: 'training_wine_c38_u2',
+      answerEvidence: 'what legs actually betray are higher levels of alcohol '
+          'and residual sugar',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c38_q2',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c38',
+      prompt: 'What is the reliable way to judge a wine\'s acidity?',
+      options: <String>[
+        'Notice how quickly you begin to salivate after swallowing',
+        'Count the legs on the side of the glass',
+        'Check how dark the colour is',
+        'Smell for oak and vanilla',
+      ],
+      correctIndex: 0,
+      whyLine: 'After swallowing, the faster and more copiously you salivate, '
+          'the higher the acid.',
+      sourceUnitId: 'training_wine_c38_u8',
+      answerEvidence: 'pay attention to how quickly you begin to salivate',
+    ),
   ],
 );
