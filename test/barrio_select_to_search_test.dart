@@ -107,36 +107,32 @@ void main() {
       );
       // Branded menu (2026-07-31 operator request): the generic system
       // popup was replaced with the Barrio glass surface, so the builder
-      // now returns a TextSelectionToolbar carrying our own action
-      // widgets rather than an AdaptiveTextSelectionToolbar of
-      // buttonItems. The curation contract is unchanged: only actions
-      // this reader chose, and none of the native defaults. The menu
-      // grew from two to three when Kindle-style highlights landed
-      // (Slice B, 2026-08-06); the row-fit guard for three actions on
-      // the narrowest phone lives in barrio_highlight_reader_test.dart.
+      // returns the reader's own widget rather than an
+      // AdaptiveTextSelectionToolbar of buttonItems. The curation
+      // contract is unchanged: only actions this reader chose, and none
+      // of the native defaults. The menu grew from two actions to three
+      // when Kindle-style highlights landed (Slice B, 2026-08-06) and to
+      // four marker pens over four actions with the marker toolbar
+      // (Slice D). The reach guard for all of them on the narrowest
+      // phone lives in barrio_highlights_sheet_test.dart.
       final menu = area.contextMenuBuilder!(
         tester.element(regionFinder),
         region,
       );
-      expect(menu, isA<TextSelectionToolbar>(),
+      expect(menu, isNot(isA<AdaptiveTextSelectionToolbar>()),
           reason: 'the reader floats its own branded selection surface');
-      final toolbar = menu as TextSelectionToolbar;
-      expect(toolbar.children.length, 3,
-          reason: 'three actions: Highlight, Ask chat, Search the web');
+      expect(menu, isNot(isA<TextSelectionToolbar>()),
+          reason: 'Slice D owns the layout: a single-row toolbar pushes '
+              'whatever does not fit behind an overflow chevron');
 
-      // Render the actions on their own to read their labels: the live
-      // toolbar draws in a platform overlay the test binding cannot find.
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Column(mainAxisSize: MainAxisSize.min, children: toolbar.children),
-          ),
-        ),
-      );
+      // Render the menu on its own to read its labels: the live toolbar
+      // draws in a platform overlay the test binding cannot find.
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: menu)));
       await tester.pump();
       expect(find.text('Highlight'), findsOneWidget);
       expect(find.text('Ask chat'), findsOneWidget);
       expect(find.text('Search the web'), findsOneWidget);
+      expect(find.text('Add note'), findsOneWidget);
       // Operator curation (2026-07-29): the native Copy / Select all
       // defaults stay dropped.
       expect(find.text('Copy'), findsNothing);

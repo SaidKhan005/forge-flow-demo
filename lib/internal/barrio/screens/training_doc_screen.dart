@@ -1191,23 +1191,28 @@ class _HeaderActions extends StatelessWidget {
     // three stay a matched set.
     //
     // THE FOURTH ICON IS RATIONED, and the reason is measured, not
-    // aesthetic. The bar at 360dp (the narrowest phone the reader
-    // supports) gives the title whatever the back arrow and these
-    // buttons leave: 128px at three icons, 80px at four. The TERM
-    // glossaries carry the longest titles in the corpus ("Latin American
-    // Words To Know: Ingredients"), so 80px shows about six characters.
-    // "Your highlights" therefore appears only once the reader has
-    // actually marked something in this manual, which is also the honest
-    // rule (an entry point to an empty list is a door to an empty room).
-    // Every manual on a first read keeps today's header exactly; the
-    // majority (non-TERM) never go past three icons at all.
+    // aesthetic. On a 360dp phone (the narrowest the reader supports)
+    // the bar leaves the manual title 160px at two icons, 112px at
+    // three, 64px at four and 16px at five. Every one of those numbers
+    // is measured in `test/barrio_highlights_sheet_test.dart`, so the
+    // budget stops being a matter of opinion.
     //
-    // If a future slice needs a fourth icon unconditionally, the fallback
-    // is to move the A-Z index off the bar and onto the hero eyebrow row,
-    // beside the flashcards chip, rather than to shrink the tap targets:
-    // 44px buttons would buy 16px and cost the Material tap-target floor.
-    // `test/barrio_highlights_sheet_test.dart` measures the title budget
-    // at 360dp so this stops being a matter of opinion.
+    // "Your highlights" therefore appears only once the reader has
+    // actually marked something in this manual. That is also the honest
+    // rule on its own terms (an entry point to an empty list is a door
+    // to an empty room), and it means every manual on a first read keeps
+    // today's header exactly, and the non-TERM majority never go past
+    // three icons at all. The 64px case is narrow: a TERM glossary the
+    // reader has marked. Those titles already truncate at 112px, so the
+    // fourth icon costs characters off a line that was already cut, not
+    // a readable title turned unreadable.
+    //
+    // A FIFTH ICON DOES NOT FIT, and no tap-target trim buys one: 44px
+    // buttons would free 16px and cost the Material floor. The way to
+    // make room is to move the A-Z index off the bar and onto the hero
+    // eyebrow row, beside the flashcards chip. That is a change to a
+    // shipped affordance's home, so it is the operator's call, not a
+    // side effect of the next slice that wants a glyph.
     const double kIconSize = 28;
     const BoxConstraints kTapTarget =
         BoxConstraints(minWidth: 48, minHeight: 48);
