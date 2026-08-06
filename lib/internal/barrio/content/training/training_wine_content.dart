@@ -1637,8 +1637,9 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           runLength: 2,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/wine_training/01.webp',
-              afterParagraph: 1,
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c9_u1.webp',
+              caption: 'Vines at Cafayate in Salta, on dry sandy ground with the mountains behind. The water comes off those peaks, and growers hold it back on purpose to concentrate the fruit. Photo: Micah MacAllen, CC BY-SA 2.0',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -1736,11 +1737,6 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           runLength: 3,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/wine_training/02.webp',
-              caption: 'Diagram: the Mendoza wine region, its major grapes and its key subregions',
-              afterParagraph: 0,
-            ),
-            HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c10_u2.webp',
               caption: 'A pergola trained vineyard in Argentina. The leaf roof shades the fruit and keeps it out of the fierce high altitude sun. Photo: Justin De La Ornellas, CC BY 2.0',
               afterParagraph: -1,
@@ -1777,8 +1773,9 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'reds with refined finesse.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/wine_training/03.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c10_u4.webp',
+              caption: 'A vineyard in Patagonia. Cool, dry and wide open, which is what keeps the acidity in the Pinot Noir and Chardonnay grown here. Photo: Denis Rudenko, CC BY-SA 4.0',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -1797,8 +1794,9 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'intensity.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/wine_training/04.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c10_u5.webp',
+              caption: 'Vine rows on dry bare ground in the Ullum valley, San Juan. Hot days and thin soil are what this region gives its Tempranillo and Syrah. Photo: EagLau, CC BY-SA 4.0',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -1880,8 +1878,9 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           runLength: 2,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/wine_training/05.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c11_u1.webp',
+              caption: 'Malbec on the vine at Cafayate, with a drip line running along the row. Massal selection means walking thousands of vines like these and taking cuttings from the best. Photo: Micah MacAllen, CC BY-SA 2.0',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -1902,8 +1901,9 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'high-altitude vineyards add remarkable depth and intensity.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/wine_training/06.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c11_u2.webp',
+              caption: 'A ripe Cabernet Sauvignon bunch, this one in Bordeaux. Small, thick skinned berries are where the dark fruit and the firm tannin come from. Photo: Christophe Eyquem, CC BY 3.0',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -1923,8 +1923,9 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'charcuterie with equal poise.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/wine_training/07.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c11_u3.webp',
+              caption: 'Pinot Noir in Oregon, just after veraison, the point where the fruit has finished turning colour. Photo: Melinda, CC BY 2.0',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -1944,8 +1945,9 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'savory notes of the cuisine.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/wine_training/08.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c11_u4.webp',
+              caption: 'Syrah on the vine, the berries almost black. That depth of colour in the skin is where the colour in the glass comes from. Photo: Chrisada Sookdhis, CC BY 2.0',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -1966,8 +1968,9 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'and pairs beautifully with seafood, chicken, or fresh salads.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/wine_training/09.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c11_u5.webp',
+              caption: 'Chardonnay in the Jura, still pale green. Picked before it over ripens, it keeps the lemon and lime edge this card describes. Photo: Arnaud 25, CC BY-SA 3.0',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -1987,8 +1990,9 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'from classic white varietals.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/wine_training/10.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c11_u6.webp',
+              caption: 'Torrontes at Cafayate, with the block sign still hanging on the wire. Argentina\'s own white grape, on its home ground. Photo: aaepstein, CC BY 2.0',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -2020,8 +2024,9 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'adding an extra touch of celebration to any meal.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/wine_training/11.webp',
-              afterParagraph: 1,
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c11_u7.webp',
+              caption: 'Bottles nose down in riddling racks. This is the traditional method, where the second fermentation happens inside the bottle you are served from. Photo: Craig Hatfield, CC BY 2.0',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -3963,8 +3968,9 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           runLength: 2,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/wine_training/17.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c29_u1.webp',
+              caption: 'A glass of red at Barrio Legado. The bowl holds the wine, the stem keeps your hand off it, and the base sits on the coaster. A bowl this wide is what lets you swirl without spilling.',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -4089,8 +4095,9 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           runLength: 2,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/wine_training/18.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c31_u1.webp',
+              caption: 'The wide bowl on the left is the Chardonnay and white Burgundy shape. The narrower glass on the right is a standard white. Same family, different bowl. Photo: Loimo, CC0',
+              afterParagraph: -1,
             ),
           ],
         ),
