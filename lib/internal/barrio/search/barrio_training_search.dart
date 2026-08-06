@@ -22,6 +22,26 @@
 // static (`_corpus`); a per-keystroke query only folds the short query
 // string and runs `indexOf` scans over the cached folded strings. No
 // per-keystroke re-folding of the ~110k-word corpus ever happens.
+//
+// Three costs the first search used to pay on the UI thread, and how
+// they are paid now (audit A3, 2026-07-31):
+//   1. Building the folded corpus at all. Folding 1,335 unit bodies
+//      (~700 KB of text) in one go is a multi-hundred-millisecond
+//      stall, and it used to land on the FIRST keystroke. [warmUp]
+//      now folds it in small chunks off the first frame, yielding to
+//      the event loop between chunks so no single turn blocks a
+//      frame. A query that lands mid-warm finishes the fold in place
+//      (see [_corpus]), so correctness never depends on the warm.
+//   2. Running the scan on every rebuild. That is the caller's job:
+//      the home results widget memoizes on the query plus the visible
+//      destination set instead of scanning inside `build`.
+//   3. Materializing a snippet for every scored unit. A 2-character
+//      query can score hundreds of units to render about eight, so
+//      [BarrioTrainingSearchResult.snippet] is now built on FIRST
+//      ACCESS (in the list item builder) rather than up front. Same
+//      snippet, same spans, computed only for the rows that render.
+
+import 'package:meta/meta.dart';
 
 import '../content/company_handbook_content.dart';
 import '../content/training/barrio_training_doc.dart';
