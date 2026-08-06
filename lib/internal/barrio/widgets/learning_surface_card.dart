@@ -102,24 +102,18 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
           margin: carousel ? EdgeInsets.zero : const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
             color: BarrioColors.glassFill, // premium white glass fill
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(BarrioRadii.card),
             border: Border.all(
               color: widget.badgeColor.withValues(alpha: 0.35),
             ),
-            boxShadow: [
-              // Inner accent glow
-              BoxShadow(
-                color: widget.badgeColor.withValues(alpha: _isPressed ? 0.22 : 0.10),
-                blurRadius: _isPressed ? 12 : 20,
-                spreadRadius: -4,
-              ),
-              // Outer soft lift (navy-tinted, light UI)
-              BoxShadow(
-                color: const Color(0x1416243B),
-                blurRadius: _isPressed ? 14 : 28,
-                spreadRadius: _isPressed ? -6 : -2,
-              ),
-            ],
+            // One neutral navy lift, no colored glow — identical to the twin
+            // [HandbookLessonCard] so the two cards share a shadow language
+            // (and one shadow pass instead of two).
+            boxShadow: barrioSoftShadow(
+              y: _isPressed ? 4 : 10,
+              blur: _isPressed ? 14 : 24,
+              opacity: _isPressed ? 0.14 : 0.10,
+            ),
           ),
           clipBehavior: Clip.antiAlias,
           child: Stack(
@@ -294,13 +288,13 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
 
                   Color border, bg;
                   if (showCorrect) {
-                    border = const Color(0xFF2ECC71).withValues(alpha: 0.55);
-                    bg = const Color(0xFF2ECC71).withValues(alpha: 0.10);
+                    border = BarrioColors.success.withValues(alpha: 0.55);
+                    bg = BarrioColors.success.withValues(alpha: 0.10);
                   } else if (showWrong) {
                     border = BarrioColors.error.withValues(alpha: 0.55);
                     bg = BarrioColors.error.withValues(alpha: 0.10);
                   } else {
-                    border = const Color(0x2216243B);
+                    border = BarrioColors.hairline;
                     bg = const Color(0x0A16243B);
                   }
 
@@ -316,7 +310,7 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
                               horizontal: 14, vertical: 12),
                           decoration: BoxDecoration(
                             color: bg,
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(BarrioRadii.chip),
                             border: Border.all(color: border),
                           ),
                           child: Column(
@@ -346,7 +340,7 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
                                 if (showCorrect) ...[
                                   if (_showSparkle)
                                     CorrectAnswerSparkle(
-                                      accentColor: const Color(0xFF2ECC71),
+                                      accentColor: BarrioColors.success,
                                       onComplete: () {
                                         if (mounted) {
                                           setState(() => _showSparkle = false);
@@ -354,7 +348,7 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
                                       },
                                     ),
                                   const Icon(Icons.check_circle,
-                                      size: 18, color: Color(0xFF2ECC71)),
+                                      size: 18, color: BarrioColors.success),
                                 ],
                                 if (showWrong)
                                   const Icon(Icons.cancel,
@@ -430,15 +424,12 @@ class _PremiumBadge extends StatelessWidget {
     // Solid accent chip with a luminance-picked foreground so the label
     // stays legible on the white card (the old pale-tint-on-dark badge
     // relied on bright accent text against a dark surface).
-    final onColor =
-        ThemeData.estimateBrightnessForColor(color) == Brightness.dark
-            ? Colors.white
-            : const Color(0xFF10151F);
+    final onColor = barrioOnAccent(color);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(BarrioRadii.chip),
         boxShadow: [
           BoxShadow(
             color: color.withValues(alpha: 0.28),
@@ -569,11 +560,11 @@ class LearningSectionRail extends StatelessWidget {
                 color: isActive
                     ? activeAccent.withValues(alpha: 0.15)
                     : const Color(0x0A16243B),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(BarrioRadii.chip),
                 border: Border.all(
                   color: isActive
                       ? activeAccent.withValues(alpha: 0.50)
-                      : const Color(0x2216243B),
+                      : BarrioColors.hairline,
                 ),
                 boxShadow: isActive
                     ? [
@@ -600,7 +591,7 @@ class LearningSectionRail extends StatelessWidget {
                       if (isComplete) ...[
                         const SizedBox(width: 4),
                         const Icon(Icons.check_circle,
-                            size: 12, color: Color(0xFF2ECC71)),
+                            size: 12, color: BarrioColors.success),
                       ],
                     ],
                   ),

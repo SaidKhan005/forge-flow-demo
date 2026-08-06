@@ -208,7 +208,7 @@ class _TrainingDocSearchSheetState extends State<TrainingDocSearchSheet> {
     return Container(
       decoration: BoxDecoration(
         color: BarrioColors.shellMid.withValues(alpha: 0.80),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(BarrioRadii.card),
         border: Border.all(color: accent.withValues(alpha: 0.45), width: 1.2),
       ),
       child: Row(
@@ -512,7 +512,7 @@ class _AnswerCard extends StatelessWidget {
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: BarrioColors.shellMid.withValues(alpha: 0.92),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(BarrioRadii.card),
                 border: Border.all(color: accent.withValues(alpha: 0.35)),
               ),
               child: _content(),
@@ -569,7 +569,7 @@ class _WebFallbackCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: BarrioColors.shellMid.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(BarrioRadii.card),
         border: Border.all(color: const Color(0x1416243B)),
       ),
       child: Column(
@@ -617,7 +617,7 @@ class _WebFallbackCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             color: accent.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(BarrioRadii.chip),
             border: Border.all(color: accent.withValues(alpha: 0.45)),
           ),
           child: Row(
@@ -681,7 +681,7 @@ class _ResultRow extends StatelessWidget {
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: BarrioColors.shellMid.withValues(alpha: 0.92),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(BarrioRadii.card),
             border: Border.all(color: const Color(0x1416243B)),
           ),
           child: imageAsset == null

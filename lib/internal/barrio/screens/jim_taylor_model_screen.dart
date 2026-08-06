@@ -109,7 +109,7 @@ class _JimTaylorModelScreenState extends State<JimTaylorModelScreen>
   Widget _buildCard(JtUnit unit, BuildContext cardContext) {
     final (defaultBadge, color) = switch (unit.type) {
       JtUnitType.concept    => ('CONCEPT',  _accent),
-      JtUnitType.scenario   => ('SCENARIO', const Color(0xFF2ECC71)),
+      JtUnitType.scenario   => ('SCENARIO', BarrioColors.success),
       JtUnitType.checkpoint => ('CHECK',    BarrioColors.warning),
     };
     final badge = unit.badgeHint ?? defaultBadge;
@@ -295,7 +295,7 @@ class _JtModuleHero extends StatelessWidget {
               fontSize: 11,
               color: remaining > 0
                   ? BarrioColors.textMuted
-                  : const Color(0xFF2ECC71),
+                  : BarrioColors.success,
               letterSpacing: 0.3,
             ),
           ),
@@ -363,39 +363,13 @@ class _JtPremiumBackground extends StatelessWidget {
           ),
         ),
 
-        // Layer 3: Teal accent bloom — top-right
+        // Layers 3 + 4: the shared teal accent bloom (top-right) and
+        // complementary navy bloom, from BarrioPremiumBackground.
         Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: const Alignment(0.7, -0.9),
-                  radius: 1.05,
-                  colors: [
-                    accent.withValues(alpha: 0.16),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-
-        // Layer 4: Complementary navy bloom — opposite corner
-        Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(-0.85, 0.95),
-                  radius: 0.75,
-                  colors: [
-                    Color(0x1A1A2456),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
+          child: BarrioPremiumBackground(
+            accentColor: accent,
+            accentOpacity: 0.16,
+            bloomAlignment: const Alignment(0.7, -0.9),
           ),
         ),
 

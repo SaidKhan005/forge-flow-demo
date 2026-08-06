@@ -1031,7 +1031,7 @@ class _WebSearchDialogState extends State<_WebSearchDialog> {
       backgroundColor: BarrioColors.shellMid,
       elevation: 10,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(BarrioRadii.sheet),
       ),
       insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
       child: Padding(
@@ -1094,13 +1094,13 @@ class _WebSearchDialogState extends State<_WebSearchDialog> {
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(BarrioRadii.card),
                   borderSide: BorderSide(
                     color: BarrioColors.textMuted.withValues(alpha: 0.25),
                   ),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(BarrioRadii.card),
                   borderSide: BorderSide(color: accent, width: 2),
                 ),
               ),
@@ -1145,15 +1145,14 @@ class _SearchActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final onAccent =
-        ThemeData.estimateBrightnessForColor(accent) == Brightness.dark
-            ? Colors.white
-            : const Color(0xFF10151F);
+    final onAccent = barrioOnAccent(accent);
     return Material(
       color: accent,
-      borderRadius: BorderRadius.circular(12),
+      // Matches the search field it sits beside: adjacent surfaces on
+      // different rungs is the tell this sweep removes.
+      borderRadius: BorderRadius.circular(BarrioRadii.card),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(BarrioRadii.card),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
@@ -1434,10 +1433,7 @@ class _FlashcardsChip extends StatelessWidget {
   Widget build(BuildContext context) {
     // Luminance-picked foreground so the label stays legible on any
     // manual accent (white on dark accents, near-black on bright ones).
-    final onAccent =
-        ThemeData.estimateBrightnessForColor(accent) == Brightness.dark
-            ? Colors.white
-            : const Color(0xFF10151F);
+    final onAccent = barrioOnAccent(accent);
     return Semantics(
       button: true,
       label: 'Review as flashcards',
@@ -1449,7 +1445,7 @@ class _FlashcardsChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
           decoration: BoxDecoration(
             color: accent,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(BarrioRadii.chip),
             boxShadow: [
               BoxShadow(
                 color: accent.withValues(alpha: 0.35),
@@ -1504,7 +1500,7 @@ class _DepthBadge extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
             color: accent.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(BarrioRadii.chip),
             border: Border.all(color: accent.withValues(alpha: 0.45)),
           ),
           child: Row(

@@ -54,7 +54,7 @@ const _destinationAccents = {
   'training_strong_foundation': Color(0xFFCC8A3A), // warm amber
   'training_table_manicuring': Color(0xFF5FB8A6), // seafoam
   'training_three_pillars': Color(0xFFB06AC9), // plum
-  'training_suggestive_selling': Color(0xFF2ECC71), // emerald
+  'training_suggestive_selling': BarrioColors.accentPlaybook, // emerald
   'training_tequila': Color(0xFFDFAA40), // gold
   'training_coffee': Color(0xFF9A6B4F), // roasted brown
   'training_latin_dishes': Color(0xFFD4584C), // brick red

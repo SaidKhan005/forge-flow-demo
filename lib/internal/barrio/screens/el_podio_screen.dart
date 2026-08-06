@@ -268,20 +268,9 @@ class _PodiumColumn extends StatelessWidget {
                 color: medalColor.withValues(alpha: 0.60),
                 width: 2.5,
               ),
-              boxShadow: [
-                // Inner medal glow
-                BoxShadow(
-                  color: medalColor.withValues(alpha: 0.25),
-                  blurRadius: 18,
-                  spreadRadius: 0,
-                ),
-                // Outer ambient
-                BoxShadow(
-                  color: medalColor.withValues(alpha: 0.10),
-                  blurRadius: 30,
-                  spreadRadius: 2,
-                ),
-              ],
+              // One neutral navy lift, no colored glow — the medal identity is
+              // carried by the 2.5 px medalColor ring, not a halo.
+              boxShadow: barrioSoftShadow(y: 6, blur: 20, opacity: 0.12),
             ),
             child: Center(
               child: Text(
@@ -347,7 +336,7 @@ class _PodiumColumn extends StatelessWidget {
             style: GoogleFonts.ibmPlexMono(
               fontSize: 11,
               color: entry.weeklyChange >= 0
-                  ? const Color(0xFF2ECC71).withValues(alpha: 0.7)
+                  ? BarrioColors.success.withValues(alpha: 0.7)
                   : BarrioColors.textMuted.withValues(alpha: 0.5),
               letterSpacing: 0.2,
             ),
@@ -444,26 +433,14 @@ class _RankTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: BarrioColors.glassFill,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(BarrioRadii.card),
         border: Border.all(
           color: isNegative
               ? const Color(0x1A16243B)
               : entry.avatarColor.withValues(alpha: 0.30),
         ),
-        boxShadow: [
-          // Inner accent glow
-          BoxShadow(
-            color: entry.avatarColor.withValues(alpha: isNegative ? 0.04 : 0.08),
-            blurRadius: 16,
-            spreadRadius: -4,
-          ),
-          // Outer soft lift (navy-tinted, light UI)
-          const BoxShadow(
-            color: Color(0x1416243B),
-            blurRadius: 20,
-            spreadRadius: -4,
-          ),
-        ],
+        // One neutral navy lift, no colored glow — the house card language.
+        boxShadow: barrioSoftShadow(y: 6, blur: 20, opacity: 0.08),
       ),
       child: Stack(
         children: [
@@ -551,7 +528,7 @@ class _RankTile extends StatelessWidget {
                   style: GoogleFonts.ibmPlexMono(
                     fontSize: 11,
                     color: entry.weeklyChange >= 0
-                        ? const Color(0xFF2ECC71).withValues(alpha: 0.6)
+                        ? BarrioColors.success.withValues(alpha: 0.6)
                         : BarrioColors.textMuted.withValues(alpha: 0.4),
                     letterSpacing: 0.2,
                   ),
@@ -689,39 +666,13 @@ class _ElPodioPremiumBackground extends StatelessWidget {
           ),
         ),
 
-        // Layer 3: Gold accent bloom — top center
-        Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: const Alignment(0.0, -0.85),
-                  radius: 1.05,
-                  colors: [
-                    _ElPodioScreenState._gold.withValues(alpha: 0.16),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-
-        // Layer 4: Navy bloom — bottom
-        Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(-0.85, 0.95),
-                  radius: 0.75,
-                  colors: [
-                    Color(0x1A1A2456),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
+        // Layers 3 + 4: the shared gold accent bloom (top centre) and
+        // complementary navy bloom, from BarrioPremiumBackground.
+        const Positioned.fill(
+          child: BarrioPremiumBackground(
+            accentColor: _ElPodioScreenState._gold,
+            accentOpacity: 0.16,
+            bloomAlignment: Alignment(0.0, -0.85),
           ),
         ),
 

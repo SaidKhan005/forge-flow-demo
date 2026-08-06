@@ -59,6 +59,13 @@ class BarrioColors {
   static const Color comingSoonTag = Color(0xFF8B6F47);
   static const Color audienceTag   = Color(0xFF1E3A5F);
 
+  // The ink for text and icons painted directly on a saturated accent fill.
+  // Deliberately deeper than [textPrimary] (#16243B): a badge label sitting on
+  // a bright accent needs more contrast headroom than body text does on cream.
+  // Reach for it through [barrioOnAccent] so the light/dark branch is never
+  // dropped — hardcoding this side is a latent bug on a dark accent.
+  static const Color onAccentDark = Color(0xFF10151F);
+
   // Semantic status tokens (2026-07-31 premium pass) — one source of truth for
   // the green/amber/red that were previously hardcoded across ~10 files.
   static const Color success = Color(0xFF2ECC71); // emerald — correct / positive
@@ -74,6 +81,16 @@ class BarrioColors {
   // rather than on top of it. Previously written as shellMid@0.80.
   // Only two rungs exist: [glassFill] for surfaces, this for fields.
   static const Color glassFillSoft = Color(0xCCFFFFFF); // 80% white glass
+
+  // The resting hairline border on white/cream surfaces: chips, option
+  // rows, rail buttons, close-chips. ~13% navy — visible as an edge, never
+  // as a line. Was copy-pasted at 11 sites across 8 files.
+  static const Color hairline = Color(0x2216243B);
+
+  // The complementary navy bloom every destination background carries in
+  // its opposite corner. Owned by [BarrioPremiumBackground]; screens get it
+  // by using that widget, not by re-declaring the gradient stop.
+  static const Color navyBloom = Color(0x1A1A2456);
 
   // Trophy gold for El Podio — deliberately distinct from brand [gold].
   static const Color trophyGold = Color(0xFFD4AF37);
@@ -107,6 +124,18 @@ List<BoxShadow> barrioSoftShadow({
   ];
 }
 
+/// The legible ink for text or icons painted directly on top of [accent].
+///
+/// White on dark accents, [BarrioColors.onAccentDark] on bright ones. The
+/// branch was copy-pasted at seven call sites and dropped entirely at an
+/// eighth (the QUICK CHECK badge), which reads as near-black on near-black
+/// the moment its accent darkens. One helper now.
+Color barrioOnAccent(Color accent) {
+  return ThemeData.estimateBrightnessForColor(accent) == Brightness.dark
+      ? Colors.white
+      : BarrioColors.onAccentDark;
+}
+
 /// Decode width, in device pixels, for an [Image.asset] that renders at
 /// [logicalWidth] logical pixels wide (premium performance audit A1).
 ///
@@ -133,8 +162,16 @@ int? barrioCacheWidth(BuildContext context, double logicalWidth) {
 /// premium light feel is consistent.
 ///
 /// The bloom is atmospheric only — no interaction.
+///
+/// The photo-backed destination screens compose this as one layer of a
+/// larger stack (photo, veil, blooms, vignette, content). They pass
+/// [child] as null and rely on the caller for sizing, so this widget MUST
+/// be given bounded constraints in that mode — put it in a
+/// [Positioned.fill].
 class BarrioPremiumBackground extends StatelessWidget {
-  final Widget child;
+  /// The screen body painted above the blooms. Null when this widget is
+  /// used purely as a bloom layer inside a caller's own [Stack].
+  final Widget? child;
 
   /// The accent color for the top-corner bloom. Use one of the
   /// [BarrioColors.accent*] constants per destination.
@@ -143,11 +180,17 @@ class BarrioPremiumBackground extends StatelessWidget {
   /// Where to position the primary bloom. Defaults to top-right.
   final AlignmentGeometry bloomAlignment;
 
+  /// Peak alpha of the accent bloom. The default is the calm wash used by
+  /// the plain destination scaffold; the photo-backed screens run a little
+  /// stronger (0.16) so the accent still reads through the cream veil.
+  final double accentOpacity;
+
   const BarrioPremiumBackground({
     super.key,
-    required this.child,
+    this.child,
     this.accentColor = BarrioColors.tealWarm,
     this.bloomAlignment = const Alignment(0.75, -0.9),
+    this.accentOpacity = 0.10,
   });
 
   @override
@@ -164,7 +207,7 @@ class BarrioPremiumBackground extends StatelessWidget {
                   radius: 1.05,
                   colors: [
                     // Soft, low-alpha wash on cream — calm, not saturated.
-                    accentColor.withValues(alpha: 0.10),
+                    accentColor.withValues(alpha: accentOpacity),
                     Colors.transparent,
                   ],
                 ),
@@ -172,7 +215,9 @@ class BarrioPremiumBackground extends StatelessWidget {
             ),
           ),
         ),
-        // Complementary navy bloom — opposite corner, subtle depth
+        // Complementary navy bloom — opposite corner, subtle depth.
+        // The one definition: five destination screens used to copy this
+        // gradient verbatim.
         Positioned.fill(
           child: IgnorePointer(
             child: Container(
@@ -181,7 +226,7 @@ class BarrioPremiumBackground extends StatelessWidget {
                   center: Alignment(-0.85, 0.95),
                   radius: 0.75,
                   colors: [
-                    Color(0x1A1A2456),
+                    BarrioColors.navyBloom,
                     Colors.transparent,
                   ],
                 ),
@@ -189,7 +234,7 @@ class BarrioPremiumBackground extends StatelessWidget {
             ),
           ),
         ),
-        child,
+        if (child != null) child!,
       ],
     );
   }
@@ -309,13 +354,10 @@ class BarrioDestinationScaffold extends StatelessWidget {
                         border: Border.all(
                           color: accentColor.withValues(alpha: 0.35),
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: accentColor.withValues(alpha: 0.20),
-                            blurRadius: 14,
-                            spreadRadius: 0,
-                          ),
-                        ],
+                        // The house neutral lift. This file's own doc
+                        // comment forbids colored glow; the icon circle
+                        // used to ship one anyway.
+                        boxShadow: barrioSoftShadow(y: 4, blur: 14, opacity: 0.10),
                       ),
                       child: Icon(icon, color: accentColor, size: 24),
                     ),
@@ -402,8 +444,8 @@ class BarrioDestinationScaffold extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0x2216243B)),
+        borderRadius: BorderRadius.circular(BarrioRadii.chip),
+        border: Border.all(color: BarrioColors.hairline),
       ),
       child: Text(
         label,

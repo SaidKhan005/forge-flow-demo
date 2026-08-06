@@ -229,7 +229,7 @@ class _FlashcardFront extends StatelessWidget {
       image: true,
       label: card.imageCaption ?? 'Photo: ${card.term}',
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(BarrioRadii.card),
         child: LayoutBuilder(
           builder: (context, constraints) => Image.asset(
             imagePath,
@@ -363,7 +363,7 @@ class _RepeatChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(BarrioRadii.chip),
         border: Border.all(color: accent.withValues(alpha: 0.45)),
       ),
       child: Text(

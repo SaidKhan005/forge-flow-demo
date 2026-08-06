@@ -250,11 +250,11 @@ class _ChapterRailTile extends StatelessWidget {
       color: isActive
           ? activeAccent.withValues(alpha: 0.15)
           : const Color(0x0A16243B),
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(BarrioRadii.chip),
       border: Border.all(
         color: isActive
             ? activeAccent.withValues(alpha: 0.50)
-            : const Color(0x2216243B),
+            : BarrioColors.hairline,
       ),
       boxShadow: isActive
           ? [
@@ -301,7 +301,7 @@ class _ChapterRailTile extends StatelessWidget {
                     if (isCompleted) ...[
                       const SizedBox(width: 4),
                       const Icon(Icons.check_circle,
-                          size: 12, color: Color(0xFF2ECC71)),
+                          size: 12, color: BarrioColors.success),
                     ],
                   ],
                 ),

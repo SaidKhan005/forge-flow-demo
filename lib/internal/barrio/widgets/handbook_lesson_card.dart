@@ -103,7 +103,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
       case HandbookUnitType.explainer:
         return const Color(0x1F16243B); // hairline navy on the white card
       case HandbookUnitType.decision:
-        return const Color(0xFF2ECC71).withValues(alpha: 0.35);
+        return BarrioColors.success.withValues(alpha: 0.35);
       case HandbookUnitType.checkpoint:
         return BarrioColors.warning.withValues(alpha: 0.35);
     }
@@ -412,7 +412,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
   Color get _badgeColor {
     return switch (widget.unit.type) {
       HandbookUnitType.explainer  => BarrioColors.tealWarm,
-      HandbookUnitType.decision   => const Color(0xFF2ECC71),
+      HandbookUnitType.decision   => BarrioColors.success,
       HandbookUnitType.checkpoint => BarrioColors.warning,
     };
   }
@@ -460,22 +460,19 @@ class _TypeBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final (defaultLabel, color) = switch (type) {
       HandbookUnitType.explainer  => ('LEARN',  BarrioColors.tealWarm),
-      HandbookUnitType.decision   => ('DECIDE', const Color(0xFF2ECC71)),
+      HandbookUnitType.decision   => ('DECIDE', BarrioColors.success),
       HandbookUnitType.checkpoint => ('CHECK',  BarrioColors.warning),
     };
     final label = badgeHint ?? defaultLabel;
     // Solid accent chip with a luminance-picked foreground so the label
     // stays legible on the white card (the old pale-tint-on-dark badge
     // relied on bright accent text against a dark surface).
-    final onColor =
-        ThemeData.estimateBrightnessForColor(color) == Brightness.dark
-            ? Colors.white
-            : const Color(0xFF10151F);
+    final onColor = barrioOnAccent(color);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(BarrioRadii.chip),
         boxShadow: [
           BoxShadow(
             color: color.withValues(alpha: 0.28),
@@ -522,8 +519,8 @@ class _OptionTile extends StatelessWidget {
   (Color, Color) _stateColors(bool showCorrect, bool showWrong) {
     if (showCorrect) {
       return (
-        const Color(0xFF2ECC71).withValues(alpha: 0.55),
-        const Color(0xFF2ECC71).withValues(alpha: 0.10),
+        BarrioColors.success.withValues(alpha: 0.55),
+        BarrioColors.success.withValues(alpha: 0.10),
       );
     }
     if (showWrong) {
@@ -532,7 +529,7 @@ class _OptionTile extends StatelessWidget {
         BarrioColors.error.withValues(alpha: 0.10),
       );
     }
-    return (const Color(0x2216243B), const Color(0x0A16243B));
+    return (BarrioColors.hairline, const Color(0x0A16243B));
   }
 
   /// Merged screen-reader label (rec #12): one button per option, with
@@ -573,7 +570,7 @@ class _OptionTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             color: bgColor,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(BarrioRadii.chip),
             border: Border.all(color: borderColor),
           ),
           child: Column(
@@ -602,11 +599,11 @@ class _OptionTile extends StatelessWidget {
                   if (showCorrect) ...[
                     if (showSparkle)
                       CorrectAnswerSparkle(
-                        accentColor: const Color(0xFF2ECC71),
+                        accentColor: BarrioColors.success,
                         onComplete: onSparkleComplete,
                       ),
                     const Icon(Icons.check_circle,
-                        size: 18, color: Color(0xFF2ECC71)),
+                        size: 18, color: BarrioColors.success),
                   ],
                   if (showWrong)
                     const Icon(Icons.cancel, size: 18, color: BarrioColors.error),
@@ -1683,7 +1680,7 @@ class _UnitImage extends StatelessWidget {
               ],
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(BarrioRadii.chip),
               child: LayoutBuilder(
                 builder: (context, constraints) => Image.asset(
                   image.assetPath,
@@ -1868,7 +1865,7 @@ class _UnitPhotoSlidesState extends State<_UnitPhotoSlides> {
               initialIndex: _index,
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(BarrioRadii.chip),
               child: AnimatedSwitcher(
                 duration: swapDuration,
                 child: _buildSlideImage(context),
@@ -1957,7 +1954,7 @@ class _SlideChevron extends StatelessWidget {
             // The viewer close-chip recipe: soft cream on a hairline
             // navy border, so it stays legible over any photograph.
             color: BarrioColors.shellMid.withValues(alpha: 0.82),
-            border: Border.all(color: const Color(0x2216243B)),
+            border: Border.all(color: BarrioColors.hairline),
           ),
           child: Icon(
             forward ? Icons.chevron_right_rounded : Icons.chevron_left_rounded,
@@ -2005,7 +2002,7 @@ class _SlidePositionStrip extends StatelessWidget {
                         ? accent.withValues(alpha: 0.9)
                         // Hairline navy on the white card, the same
                         // resting weight as the card's own border.
-                        : const Color(0x2216243B),
+                        : BarrioColors.hairline,
                   ),
                 ),
             ],

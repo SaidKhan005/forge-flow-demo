@@ -1,5 +1,7 @@
 import 'dart:ui';
 
+import '../widgets/barrio_destination_scaffold.dart';
+
 /// A single entry on the El Podio scoreboard.
 ///
 /// Phase-9-ready: [userId] will map to a real authenticated user once
@@ -53,7 +55,9 @@ const List<PodioEntry> podioDemo = [
     userId: 'demo_emily',
     displayName: 'Emily',
     initials: 'E',
-    avatarColor: Color(0xFF2ECC71), // emerald green
+    // Identity colour, not a status: the module's named emerald, so this
+    // is not a second unnamed copy of BarrioColors.success (same value).
+    avatarColor: BarrioColors.accentPlaybook, // emerald green
     score: 715,
     weeklyChange: 32,
   ),

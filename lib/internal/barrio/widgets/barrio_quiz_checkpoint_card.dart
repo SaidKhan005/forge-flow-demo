@@ -266,13 +266,16 @@ class _QuickCheckBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Solid amber chip with a near-black label so it stays legible on
-    // the white card (was a pale-tint badge tuned for the dark shell).
+    // Solid amber chip with a luminance-picked label so it stays legible on
+    // the white card (was a pale-tint badge tuned for the dark shell). The
+    // ink is derived from _kQuizAccent rather than hardcoded to the dark
+    // side, so re-tinting the quiz accent can never strand the label at
+    // near-black on near-black.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: _kQuizAccent,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(BarrioRadii.chip),
         boxShadow: [
           BoxShadow(
             color: _kQuizAccent.withValues(alpha: 0.28),
@@ -287,7 +290,7 @@ class _QuickCheckBadge extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w700,
           letterSpacing: 1.0,
-          color: const Color(0xFF10151F),
+          color: barrioOnAccent(_kQuizAccent),
         ),
       ),
     );
@@ -345,7 +348,7 @@ class _QuizOptionRow extends StatelessWidget {
       borderColor = _kWrongRed.withValues(alpha: 0.40);
       bgColor = _kWrongRed.withValues(alpha: 0.07);
     } else {
-      borderColor = const Color(0x2216243B);
+      borderColor = BarrioColors.hairline;
       bgColor = const Color(0x0A16243B);
     }
     final labelColor = revealed && !isCorrect && !isPicked
@@ -370,7 +373,7 @@ class _QuizOptionRow extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: bgColor,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(BarrioRadii.chip),
               border: Border.all(color: borderColor),
             ),
             child: Row(
@@ -430,7 +433,7 @@ class _WhyLine extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: _kCorrectGreen.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(BarrioRadii.chip),
         border: Border.all(color: _kCorrectGreen.withValues(alpha: 0.22)),
       ),
       child: Text(

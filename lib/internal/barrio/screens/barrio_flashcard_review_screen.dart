@@ -295,10 +295,7 @@ class _ReviewButton extends StatelessWidget {
     // Light theme: the primary action is a solid accent fill with a
     // luminance-picked label (legible on any manual accent); the
     // secondary stays a quiet accent-outline with a slate label.
-    final onAccent =
-        ThemeData.estimateBrightnessForColor(accent) == Brightness.dark
-            ? Colors.white
-            : const Color(0xFF10151F);
+    final onAccent = barrioOnAccent(accent);
     // Accessibility (rec #12): a proper button role; the visible text
     // merges in as the label.
     return MergeSemantics(
@@ -311,7 +308,7 @@ class _ReviewButton extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 14),
             decoration: BoxDecoration(
               color: filled ? accent : Colors.transparent,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(BarrioRadii.card),
               border: filled
                   ? null
                   : Border.all(color: accent.withValues(alpha: 0.40)),

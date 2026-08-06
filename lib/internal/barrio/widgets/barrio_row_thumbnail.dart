@@ -77,7 +77,7 @@ class BarrioRowThumbnail extends StatelessWidget {
     final cacheWidth = (size * dpr).round();
     return ExcludeSemantics(
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(BarrioRadii.chip),
         child: Image.asset(
           assetPath,
           width: size,
