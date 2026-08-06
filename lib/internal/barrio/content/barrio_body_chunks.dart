@@ -11,31 +11,35 @@
 // paints on the wrong words. One parser, consumed by both sides, makes
 // that impossible.
 //
-// SOURCE OF TRUTH, TODAY. Until Slice B swaps the card over to this
-// helper, the private parse inside `widgets/handbook_lesson_card.dart`
-// is still the source of truth and this file mirrors it exactly:
+// SOURCE OF TRUTH. Slice B (2026-08-06) deleted the lesson card's
+// private parse: `_BlockKind`, `_classifyPara`, `_BodyBlock`,
+// `_parseBlocks`, and the `_numberedItem` pattern all lived in
+// `widgets/handbook_lesson_card.dart` and all now live here. The card
+// renders straight off [barrioBodyBlocks], so there is exactly one
+// parse in the codebase and anchor space cannot drift from render
+// space by construction.
 //
-//   * paragraph split          `_UnitBody.build`      card line 723
-//   * paragraph classification `_classifyPara`        card line 621
-//   * numbered-item pattern    `_numberedItem`        card line 619
-//   * same-kind run grouping   `_parseBlocks`         card line 637
-//   * chunk emission order     `_UnitBody._renderRun` card line 759
-//                              `_renderBlock`         card line 775
-//   * bullet marker strip      `_renderBlock` bullet  card line 782
-//   * numbered marker strip    `_numberedRow`         card line 825
-//   * table cell split + trim  `_table` / `_tableRow` card lines 849, 879
+// `test/barrio_body_chunks_test.dart` still holds the two together
+// against real shipped manuals: it renders a card and asserts the
+// strings this file produces are byte-identical, in order, to the
+// strings the card actually put on screen. That test is the reason the
+// rules below are stated as rules and not as "whatever the card does".
 //
-// `test/barrio_body_chunks_test.dart` locks the two together against
-// real shipped manuals: it renders a card and asserts the strings this
-// file produces are byte-identical, in order, to the strings the card
-// actually put on screen. Slice B deletes the card's private parse and
-// calls `chunksForBody` instead, at which point this file becomes the
-// single source of truth on its own.
+// The rules, all of which the card used to own:
+//
+//   * paragraphs split on a blank line, verbatim and untrimmed,
+//   * a paragraph starting '- ' (after left-trim) is a bullet; the
+//     marker is dropped because the card draws the dot,
+//   * a paragraph starting 'N. ' (after left-trim) is a numbered step;
+//     the marker is dropped into its own `Text`,
+//   * a paragraph containing ' | ' is a table row, split on ' | ' with
+//     every cell trimmed,
+//   * consecutive same-kind list or table paragraphs merge into one
+//     block so they render with real structure and even spacing.
 //
 // Pictures do not affect chunk order: an imaged card renders every
-// picture ABOVE the body and then renders the full body as one run
-// (card lines 740 to 754), so the chunk sequence is a pure function of
-// the body string.
+// picture ABOVE the body and then renders the full body as one run, so
+// the chunk sequence is a pure function of the body string.
 
 /// What the reader sees for one chunk of a card body.
 ///
@@ -69,93 +73,159 @@ class BarrioBodyChunk {
   });
 }
 
-/// Every rendered chunk of [body], in reading order.
-///
-/// Mirrors the lesson card's parse exactly (see the file header for the
-/// rule-by-rule citations). The card has a fast path for a body that is
-/// one lone prose block (card line 761); it emits the same single chunk
-/// this general loop does, so no special case is needed here.
-List<BarrioBodyChunk> chunksForBody(String body) {
-  final chunks = <BarrioBodyChunk>[];
+/// One typed block of a card body: a paragraph, a bullet list, a run of
+/// numbered steps, or a table. The card lays each kind out differently
+/// (a dot beside a bullet, a mono marker beside a step, ruled columns
+/// for a table), so the block shape has to survive the parse.
+enum BarrioBodyBlockKind { prose, bullet, numbered, table }
 
-  void emit(BarrioBodyChunkKind kind, String text) {
-    chunks.add(
-      BarrioBodyChunk(index: chunks.length, kind: kind, text: text),
-    );
-  }
+/// One laid-out row of a block.
+///
+/// A prose block has one row of one cell. A bullet or numbered block has
+/// one row per item, each of one cell. A table block has one row per
+/// source line, with one cell per column.
+class BarrioBodyRow {
+  /// The marker the card draws BESIDE this row, outside the selectable
+  /// chunk: 'N.' for a numbered step (or the fallback bullet glyph when
+  /// a step in a numbered run carries no marker of its own). Null for
+  /// every other kind.
+  final String? marker;
+
+  /// The rendered chunks of this row, left to right.
+  final List<BarrioBodyChunk> cells;
+
+  const BarrioBodyRow({required this.cells, this.marker});
+}
+
+/// One typed block of a card body, with its rows already split into
+/// rendered chunks.
+class BarrioBodyBlock {
+  final BarrioBodyBlockKind kind;
+  final List<BarrioBodyRow> rows;
+
+  const BarrioBodyBlock({required this.kind, required this.rows});
+}
+
+/// The card body of [body], parsed into the typed blocks the lesson card
+/// renders, with every chunk already numbered in reading order.
+///
+/// This is the single parse in the codebase: the lesson card renders
+/// straight off this, and highlight anchors address the chunks it
+/// numbers, so the two can never disagree.
+List<BarrioBodyBlock> barrioBodyBlocks(String body) {
+  final blocks = <BarrioBodyBlock>[];
+  var nextIndex = 0;
+
+  BarrioBodyChunk chunk(BarrioBodyChunkKind kind, String text) =>
+      BarrioBodyChunk(index: nextIndex++, kind: kind, text: text);
+
+  BarrioBodyRow single(BarrioBodyChunkKind kind, String text,
+          {String? marker}) =>
+      BarrioBodyRow(marker: marker, cells: <BarrioBodyChunk>[chunk(kind, text)]);
 
   for (final block in _parseBlocks(body.split('\n\n'))) {
     switch (block.kind) {
-      case _BlockKind.prose:
-        // Card line 762 / 778: the paragraph renders verbatim, untrimmed.
-        emit(BarrioBodyChunkKind.prose, block.items.first);
-      case _BlockKind.bullet:
+      case BarrioBodyBlockKind.prose:
+        // The paragraph renders verbatim, untrimmed.
+        blocks.add(BarrioBodyBlock(
+          kind: block.kind,
+          rows: <BarrioBodyRow>[
+            single(BarrioBodyChunkKind.prose, block.items.first),
+          ],
+        ));
+      case BarrioBodyBlockKind.bullet:
+        blocks.add(BarrioBodyBlock(
+          kind: block.kind,
+          rows: <BarrioBodyRow>[
+            // The leading '- ' is dropped: the card draws the dot.
+            for (final item in block.items)
+              single(
+                BarrioBodyChunkKind.bullet,
+                item.trimLeft().substring(2),
+              ),
+          ],
+        ));
+      case BarrioBodyBlockKind.numbered:
+        final rows = <BarrioBodyRow>[];
         for (final item in block.items) {
-          // Card line 782: the leading '- ' is dropped (the dot is drawn).
-          emit(BarrioBodyChunkKind.bullet, item.trimLeft().substring(2));
-        }
-      case _BlockKind.numbered:
-        for (final item in block.items) {
-          // Card lines 826 to 828: the 'N. ' marker is dropped into its
-          // own Text; an unmatched row renders its trimLeft'd self.
+          // The 'N. ' marker is dropped into its own Text; a row in a
+          // numbered run that carries no marker keeps its whole
+          // left-trimmed self as the chunk and gets the bullet glyph.
           final trimmed = item.trimLeft();
           final match = barrioNumberedItemPattern.firstMatch(trimmed);
-          emit(
+          rows.add(single(
             BarrioBodyChunkKind.numbered,
             match != null ? match.group(2)! : trimmed,
-          );
+            marker: match != null ? '${match.group(1)}.' : '•',
+          ));
         }
-      case _BlockKind.table:
-        for (final row in block.items) {
-          // Card lines 852 and 879: split on ' | ', each cell trimmed.
-          for (final cell in row.split(' | ')) {
-            emit(BarrioBodyChunkKind.tableCell, cell.trim());
-          }
-        }
+        blocks.add(BarrioBodyBlock(kind: block.kind, rows: rows));
+      case BarrioBodyBlockKind.table:
+        blocks.add(BarrioBodyBlock(
+          kind: block.kind,
+          rows: <BarrioBodyRow>[
+            // Each row splits on ' | ' and every cell is trimmed.
+            for (final row in block.items)
+              BarrioBodyRow(
+                cells: <BarrioBodyChunk>[
+                  for (final cell in row.split(' | '))
+                    chunk(BarrioBodyChunkKind.tableCell, cell.trim()),
+                ],
+              ),
+          ],
+        ));
     }
   }
 
-  return chunks;
+  return blocks;
 }
 
+/// Every rendered chunk of [body], in reading order.
+///
+/// The flattening of [barrioBodyBlocks]: same parse, same numbering,
+/// without the layout shape. Anchor and validation code reads this;
+/// the renderer reads the blocks.
+List<BarrioBodyChunk> chunksForBody(String body) => <BarrioBodyChunk>[
+      for (final block in barrioBodyBlocks(body))
+        for (final row in block.rows) ...row.cells,
+    ];
+
 /// A numbered list row: 'N. ' plus its words. Group 1 is the number,
-/// group 2 the rendered words. Mirrors `_numberedItem`, card line 619.
+/// group 2 the rendered words.
 final RegExp barrioNumberedItemPattern =
     RegExp(r'^(\d+)\.\s+(.*)$', dotAll: true);
 
-/// The four block kinds the card renders. Mirrors `_BlockKind`,
-/// card line 617.
-enum _BlockKind { prose, bullet, numbered, table }
-
-/// One parsed block: prose carries a single paragraph, list and table
-/// blocks carry one entry per source paragraph. Mirrors `_BodyBlock`,
-/// card line 629.
-class _BodyBlock {
-  final _BlockKind kind;
+/// One parsed block before its rows are split into chunks: prose carries
+/// a single paragraph, list and table blocks carry one entry per source
+/// paragraph.
+class _RawBlock {
+  final BarrioBodyBlockKind kind;
   final List<String> items;
-  const _BodyBlock(this.kind, this.items);
+  const _RawBlock(this.kind, this.items);
 }
 
-/// Classifies one paragraph. Mirrors `_classifyPara`, card line 621:
-/// the bullet and numbered tests read the left-trimmed paragraph, the
-/// table test reads the paragraph as written.
-_BlockKind _classifyPara(String para) {
+/// Classifies one paragraph. The bullet and numbered tests read the
+/// left-trimmed paragraph; the table test reads the paragraph as
+/// written.
+BarrioBodyBlockKind _classifyPara(String para) {
   final t = para.trimLeft();
-  if (t.startsWith('- ')) return _BlockKind.bullet;
-  if (barrioNumberedItemPattern.hasMatch(t)) return _BlockKind.numbered;
-  if (para.contains(' | ')) return _BlockKind.table;
-  return _BlockKind.prose;
+  if (t.startsWith('- ')) return BarrioBodyBlockKind.bullet;
+  if (barrioNumberedItemPattern.hasMatch(t)) {
+    return BarrioBodyBlockKind.numbered;
+  }
+  if (para.contains(' | ')) return BarrioBodyBlockKind.table;
+  return BarrioBodyBlockKind.prose;
 }
 
 /// Groups paragraphs into ordered blocks, merging runs of same-kind
-/// list/table paragraphs. Mirrors `_parseBlocks`, card line 637.
-List<_BodyBlock> _parseBlocks(List<String> paras) {
-  final blocks = <_BodyBlock>[];
+/// list/table paragraphs.
+List<_RawBlock> _parseBlocks(List<String> paras) {
+  final blocks = <_RawBlock>[];
   var i = 0;
   while (i < paras.length) {
     final kind = _classifyPara(paras[i]);
-    if (kind == _BlockKind.prose) {
-      blocks.add(_BodyBlock(kind, [paras[i]]));
+    if (kind == BarrioBodyBlockKind.prose) {
+      blocks.add(_RawBlock(kind, [paras[i]]));
       i++;
       continue;
     }
@@ -164,7 +234,7 @@ List<_BodyBlock> _parseBlocks(List<String> paras) {
       items.add(paras[i]);
       i++;
     }
-    blocks.add(_BodyBlock(kind, items));
+    blocks.add(_RawBlock(kind, items));
   }
   return blocks;
 }
