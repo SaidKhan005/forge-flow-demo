@@ -7,7 +7,9 @@
 // `kBarrioTrainingDocs` (doc title, chapter titles, unit titles, unit
 // bodies) and answers substring queries that are case-insensitive AND
 // Latin-diacritic-insensitive ('jalapeno' matches 'jalapeño' and the
-// other way round).
+// other way round). The one package import is `package:meta`, for the
+// two `@visibleForTesting` seams below; it is annotations only, pure
+// Dart, and pulls in no framework.
 //
 // Offset-mapping approach (documented per the Wave B contract): the
 // fold in [BarrioTrainingSearch.fold] maps every UTF-16 code unit to
