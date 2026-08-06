@@ -11,6 +11,12 @@ is wrong, generic, or has been replaced by a licensed photograph, the
 marker is still in the markdown, so the generator would keep emitting it
 forever. This manifest is where that decision is recorded.
 
+Not to be confused with `tool/barrio_training_extracted_assets.json`,
+which answers a different question: which files in a `<doc_id>/` folder
+the extractor produced, and may therefore delete. That one governs the
+EXTRACTOR's writes; this one governs what the GENERATOR emits from the
+markers that survive.
+
 ## Why this is separate from the diagram manifest
 
 `tool/barrio_training_diagrams_manifest.json` already understands

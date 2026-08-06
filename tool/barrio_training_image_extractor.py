@@ -6,10 +6,51 @@ Usage (from the repo root):
 
 The source drop folder is untracked and normally lives only in the main
 checkout (e.g. `C:\\Git Local Repos\\forge_flow_demo\\docs\\training`), so the
-path is always passed explicitly. The tool is idempotent: it clears the
-per-doc asset folders and strips previously inserted training image markers
-from the markdown before re-extracting, so re-runs converge to the same
-output.
+path is always passed explicitly.
+
+OWNERSHIP (read this before changing how files are cleared)
+-----------------------------------------------------------
+This tool is NOT the only writer of `assets/internal/barrio/training/
+<doc_id>/`. The 2026-08-02 real-images pass dropped licensed photographs
+into those same per-doc folders, numbered after the extracted ones, and
+curation has since added `![Photo: <credit>](...)` and `![Diagram: ...]`
+captions to markers in the knowledge-graph markdown. Those captions are
+shipping content: `tool/barrio_training_content_generator.py` emits the
+alt text as the `caption:` on each `HandbookUnitImage`, so a lost
+`Photo:` line is a lost licence attribution.
+
+The original "clear the folder, strip every marker, re-extract" contract
+assumed a single writer. It no longer holds, and running it destroyed 127
+tracked assets and 8 markdown files' markers on a clean checkout. So
+ownership is now explicit:
+
+* `tool/barrio_training_extracted_assets.json` records, per doc_id, the
+  exact file names this tool produced. Only those files may be deleted,
+  and only markers pointing at them may be stripped or moved. Everything
+  else in the folder belongs to curation and is left alone.
+* A file whose bytes on disk already equal this run's output is adopted
+  as extractor-owned (that is how the manifest was seeded, and it means
+  a manifest-less checkout still converges instead of hard-stopping).
+* Writing DIFFERENT bytes over a file this tool does not own is a hard
+  stop, not a silent overwrite. That is the case where a source doc grew
+  a picture and the new reading-order number collides with a curated
+  photograph; renumbering licensed content is a human decision.
+* Markers that already exist for a surviving asset are preserved exactly
+  where they are, with their alt text. Placement is derived only for
+  assets that have no marker yet. Reviewers hand-corrected some anchors
+  (`drink_specs/10.webp`, `11.webp`) and re-deriving would silently undo
+  that, the same way PR #1534 lost 44 curated `"replace": true` flags.
+
+The result is that a re-run over an unchanged source drop is a genuine
+no-op: no file is rewritten, and `git status --porcelain` stays empty.
+`--check` proves it without writing anything, and
+`tool/barrio_training_image_extractor_test.py` pins the hazard with
+synthetic fixtures so it does not need the untracked PDFs.
+
+Longer term the cleanest shape is a separate `<doc_id>_extracted/`
+namespace so the two writers cannot collide by numbering at all; the
+manifest is the smaller fix that does not have to renumber and re-point
+every shipped asset, manifest entry, and generated card.
 
 What it does per source document (operator decisions, 2026-07-11 plan
 `docs/phases/barrio_training_media_search_v1/barrio_training_media_search_v1_plan.md`):
@@ -46,6 +87,7 @@ stdout and optionally to --report; it goes into the Wave A PR body.
 import argparse
 import hashlib
 import io
+import json
 import os
 import re
 import sys
@@ -56,6 +98,9 @@ from PIL import Image, ImageStat
 
 KG = 'docs/Knowledge_graph_docs'
 ASSET_ROOT = 'assets/internal/barrio/training'
+# doc_id -> [file name], the files this tool produced and may therefore
+# delete. See the ownership section of the module docstring.
+MANIFEST_PATH = 'tool/barrio_training_extracted_assets.json'
 
 MIN_DIMENSION_PX = 100
 MIN_RAW_BYTES = 10 * 1024
@@ -65,7 +110,45 @@ FULL_PAGE_AREA_RATIO = 0.90    # bbox covering >= 90% of the page = flag
 WEBP_QUALITY = 80
 MAX_LONG_EDGE = 1200
 
-MARKER_RE = re.compile(r'^!\[[^\]]*\]\(assets/internal/barrio/training/[^)]+\)\s*$')
+# Group 1 = alt text (curation's caption), group 2 = asset path. Both are
+# needed: the path decides ownership, the alt text is shipping content.
+MARKER_RE = re.compile(
+    r'^!\[([^\]]*)\]\((assets/internal/barrio/training/[^)]+)\)\s*$')
+
+
+def load_manifest():
+    if not os.path.exists(MANIFEST_PATH):
+        return {}
+    with open(MANIFEST_PATH, encoding='utf-8') as f:
+        return json.load(f)
+
+
+def render_manifest(manifest):
+    """Stable JSON text for the ownership manifest, LF-normalized.
+
+    Comparison is always against LF because `core.autocrlf` is true in this
+    repo: the manifest is committed with LF but lands CRLF in a Windows
+    working tree, and comparing raw bytes would then report a change on
+    every fresh clone and rewrite the file just to flip its line endings.
+    """
+    body = json.dumps(manifest, indent=2, sort_keys=True, ensure_ascii=False)
+    return body + '\n'
+
+
+def read_text_lf(path):
+    """File text with line endings normalized to LF, or None if absent."""
+    data = read_file(path)
+    if data is None:
+        return None
+    return data.decode('utf-8').replace('\r\n', '\n')
+
+
+def write_manifest(text, existing):
+    """Write the manifest, keeping whatever line endings it already had."""
+    if existing is not None and b'\r\n' in existing:
+        text = text.replace('\n', '\r\n')
+    with open(MANIFEST_PATH, 'w', encoding='utf-8', newline='') as f:
+        f.write(text)
 
 # Reviewer-pass exclusions (operator decision: content pictures only; the
 # automated filters plus a reviewer pass over the placement report decide).
@@ -168,28 +251,65 @@ def norm_words(text):
 
 
 class MdDoc:
-    """Blank-line-separated block model over a knowledge-graph markdown file."""
+    """Blank-line-separated block model over a knowledge-graph markdown file.
+
+    The file is held EXACTLY as read (`self.lines`, plus its line ending and
+    final-newline state) so an unchanged run re-renders byte-for-byte. Image
+    markers are never rewritten in place: they are indexed by asset path,
+    preserved where they sit, and only removed when this tool owns the asset
+    AND the asset no longer exists.
+
+    The block model that anchoring runs over is a VIEW with every marker line
+    filtered out, so a marker never becomes an anchor and never changes the
+    word offsets a placement is derived from. `view_to_orig` maps a view line
+    index back to the real file line index.
+    """
 
     def __init__(self, path):
         self.path = path
-        raw = open(path, 'rb').read()
-        self.crlf = b'\r\n' in raw
-        text = raw.decode('utf-8').replace('\r\n', '\n')
-        # Idempotency: strip previously inserted training image markers.
-        lines = [ln for ln in text.split('\n') if not MARKER_RE.match(ln)]
-        text = re.sub(r'\n{3,}', '\n\n', '\n'.join(lines))
+        self.raw = open(path, 'rb').read()
+        self.crlf = b'\r\n' in self.raw
+        text = self.raw.decode('utf-8').replace('\r\n', '\n')
+        self.final_newline = text.endswith('\n')
         self.lines = text.split('\n')
+        if self.final_newline:
+            self.lines.pop()  # drop the empty artifact of the trailing newline
+
+        # asset path -> first file line index, and the alt text curation gave
+        # it. `marker_all` keeps every occurrence so removing an asset takes
+        # all of its markers, not just the first.
+        self.marker_line = {}
+        self.marker_alt = {}
+        self.marker_all = {}
+        marker_lines = set()
+        for i, ln in enumerate(self.lines):
+            m = MARKER_RE.match(ln)
+            if not m:
+                continue
+            marker_lines.add(i)
+            asset = m.group(2)
+            self.marker_line.setdefault(asset, i)
+            self.marker_alt.setdefault(asset, m.group(1))
+            self.marker_all.setdefault(asset, []).append(i)
+
+        self.view_to_orig = [i for i in range(len(self.lines)) if i not in marker_lines]
+        self.view_lines = [self.lines[i] for i in self.view_to_orig]
         self._build_blocks()
-        # insertions: line_index (insert AFTER this 0-based line) -> [asset]
+        # insertions: file line index (insert AFTER it) -> [asset]
         self.insertions = {}
+        # file line indices to drop (markers for owned assets that are gone)
+        self.drops = set()
 
     def _build_blocks(self):
-        """blocks: list of dicts(start, end, text, words, anchorable)."""
+        """blocks: list of dicts(start, end, text, words, anchorable).
+
+        Indices are VIEW indices (see the class docstring).
+        """
         self.blocks = []
         in_front = False
         in_toc = False
         start = None
-        for i, ln in enumerate(self.lines + ['']):
+        for i, ln in enumerate(self.view_lines + ['']):
             if i == 0 and ln.strip() == '---':
                 in_front = True
                 continue
@@ -206,11 +326,11 @@ class MdDoc:
                     start = i
             else:
                 if start is not None:
-                    body = '\n'.join(self.lines[start:i])
+                    body = '\n'.join(self.view_lines[start:i])
                     self.blocks.append(dict(
                         start=start, end=i - 1, text=body,
                         words=norm_words(body),
-                        anchorable=not (in_toc or re.match(r'^#{1,6} ', self.lines[start])),
+                        anchorable=not (in_toc or re.match(r'^#{1,6} ', self.view_lines[start])),
                     ))
                     start = None
         # word offsets for cursor ordering
@@ -252,53 +372,90 @@ class MdDoc:
         return None
 
     def _line_for_word(self, block, word_idx):
-        """0-based file line index containing the word_idx-th word of block."""
+        """0-based VIEW line index containing the word_idx-th word of block."""
         count = 0
         for li in range(block['start'], block['end'] + 1):
-            n = len(norm_words(self.lines[li]))
+            n = len(norm_words(self.view_lines[li]))
             if word_idx < count + n:
                 return li
             count += n
         return block['end']
 
     def insert_after_block(self, block_idx, asset):
-        self.insertions.setdefault(self.blocks[block_idx]['end'], []).append(asset)
+        self.insert_after_line(self.blocks[block_idx]['end'], asset)
 
-    def insert_after_line(self, line_idx, asset):
-        self.insertions.setdefault(line_idx, []).append(asset)
+    def insert_after_line(self, view_idx, asset):
+        """Schedule `asset`'s marker after the file line behind `view_idx`."""
+        self.insertions.setdefault(self.view_to_orig[view_idx], []).append(asset)
 
     def block_is_bullets(self, block_idx):
         b = self.blocks[block_idx]
         bullet_lines = [li for li in range(b['start'], b['end'] + 1)
-                        if re.match(r'^\s*- ', self.lines[li])]
+                        if re.match(r'^\s*- ', self.view_lines[li])]
         return len(bullet_lines) > 1
 
     def section_end_line(self, block_idx):
-        """Last content line of the ##/### section containing block_idx."""
+        """Last content VIEW line of the ##/### section containing block_idx."""
         for b in self.blocks[block_idx + 1:]:
-            if re.match(r'^#{1,3} ', self.lines[b['start']]):
+            if re.match(r'^#{1,3} ', self.view_lines[b['start']]):
                 return b['start'] - 1 if b['start'] > 0 else b['end']
         return self.blocks[-1]['end']
 
-    def last_content_line_before(self, line_idx):
-        for li in range(line_idx, -1, -1):
-            if self.lines[li].strip():
+    def last_content_line_before(self, view_idx):
+        for li in range(view_idx, -1, -1):
+            if self.view_lines[li].strip():
                 return li
-        return line_idx
+        return view_idx
 
-    def write(self):
+    def block_at_file_line(self, orig_idx):
+        """Block index whose view lines cover `orig_idx`, else the next one.
+
+        Lets a preserved marker still advance the placement cursor, so a
+        picture added to the middle of a source doc anchors after the ones
+        curation already positioned rather than jumping back up the file.
+        """
+        for bi, b in enumerate(self.blocks):
+            if self.view_to_orig[b['end']] >= orig_idx:
+                return bi
+        return len(self.blocks) - 1 if self.blocks else 0
+
+    def file_line(self, view_idx):
+        """1-based file line number for a view index, for report messages."""
+        if not self.view_to_orig:
+            return 1
+        view_idx = max(0, min(view_idx, len(self.view_to_orig) - 1))
+        return self.view_to_orig[view_idx] + 1
+
+    def drop_marker(self, asset):
+        """Remove the marker for an owned asset that no longer exists.
+
+        The blank line the marker was inserted with goes too, so dropping the
+        last picture out of a paragraph does not leave a doubled blank behind.
+        """
+        for i in self.marker_all.get(asset, []):
+            self.drops.add(i)
+            prev_blank = i > 0 and not self.lines[i - 1].strip()
+            nxt = i + 1
+            next_blank = nxt >= len(self.lines) or not self.lines[nxt].strip()
+            if prev_blank and next_blank:
+                self.drops.add(i - 1)
+
+    def render(self):
+        """The file's new bytes. Byte-identical to `self.raw` when idle."""
         out = []
         for i, ln in enumerate(self.lines):
-            out.append(ln)
+            if i not in self.drops:
+                out.append(ln)
             for asset in self.insertions.get(i, []):
-                out.append('')
+                if out and out[-1].strip():
+                    out.append('')
                 out.append(f'![]({asset})')
-        text = re.sub(r'\n{3,}', '\n\n', '\n'.join(out))
-        if not text.endswith('\n'):
+        text = '\n'.join(out)
+        if self.final_newline:
             text += '\n'
-        data = text.replace('\n', '\r\n') if self.crlf else text
-        with open(self.path, 'w', encoding='utf-8', newline='') as f:
-            f.write(data)
+        if self.crlf:
+            text = text.replace('\n', '\r\n')
+        return text.encode('utf-8')
 
 
 def _find_sub(haystack, needle):
@@ -337,15 +494,23 @@ def near_uniform(pil):
     return ImageStat.Stat(g).stddev[0] < NEAR_UNIFORM_STDDEV
 
 
-def encode_webp(pil, out_path):
+def encode_webp(pil):
+    """Encoded WebP bytes.
+
+    In memory rather than straight to disk so a run can compare against what
+    is already on disk: identical bytes mean nothing to write (and, for a file
+    this tool has no manifest entry for yet, mean it is extractor output being
+    adopted rather than a curated photograph about to be clobbered).
+    """
     img = pil
     if img.mode not in ('RGB', 'RGBA'):
         img = img.convert('RGBA' if 'A' in img.mode or img.mode == 'P' else 'RGB')
     if max(img.size) > MAX_LONG_EDGE:
         img = img.copy()
         img.thumbnail((MAX_LONG_EDGE, MAX_LONG_EDGE), Image.LANCZOS)
-    img.save(out_path, 'WEBP', quality=WEBP_QUALITY, method=6)
-    return os.path.getsize(out_path)
+    buf = io.BytesIO()
+    img.save(buf, 'WEBP', quality=WEBP_QUALITY, method=6)
+    return buf.getvalue()
 
 
 # ---------------------------------------------------------------------------
@@ -453,10 +618,26 @@ def anchor_text_candidates(doc, pno, bbox):
     return cands
 
 
+def existing_anchor_note(md, asset):
+    """Report line for a marker that was already in the doc and is kept as-is."""
+    note = f'PRESERVED existing marker at line {md.marker_line[asset] + 1}'
+    alt = md.marker_alt.get(asset)
+    if alt:
+        note += f'; caption "{alt}"'
+    return note
+
+
 def place_pdf_images(doc_id, doc, kept, md, report):
     cursor = 0
-    for n, item in enumerate(kept, start=1):
-        asset = f'{ASSET_ROOT}/{doc_id}/{n:02d}.webp'
+    for item in kept:
+        asset = item['asset']
+        if asset in md.marker_line:
+            # Already placed, possibly hand-corrected by a reviewer and
+            # possibly captioned. Leave it exactly where curation put it.
+            cursor = max(cursor, md.block_at_file_line(md.marker_line[asset]))
+            item['anchor'] = existing_anchor_note(md, asset)
+            report.keep(item, f'p{item["page"] + 1}')
+            continue
         placed = False
         anchor_note = ''
         for cand in anchor_text_candidates(doc, item['page'], item['bbox']):
@@ -466,10 +647,10 @@ def place_pdf_images(doc_id, doc, kept, md, report):
             bi, line_idx, k = hit
             if md.block_is_bullets(bi):
                 md.insert_after_line(line_idx, asset)
-                anchor_note = f'after bullet line {line_idx + 1}'
+                anchor_note = f'after bullet line {md.file_line(line_idx)}'
             else:
                 md.insert_after_block(bi, asset)
-                anchor_note = f'after paragraph at line {md.blocks[bi]["start"] + 1}'
+                anchor_note = f'after paragraph at line {md.file_line(md.blocks[bi]["start"])}'
             preview = ' '.join(norm_words(cand)[-8:])
             anchor_note += f' (matched {k}w: "...{preview}")'
             cursor = max(cursor, bi)
@@ -477,11 +658,11 @@ def place_pdf_images(doc_id, doc, kept, md, report):
             break
         if not placed:
             # Fallback: end of the section around the running cursor.
-            sect_end = md.section_end_line(cursor) if md.blocks else len(md.lines) - 1
+            sect_end = md.section_end_line(cursor) if md.blocks else len(md.view_lines) - 1
             md.insert_after_line(md.last_content_line_before(sect_end), asset)
-            anchor_note = f'FLAGGED no confident match; attached to section end (line {sect_end + 1})'
+            anchor_note = (f'FLAGGED no confident match; attached to section end '
+                           f'(line {md.file_line(sect_end)})')
             item['flags'].append('no confident anchor (reviewer pass)')
-        item['asset'] = asset
         item['anchor'] = anchor_note
         report.keep(item, f'p{item["page"] + 1}')
 
@@ -570,19 +751,22 @@ def collect_pptx_images(pptx_path, report):
 
 
 def place_pptx_images(doc_id, kept, md, report):
-    for n, item in enumerate(kept, start=1):
-        asset = f'{ASSET_ROOT}/{doc_id}/{n:02d}.webp'
+    for item in kept:
+        asset = item['asset']
+        if asset in md.marker_line:
+            item['anchor'] = existing_anchor_note(md, asset)
+            report.keep(item, f'slide {item["slide"]}')
+            continue
         # Anchor: end of the `## Slide N` section.
         target_line = None
         for bi, b in enumerate(md.blocks):
-            if re.match(rf'^## Slide {item["slide"]}\s*$', md.lines[b['start']]):
+            if re.match(rf'^## Slide {item["slide"]}\s*$', md.view_lines[b['start']]):
                 target_line = md.section_end_line(bi)
                 break
         if target_line is None:
             target_line = md.blocks[-1]['end']
             item['flags'].append(f'slide {item["slide"]} heading not found (reviewer pass)')
         md.insert_after_line(md.last_content_line_before(target_line), asset)
-        item['asset'] = asset
         item['anchor'] = f'end of "## Slide {item["slide"]}" section'
         report.keep(item, f'slide {item["slide"]}')
 
@@ -597,10 +781,18 @@ class Report:
         self.total_bytes = 0
         self.kept_count = 0
         self.excluded_count = 0
+        self.errors = []
 
     def doc(self, doc_id, src):
         self.lines.append('')
         self.lines.append(f'== {doc_id} ({src})')
+
+    def note(self, text):
+        self.lines.append(f'  {text}')
+
+    def error(self, text):
+        self.errors.append(text)
+        self.lines.append(f'  ERROR {text}')
 
     def keep(self, item, where):
         self.kept_count += 1
@@ -616,11 +808,20 @@ class Report:
         self.excluded_count += 1
         self.lines.append(f'  EXCLUDED {label}: {reason}')
 
-    def summary(self):
+    def summary(self, changes):
         self.lines.append('')
         self.lines.append(
             f'TOTAL kept={self.kept_count} excluded={self.excluded_count} '
             f'assets={self.total_bytes / (1024 * 1024):.2f} MB')
+        self.lines.append('')
+        if changes:
+            self.lines.append(f'CHANGES ({len(changes)}):')
+            self.lines.extend(f'  {c}' for c in changes)
+        else:
+            self.lines.append('CHANGES none (re-run is a no-op; working tree untouched)')
+        if self.errors:
+            self.lines.append('')
+            self.lines.append(f'ERRORS ({len(self.errors)}): nothing was written.')
         return '\n'.join(self.lines)
 
 
@@ -628,56 +829,173 @@ class Report:
 # Main
 # ---------------------------------------------------------------------------
 
+def plan_doc(entry, src_root, manifest, report, plan):
+    """Work out what this doc needs, writing nothing.
+
+    Appends to `plan` (a dict of pending writes/deletes) and returns the
+    doc's new manifest entry, or None to leave the existing entry alone.
+    """
+    doc_id = entry['doc_id']
+    src_path = os.path.join(src_root, entry['src'])
+    md_path = os.path.join(KG, entry['md'])
+    report.doc(doc_id, entry['src'])
+    if not os.path.exists(src_path):
+        # No source means no evidence about what this tool owns here, so the
+        # manifest entry, the folder, and the markdown all stay untouched.
+        report.note(f'MISSING source file: {src_path}')
+        return None
+    if not os.path.exists(md_path):
+        report.note(f'MISSING markdown: {md_path}')
+        return None
+
+    out_dir = os.path.join(*ASSET_ROOT.split('/'), doc_id)
+    owned = list(manifest.get(doc_id, []))
+    md = MdDoc(md_path)
+    is_pptx = entry['src'].lower().endswith('.pptx')
+    doc = None
+    if is_pptx:
+        kept = collect_pptx_images(src_path, report)
+    else:
+        doc, kept = collect_pdf_images(src_path, report)
+
+    # Encode first so the report lines carry final WebP sizes, and so the
+    # collision guard below can compare bytes before anything is written.
+    for n, item in enumerate(kept, start=1):
+        name = f'{n:02d}.webp'
+        data = encode_webp(item['pil'])
+        item['name'] = name
+        item['asset'] = f'{ASSET_ROOT}/{doc_id}/{name}'
+        item['webp_bytes'] = data
+        item['webp_len'] = len(data)
+        report.total_bytes += len(data)
+
+    new_names = [item['name'] for item in kept]
+    for item in kept:
+        path = os.path.join(out_dir, item['name'])
+        on_disk = read_file(path)
+        if on_disk == item['webp_bytes']:
+            # Byte-identical: this IS extractor output, whether or not the
+            # manifest knew about it yet. Nothing to write; adopt it.
+            continue
+        if on_disk is not None and item['name'] not in owned:
+            # A curated photograph sits on the number this run wants. The
+            # 2026-08-02 real-images pass numbered its photos after the
+            # extracted ones, so this means the source doc grew a picture.
+            # Renumbering licensed content is a human decision.
+            report.error(
+                f'{item["asset"]} exists and is NOT extractor-owned, but this '
+                f'run wants to write different bytes over it. The source doc '
+                f'likely gained a picture and pushed the numbering into the '
+                f'curated range. Move the curated file (and its marker) out of '
+                f'the way, or give this doc its own `{doc_id}_extracted/` '
+                f'namespace, then re-run.')
+            continue
+        plan['writes'][path] = item['webp_bytes']
+        if on_disk is not None:
+            report.note(f'{item["asset"]}: re-encoded, contents changed. If a '
+                        f'caption describes the old picture, re-check it.')
+
+    # Owned files the source no longer yields: delete them and drop markers.
+    for name in owned:
+        if name in new_names:
+            continue
+        path = os.path.join(out_dir, name)
+        asset = f'{ASSET_ROOT}/{doc_id}/{name}'
+        if os.path.exists(path):
+            plan['deletes'].append(path)
+        if asset in md.marker_line:
+            md.drop_marker(asset)
+        report.note(f'{asset}: no longer in the source; removing it and its marker.')
+
+    if is_pptx:
+        place_pptx_images(doc_id, kept, md, report)
+    else:
+        place_pdf_images(doc_id, doc, kept, md, report)
+
+    rendered = md.render()
+    if rendered != md.raw:
+        plan['md'][md_path] = rendered
+    if kept and not os.path.isdir(out_dir):
+        plan['mkdirs'].add(out_dir)
+    return new_names
+
+
+def read_file(path):
+    if not os.path.exists(path):
+        return None
+    with open(path, 'rb') as f:
+        return f.read()
+
+
+def describe(plan, manifest_text, manifest_on_disk):
+    out = []
+    out += [f'write  {p}' for p in sorted(plan['writes'])]
+    out += [f'delete {p}' for p in sorted(plan['deletes'])]
+    out += [f'edit   {p}' for p in sorted(plan['md'])]
+    if manifest_text != manifest_on_disk:
+        out.append(f'edit   {MANIFEST_PATH}')
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--src', required=True, help='path to the docs/training source drop folder')
     ap.add_argument('--report', help='optional path to also write the placement report')
+    ap.add_argument('--check', action='store_true',
+                    help='dry run: leave the repo tree untouched (only the '
+                         'explicitly requested --report file is written) and '
+                         'exit non-zero if a real run would change anything')
     args = ap.parse_args()
 
+    if not os.path.isdir(args.src):
+        # Never pass vacuously: a --check that silently found no sources
+        # would report "no changes" for a tool that had done nothing.
+        print(f'ERROR --src is not a directory: {args.src}', file=sys.stderr)
+        return 2
+
+    manifest = load_manifest()
+    new_manifest = dict(manifest)
     report = Report()
+    plan = dict(writes={}, deletes=[], md={}, mkdirs=set())
+
     for entry in SOURCES:
-        src_path = os.path.join(args.src, entry['src'])
-        md_path = os.path.join(KG, entry['md'])
-        report.doc(entry['doc_id'], entry['src'])
-        if not os.path.exists(src_path):
-            report.lines.append(f'  MISSING source file: {src_path}')
-            continue
-        if not os.path.exists(md_path):
-            report.lines.append(f'  MISSING markdown: {md_path}')
-            continue
+        names = plan_doc(entry, args.src, manifest, report, plan)
+        if names is not None:
+            new_manifest[entry['doc_id']] = names
 
-        out_dir = os.path.join(*ASSET_ROOT.split('/'), entry['doc_id'])
-        os.makedirs(out_dir, exist_ok=True)
-        for old in os.listdir(out_dir):
-            if old.endswith('.webp'):
-                os.remove(os.path.join(out_dir, old))
+    manifest_text = render_manifest(new_manifest)
+    manifest_raw = read_file(MANIFEST_PATH)
+    changes = describe(plan, manifest_text, read_text_lf(MANIFEST_PATH))
 
-        md = MdDoc(md_path)
-        if entry['src'].lower().endswith('.pptx'):
-            kept = collect_pptx_images(src_path, report)
-        else:
-            doc, kept = collect_pdf_images(src_path, report)
-
-        # Encode first so the report lines carry final WebP sizes.
-        for n, item in enumerate(kept, start=1):
-            out_path = os.path.join(out_dir, f'{n:02d}.webp')
-            size = encode_webp(item['pil'], out_path)
-            item['webp_len'] = size
-            report.total_bytes += size
-
-        if entry['src'].lower().endswith('.pptx'):
-            place_pptx_images(entry['doc_id'], kept, md, report)
-        else:
-            place_pdf_images(entry['doc_id'], doc, kept, md, report)
-        md.write()
-        if not kept:
-            os.rmdir(out_dir)
-
-    text = report.summary()
+    text = report.summary(changes)
     print(text)
     if args.report:
         with open(args.report, 'w', encoding='utf-8', newline='\n') as f:
             f.write(text + '\n')
+
+    if report.errors:
+        return 1
+    if args.check:
+        return 1 if changes else 0
+
+    # Apply. Everything above this line is read-only, so a hard stop in any
+    # doc leaves the whole tree untouched rather than half-updated.
+    for d in sorted(plan['mkdirs']):
+        os.makedirs(d, exist_ok=True)
+    for path, data in plan['writes'].items():
+        with open(path, 'wb') as f:
+            f.write(data)
+    for path in plan['deletes']:
+        os.remove(path)
+        parent = os.path.dirname(path)
+        if os.path.isdir(parent) and not os.listdir(parent):
+            os.rmdir(parent)
+    for path, data in plan['md'].items():
+        with open(path, 'wb') as f:
+            f.write(data)
+    if manifest_text != read_text_lf(MANIFEST_PATH):
+        write_manifest(manifest_text, manifest_raw)
+    return 0
 
 
 if __name__ == '__main__':
