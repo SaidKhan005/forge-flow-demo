@@ -50,7 +50,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c0_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'What Is Wine (cont.)',
+          title: 'Varieties And Vintage',
           body: 'The intricacies of wine are further enriched by the sheer '
               'diversity of grape varieties available, approximately 10,000 '
               'in total. Unlike table grapes, which are larger and sweeter, '
@@ -107,7 +107,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c1_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Key Elements (cont.)',
+          title: 'Body And Mouthfeel',
           body: 'Each grape variety possesses its own unique signature flavors, '
               'which significantly influence the character of the wine '
               'produced from it. While fermentation and aging contribute '
@@ -138,7 +138,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c1_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Key Elements (cont.)',
+          title: 'Acidity As Backbone',
           body: 'Acidity acts as the backbone that brings freshness, balance, '
               'and aging potential to every bottle. Without sufficient '
               'acidity, wines risk tasting flabby or overly sweet, lacking '
@@ -162,7 +162,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c1_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Key Elements (cont.)',
+          title: 'Tannins And Structure',
           body: 'Tannins are the grippy, mouth-drying compounds found in grape '
               'skins, seeds, and stems, adding the structure and assisting '
               'with the aging of red wines. These polyphenolic compounds vary '
@@ -242,7 +242,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c3_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Cabernet Sauvignon (cont.)',
+          title: 'Napa And Coonawarra',
           body: 'Napa Valley has carved out a reputation as a contemporary '
               'playground for Cabernet Sauvignon, where lush, ripe fruit '
               'flavors dominate. The warm climate allows for grapes to '
@@ -274,7 +274,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c3_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Cabernet Sauvignon (cont.)',
+          title: 'Resilience And Aging',
           body: 'The success of Cabernet Sauvignon lies not only in its diverse '
               'expressions but also in its resilience. The grape\'s thick '
               'skins protect it from disease, while its ability to adapt to '
@@ -320,7 +320,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c3_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Pinot Noir (cont.)',
+          title: 'Beyond Burgundy',
           body: 'Beyond Burgundy, Pinot Noir has found a welcoming home in '
               'other regions, including Central Otago in New Zealand, '
               'California, and Oregon in the USA. Each of these locales puts '
@@ -342,7 +342,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c3_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Pinot Noir (cont.)',
+          title: 'Pinot In Champagne',
           body: 'As a key component of Champagne production, Pinot Noir\'s '
               'versatility extends beyond still wines. Blended with '
               'Chardonnay and Pinot Meunier, it contributes body and '
@@ -381,7 +381,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c3_u7',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Syrah/Shiraz (cont.)',
+          title: 'Australian Shiraz',
           body: 'Australia offers a different expression of Syrah, where the '
               'climate is warmer and fruit ripens more fully. Here, Shiraz '
               'exhibits a more robust character, with vibrant notes of ripe '
@@ -410,7 +410,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c3_u8',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Syrah/Shiraz (cont.)',
+          title: 'California Syrah',
           body: 'Meanwhile, in California, Syrah has found a welcoming home in '
               'regions like Paso Robles and Sonoma, where it thrives '
               'alongside other varietals. California Syrah often mirrors the '
@@ -497,7 +497,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c3_u12',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Malbec (cont.)',
+          title: 'Mendoza Malbec',
           body: 'Mendoza, Argentina has become synonymous with Malbec, where '
               'the grape flourishes in the high-altitude vineyards that '
               'define the region. Here, Malbec exhibits a distinctive and '
@@ -542,7 +542,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c3_u14',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Garnacha/Grenache (cont.)',
+          title: 'Garnacha In Blends',
           body: 'The versatility of Garnacha is particularly evident in its '
               'contributions to iconic wines like Châteauneuf-du-Pape in the '
               'Rhône Valley, where it is often blended with Syrah and '
@@ -586,7 +586,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c3_u16',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Merlot (cont.)',
+          title: 'Harvest Timing Debate',
           body: 'The cultivation of Merlot is marked by its loose clusters and '
               'large berries, which naturally yield high sugar content while '
               'maintaining lower levels of malic acid. This unique '
@@ -715,7 +715,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c4_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Chardonnay (cont.)',
+          title: 'Oak And Malolactic',
           body: 'The winemaking techniques employed with Chardonnay enhance its '
               'allure, particularly through oak aging and malolactic '
               'fermentation. The influence of oak brings complexity, adding '
@@ -756,7 +756,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c4_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Pinot Grigio/Pinot Gris (cont.)',
+          title: 'New World Pinot Gris',
           body: 'In the New World regions, such as Oregon and Washington in the '
               'USA, as well as California and Australia, the style of Pinot '
               'Gris has evolved to embrace varying expressions of this '
@@ -797,7 +797,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c4_u7',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Riesling (cont.)',
+          title: 'New World Rieslings',
           body: 'Both Washington and New Zealand offer Rieslings that balance '
               'citrus acidity with aromatic notes, but with their unique '
               'regional characteristics. In Washington State, Riesling '
@@ -902,7 +902,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c4_u11',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Muscat/Moscato (cont.)',
+          title: 'The Muscat Family',
           body: 'Among the key varieties of Muscat, Muscat of Alexandria stands '
               'out for its adaptability and abundance, thriving in warmer '
               'climates and lending itself to the production of sweet dessert '
@@ -967,7 +967,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c5_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Other Notable Grape Varietals (cont.)',
+          title: 'More Varietals To Know',
           body: '- TORRONTES: Argentina\'s signature white grape, known for its '
               'floral, aromatic wines with bright citrus, peach, and tropical '
               'fruit notes.\n'
@@ -1028,7 +1028,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c6_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Champagne (cont.)',
+          title: 'Styles Of Champagne',
           body: 'Champagne\'s diversity begins with its grape composition. If a '
               'Champagne is made from 100% Chardonnay, it is called a blanc '
               'de blancs (white of whites), a style often celebrated for its '
@@ -1047,7 +1047,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c6_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Champagne (cont.)',
+          title: 'Vintage And Prestige',
           body: 'The production cycle of most Champagne houses is dominated by '
               'non-vintage (NV) offerings, where the base wine is a skillful '
               'blend of multiple vintages, typically from the past three '
@@ -1067,7 +1067,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c6_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Champagne (cont.)',
+          title: 'Lees Aging And Dosage',
           body: 'A key differentiator in Champagne production is the aging '
               'process, particularly the mandatory sur lie aging where '
               'bottles rest on spent yeast cells called lees after second '
@@ -1096,7 +1096,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c6_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Champagne (cont.)',
+          title: 'Sweetness And Price',
           body: '- Brut: less than 1.2% sugar\n'
               '\n'
               '- Extra Dry: 1.2 to 1.7% sugar\n'
@@ -1210,7 +1210,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c6_u9',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Prosecco (cont.)',
+          title: 'Prosecco Superiore',
           body: 'Prosecco is significantly more affordable than Champagne due '
               'to the cost efficiencies of bulk tank fermentation, but this '
               'does not compromise its quality: look for "Prosecco Superiore" '
@@ -1345,7 +1345,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c8_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'History of Argentinian Wine (cont.)',
+          title: 'The Malbec Boom',
           body: 'While Argentine wine initially prioritized quantity over '
               'quality, a pivotal shift began in the 1990s as winemakers '
               'focused on crafting exceptional wines. This transformation, '
@@ -1397,7 +1397,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c9_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Argentina Terroir (cont.)',
+          title: 'Irrigation And Dryness',
           body: 'Argentina\'s vineyards span approximately 224,000 hectares, '
               'with many of the world\'s highest vineyards located at '
               'elevations reaching up to 3,000 meters along the Andes '
@@ -1464,7 +1464,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c10_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Mendoza (cont.)',
+          title: 'Uco Valley And Luján',
           body: 'Within Mendoza, distinct subregions like the Uco Valley and '
               'Luján de Cuyo showcase diverse microclimates. The cooler, '
               'elevated Uco Valley yields wines with refined acidity and '
@@ -1486,7 +1486,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c10_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Mendoza (cont.)',
+          title: 'Hail Sun And Irrigation',
           body: 'Mendoza\'s climate is classified as semi-desert, with only '
               'about 232mm of rainfall annually and over 300 sunny days. '
               'However, the rainfall distribution is problematic: most of it '
@@ -1622,7 +1622,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c11_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Malbec (cont.)',
+          title: 'Massal Selection',
           body: 'Just as Chile possesses a large genetic reservoir of '
               'Carmenère, Argentina holds a similarly valuable population of '
               'Malbec vines. Under the guidance of Pedro Marchevsky, the '
@@ -1821,7 +1821,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c12_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Chilean Wine (cont.)',
+          title: 'Bodegas And Practices',
           body: 'The industry is largely dominated by long-established '
               'family-owned bodegas with generations of expertise and access '
               'to top-tier equipment and talent, such as Concha y Toro, which '
@@ -1872,7 +1872,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c13_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Chilean Wine History (cont.)',
+          title: 'Phylloxera Free Vines',
           body: 'Despite these modern economic pressures, Chile possesses a '
               'surprisingly deep winemaking tradition that dates back to the '
               'Spanish conquest in the 16th century. Remarkably, vines of the '
@@ -1931,7 +1931,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c14_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Chilean Terroir (cont.)',
+          title: 'Andes To Pacific',
           body: 'Beyond the north-south axis, Chile\'s east-west topography '
               'introduces dramatic temperature variations that further refine '
               'winegrowing possibilities. Vineyards are now planted up to '
@@ -2008,7 +2008,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c15_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Upper Maipo (cont.)',
+          title: 'Maipo Alto Cabernet',
           body: 'The result of this unique interaction between grape variety '
               'and terroir is a wine of remarkable character. The '
               'high-altitude vineyards, stony soils, and cooling mountain air '
@@ -2429,7 +2429,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c17_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Spanish Wine (cont.)',
+          title: 'Aging Categories',
           body: 'Navigating Spain\'s wine shelves can be a lesson in regulation, '
               'much of which flows from European Union frameworks designed to '
               'help consumers understand what\'s in the bottle. The idea is '
@@ -2483,7 +2483,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c18_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Spanish Wine History (cont.)',
+          title: 'Rancio And Tinajas',
           body: 'The earliest Spanish wines were strong and often sweet or '
               'rancio, fully oxidized and heavily reduced for safe storage. '
               'Inland regions produced wines closer to what we know today, '
@@ -2532,7 +2532,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c19_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Spanish Terroir (cont.)',
+          title: 'La Meseta And Zones',
           body: 'Beyond the common image of sun-drenched sandy beaches lies a '
               'far more complex reality. Spain is the third most mountainous '
               'country in Europe, and its dominant feature is the vast '
@@ -3104,7 +3104,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c24_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Portuguese Wine (cont.)',
+          title: 'Cork And Sustainability',
           body: 'Equally impressive is the progressive stance many Portuguese '
               'producers are taking on sustainability. Long-term research '
               'projects and a deep respect for ancient techniques are being '
@@ -3158,7 +3158,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c25_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Vinho Verde (cont.)',
+          title: 'Green Coast Freshness',
           body: 'Just inland from the aptly named Costa Verde, or "Green '
               'Coast," this region holds the somewhat dubious honor of being '
               'one of the wettest and most fertile areas for vine '
@@ -3224,7 +3224,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c25_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Douro (cont.)',
+          title: 'Douro Terraces',
           body: 'The Douro is a land of extremes and astonishing beauty. Its '
               'terraced vineyards cling to spectacularly steep, sun-baked '
               'slopes, creating a landscape that is as challenging as it is '
@@ -3553,7 +3553,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c29_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Wine Glasses (cont.)',
+          title: 'Aeration And Swirling',
           body: 'Aeration, the interaction between wine and oxygen, is where '
               'glass shape truly demonstrates its functional brilliance. '
               'Swirling a wine in a large, wide bowl increases oxygen '
@@ -3618,7 +3618,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c30_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Red Wine Glasses (cont.)',
+          title: 'Bordeaux And Burgundy',
           body: 'Moving to other classic red wine styles, the Syrah/Shiraz '
               'glass is tailored for medium-bodied reds, balancing their '
               'gripping tannins with concentrated fruit. Meanwhile, the '
@@ -3675,7 +3675,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c31_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'White Wine Glasses (cont.)',
+          title: 'The Chardonnay Glass',
           body: 'There is, however, a notable exception: the Chardonnay and '
               'White Burgundy glass, which offers a wider bowl that softens '
               'acidity and encourages gentle oxygenation. This design allows '
@@ -3772,7 +3772,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c33_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Reading Wine Labels (cont.)',
+          title: 'Vintage And ABV',
           body: 'If no varietal is listed, the appellation can provide clues '
               'based on regional regulations; 15 nations have officially '
               'regulated appellations, though strictness varies. The vintage, '
@@ -3792,7 +3792,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c33_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Reading Wine Labels (cont.)',
+          title: 'Estate And Négociant',
           body: 'Estate bottled wines are those grown, produced, and bottled '
               'entirely on the estate where the grapes are cultivated, '
               'offering a direct connection to a specific vineyard and its '
@@ -3811,7 +3811,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c33_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Reading Wine Labels (cont.)',
+          title: 'Old Vine And Sulfites',
           body: 'Similarly, "Old Vine" suggests more concentrated flavors from '
               'mature vines, yet there is no regulatory threshold for vine '
               'age; vines labeled as such can range from 15 to over 100 years '
@@ -3879,7 +3879,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c34_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'How to Open Wine (cont.)',
+          title: 'Capsule And Wine Key',
           body: '4. Lift the top portion of the capsule to reveal clear access '
               'to the cork. This technique preserves a polished, professional '
               'presentation while eliminating the risk of torn edges or '
@@ -3909,7 +3909,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c34_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'How to Open Wine (cont.)',
+          title: 'Drawing The Cork',
           body: '7. To ensure a clean extraction, twist the corkscrew steadily, '
               'keeping the worm centered and inserting it straight down until '
               'only a single spiral loop remains visible, usually after five '
@@ -3938,7 +3938,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c34_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'How to Open Wine (cont.)',
+          title: 'Cork Check And Taste',
           body: '11. Once the bottle is opened, place the cork to the side so '
               'guests can inspect it at their leisure: a well-preserved cork '
               'will be noticeably moist on the end that was submerged in '
@@ -3959,7 +3959,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c34_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'How to Open Wine (cont.)',
+          title: 'Pouring The Table',
           body: '14. While food is typically placed from the left, wine is '
               'poured from the right. As you pour the wine, turn the label '
               'toward the person who ordered the bottle as additional '
@@ -4021,7 +4021,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c35_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'How to Open Champagne/Sparkling (cont.)',
+          title: 'Twist The Bottle',
           body: '5. To safely open the bottle, tilt it at a 45-degree angle '
               'away from your body so the internal pressure presses against '
               'the curved glass rather than forcing out the liquid, ensure '
@@ -4157,7 +4157,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c38_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Appearance (cont.)',
+          title: 'Intensity And Legs',
           body: 'The depth of intensity is not merely about the grape itself: a '
               'pale Cabernet Sauvignon could have had a short, gentle kiss '
               'with its skins, while a deeply saturated Pinot Noir might have '
@@ -4174,7 +4174,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c38_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Appearance (cont.)',
+          title: 'Your Aroma Palette',
           body: 'The ability to identify and articulate aromas is arguably the '
               'most critical skill in your wine journey, yet it often '
               'paralyzes newcomers. The key is understanding that our "aroma '
@@ -4221,7 +4221,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c38_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Aroma (cont.)',
+          title: 'Qualifying The Fruit',
           body: 'Fruit descriptors alone are too vague: a strawberry can be '
               'anything from a tart, underripe green berry to a luscious, '
               'jammy preserve. By qualifying the fruit, we pin down the '
@@ -4249,7 +4249,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c38_u6',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Aroma (cont.)',
+          title: 'Developmental Aromas',
           body: 'From here, we move into the realm of developmental aromas, '
               'those evolved notes born from fermentation, biological '
               'processes, and aging that reveal the wine\'s story beyond its '
@@ -4299,7 +4299,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c38_u8',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Palate (cont.)',
+          title: 'Judging Acidity',
           body: 'Acidity is the backbone of a wine\'s structure, with Tartaric, '
               'Malic, and Lactic acids lending profiles that range from '
               'astringent and fruity to soft and milky, yet it remains one of '
@@ -4324,7 +4324,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c38_u9',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Palate (cont.)',
+          title: 'Reading Sweetness',
           body: 'Determining a wine\'s sweetness is trickier than it seems, as '
               'our brains can be easily misled by fruity aromas: just because '
               'a wine smells like ripe peaches doesn\'t mean it contains '
@@ -4345,7 +4345,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c38_u10',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Palate (cont.)',
+          title: 'Alcohol And Warmth',
           body: 'On the other end of the spectrum, a wine with low alcohol can '
               'feel thin, short-lived, and diluted, or it can be delightfully '
               'subtle and ethereal, quaffable, light on its feet, and '
@@ -4363,7 +4363,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c38_u11',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Palate (cont.)',
+          title: 'Texture And Body',
           body: 'Texture in wine remains one of the most elusive yet essential '
               'components to articulate, a sensation that partly emerges from '
               'the interplay of acids, sugars, tannins, and alcohols, and '
@@ -4383,7 +4383,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c38_u12',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Palate (cont.)',
+          title: 'Warmth After Swallow',
           body: 'even overwhelming, leaving a distracting burn in the back of '
               'the throat, yet when it is well-integrated with ripe fruit and '
               'structure, that same heat becomes a warming, soft, almost '
@@ -4405,7 +4405,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c38_u13',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Palate (cont.)',
+          title: 'The Dairy Analogy',
           body: 'Texture in wine remains one of the most elusive yet essential '
               'components to articulate, a sensation that partly emerges from '
               'the interplay of acids, sugars, tannins, and alcohols, and '
@@ -4449,7 +4449,7 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           id: 'training_wine_c38_u15',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
-          title: 'Conclusion (cont.)',
+          title: 'Drinkability And Typicity',
           body: 'Beyond structure, drinkability and deliciousness remind us '
               'that wine is ultimately a beverage to be enjoyed, not just '
               'analyzed. A wine that dazzles on the first sip but becomes '

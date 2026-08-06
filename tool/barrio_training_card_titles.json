@@ -730,5 +730,245 @@
   "training_tequila_c4_u1": {
     "was": "Mezcal (cont.)",
     "title": "Flavors And Mezcaleros"
+  },
+  "training_wine_c0_u1": {
+    "was": "What Is Wine (cont.)",
+    "title": "Varieties And Vintage"
+  },
+  "training_wine_c10_u1": {
+    "was": "Mendoza (cont.)",
+    "title": "Uco Valley And Luján"
+  },
+  "training_wine_c10_u2": {
+    "was": "Mendoza (cont.)",
+    "title": "Hail Sun And Irrigation"
+  },
+  "training_wine_c11_u1": {
+    "was": "Malbec (cont.)",
+    "title": "Massal Selection"
+  },
+  "training_wine_c12_u1": {
+    "was": "Chilean Wine (cont.)",
+    "title": "Bodegas And Practices"
+  },
+  "training_wine_c13_u1": {
+    "was": "Chilean Wine History (cont.)",
+    "title": "Phylloxera Free Vines"
+  },
+  "training_wine_c14_u1": {
+    "was": "Chilean Terroir (cont.)",
+    "title": "Andes To Pacific"
+  },
+  "training_wine_c15_u2": {
+    "was": "Upper Maipo (cont.)",
+    "title": "Maipo Alto Cabernet"
+  },
+  "training_wine_c17_u1": {
+    "was": "Spanish Wine (cont.)",
+    "title": "Aging Categories"
+  },
+  "training_wine_c18_u1": {
+    "was": "Spanish Wine History (cont.)",
+    "title": "Rancio And Tinajas"
+  },
+  "training_wine_c19_u1": {
+    "was": "Spanish Terroir (cont.)",
+    "title": "La Meseta And Zones"
+  },
+  "training_wine_c1_u1": {
+    "was": "Key Elements (cont.)",
+    "title": "Body And Mouthfeel"
+  },
+  "training_wine_c1_u2": {
+    "was": "Key Elements (cont.)",
+    "title": "Acidity As Backbone"
+  },
+  "training_wine_c1_u3": {
+    "was": "Key Elements (cont.)",
+    "title": "Tannins And Structure"
+  },
+  "training_wine_c24_u1": {
+    "was": "Portuguese Wine (cont.)",
+    "title": "Cork And Sustainability"
+  },
+  "training_wine_c25_u1": {
+    "was": "Vinho Verde (cont.)",
+    "title": "Green Coast Freshness"
+  },
+  "training_wine_c25_u4": {
+    "was": "Douro (cont.)",
+    "title": "Douro Terraces"
+  },
+  "training_wine_c29_u1": {
+    "was": "Wine Glasses (cont.)",
+    "title": "Aeration And Swirling"
+  },
+  "training_wine_c30_u1": {
+    "was": "Red Wine Glasses (cont.)",
+    "title": "Bordeaux And Burgundy"
+  },
+  "training_wine_c31_u1": {
+    "was": "White Wine Glasses (cont.)",
+    "title": "The Chardonnay Glass"
+  },
+  "training_wine_c33_u1": {
+    "was": "Reading Wine Labels (cont.)",
+    "title": "Vintage And ABV"
+  },
+  "training_wine_c33_u2": {
+    "was": "Reading Wine Labels (cont.)",
+    "title": "Estate And Négociant"
+  },
+  "training_wine_c33_u3": {
+    "was": "Reading Wine Labels (cont.)",
+    "title": "Old Vine And Sulfites"
+  },
+  "training_wine_c34_u1": {
+    "was": "How to Open Wine (cont.)",
+    "title": "Capsule And Wine Key"
+  },
+  "training_wine_c34_u2": {
+    "was": "How to Open Wine (cont.)",
+    "title": "Drawing The Cork"
+  },
+  "training_wine_c34_u3": {
+    "was": "How to Open Wine (cont.)",
+    "title": "Cork Check And Taste"
+  },
+  "training_wine_c34_u4": {
+    "was": "How to Open Wine (cont.)",
+    "title": "Pouring The Table"
+  },
+  "training_wine_c35_u1": {
+    "was": "How to Open Champagne/Sparkling (cont.)",
+    "title": "Twist The Bottle"
+  },
+  "training_wine_c38_u10": {
+    "was": "Palate (cont.)",
+    "title": "Alcohol And Warmth"
+  },
+  "training_wine_c38_u11": {
+    "was": "Palate (cont.)",
+    "title": "Texture And Body"
+  },
+  "training_wine_c38_u12": {
+    "was": "Palate (cont.)",
+    "title": "Warmth After Swallow"
+  },
+  "training_wine_c38_u13": {
+    "was": "Palate (cont.)",
+    "title": "The Dairy Analogy"
+  },
+  "training_wine_c38_u15": {
+    "was": "Conclusion (cont.)",
+    "title": "Drinkability And Typicity"
+  },
+  "training_wine_c38_u2": {
+    "was": "Appearance (cont.)",
+    "title": "Intensity And Legs"
+  },
+  "training_wine_c38_u3": {
+    "was": "Appearance (cont.)",
+    "title": "Your Aroma Palette"
+  },
+  "training_wine_c38_u5": {
+    "was": "Aroma (cont.)",
+    "title": "Qualifying The Fruit"
+  },
+  "training_wine_c38_u6": {
+    "was": "Aroma (cont.)",
+    "title": "Developmental Aromas"
+  },
+  "training_wine_c38_u8": {
+    "was": "Palate (cont.)",
+    "title": "Judging Acidity"
+  },
+  "training_wine_c38_u9": {
+    "was": "Palate (cont.)",
+    "title": "Reading Sweetness"
+  },
+  "training_wine_c3_u1": {
+    "was": "Cabernet Sauvignon (cont.)",
+    "title": "Napa And Coonawarra"
+  },
+  "training_wine_c3_u12": {
+    "was": "Malbec (cont.)",
+    "title": "Mendoza Malbec"
+  },
+  "training_wine_c3_u14": {
+    "was": "Garnacha/Grenache (cont.)",
+    "title": "Garnacha In Blends"
+  },
+  "training_wine_c3_u16": {
+    "was": "Merlot (cont.)",
+    "title": "Harvest Timing Debate"
+  },
+  "training_wine_c3_u2": {
+    "was": "Cabernet Sauvignon (cont.)",
+    "title": "Resilience And Aging"
+  },
+  "training_wine_c3_u4": {
+    "was": "Pinot Noir (cont.)",
+    "title": "Beyond Burgundy"
+  },
+  "training_wine_c3_u5": {
+    "was": "Pinot Noir (cont.)",
+    "title": "Pinot In Champagne"
+  },
+  "training_wine_c3_u7": {
+    "was": "Syrah/Shiraz (cont.)",
+    "title": "Australian Shiraz"
+  },
+  "training_wine_c3_u8": {
+    "was": "Syrah/Shiraz (cont.)",
+    "title": "California Syrah"
+  },
+  "training_wine_c4_u11": {
+    "was": "Muscat/Moscato (cont.)",
+    "title": "The Muscat Family"
+  },
+  "training_wine_c4_u3": {
+    "was": "Chardonnay (cont.)",
+    "title": "Oak And Malolactic"
+  },
+  "training_wine_c4_u5": {
+    "was": "Pinot Grigio/Pinot Gris (cont.)",
+    "title": "New World Pinot Gris"
+  },
+  "training_wine_c4_u7": {
+    "was": "Riesling (cont.)",
+    "title": "New World Rieslings"
+  },
+  "training_wine_c5_u1": {
+    "was": "Other Notable Grape Varietals (cont.)",
+    "title": "More Varietals To Know"
+  },
+  "training_wine_c6_u1": {
+    "was": "Champagne (cont.)",
+    "title": "Styles Of Champagne"
+  },
+  "training_wine_c6_u2": {
+    "was": "Champagne (cont.)",
+    "title": "Vintage And Prestige"
+  },
+  "training_wine_c6_u3": {
+    "was": "Champagne (cont.)",
+    "title": "Lees Aging And Dosage"
+  },
+  "training_wine_c6_u4": {
+    "was": "Champagne (cont.)",
+    "title": "Sweetness And Price"
+  },
+  "training_wine_c6_u9": {
+    "was": "Prosecco (cont.)",
+    "title": "Prosecco Superiore"
+  },
+  "training_wine_c8_u1": {
+    "was": "History of Argentinian Wine (cont.)",
+    "title": "The Malbec Boom"
+  },
+  "training_wine_c9_u1": {
+    "was": "Argentina Terroir (cont.)",
+    "title": "Irrigation And Dryness"
   }
 }
