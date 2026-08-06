@@ -72,6 +72,11 @@ const List<String> kUxCopyRoots = <String>[
   'lib/internal/barrio/services/barrio_term_links.dart',
   // Full-screen picture viewer + its slide paging copy (2026-08-02).
   'lib/internal/barrio/widgets/barrio_training_image_viewer.dart',
+  // Kindle-style reader highlights (2026-08-06). No reader copy today,
+  // scoped now so the actions sheet, note editor, and review-surface
+  // strings Slices C and D add are covered the day they land.
+  'lib/internal/barrio/services/barrio_highlights_service.dart',
+  'lib/internal/barrio/services/barrio_highlight_anchors.dart',
 ];
 
 /// The banned code point: EM DASH (U+2014).

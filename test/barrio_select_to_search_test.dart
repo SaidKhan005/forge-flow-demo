@@ -1,7 +1,9 @@
 // Widget tests for the 2026-07-29 manual-reader search polish:
 //   1) the reading deck is wrapped in a SelectionArea whose selection
-//      menu offers only "Ask chat" and "Search the web"
-//      (select-any-word action),
+//      menu offers only the reader's own actions (select-any-word
+//      action). "Ask chat" and "Search the web" shipped 2026-07-29;
+//      "Highlight" joined them with Kindle-style highlights Slice B on
+//      2026-08-06,
 //   2) the header search actions grew to a 28px glyph on a 48px tap
 //      target (bigger search buttons).
 //
@@ -70,8 +72,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 800));
   }
 
-  testWidgets('long-pressing a word builds a selection menu with only '
-      'Ask chat and Search the web (mobile)', (tester) async {
+  testWidgets('long-pressing a word builds a selection menu with the '
+      'reader actions and none of the native defaults (mobile)',
+      (tester) async {
     // Reset the platform override in a finally so the foundation-var
     // invariant check (which runs before addTearDown) never trips.
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
@@ -106,8 +109,11 @@ void main() {
       // popup was replaced with the Barrio glass surface, so the builder
       // now returns a TextSelectionToolbar carrying our own action
       // widgets rather than an AdaptiveTextSelectionToolbar of
-      // buttonItems. The contract under test is unchanged: exactly two
-      // actions, and none of the native defaults.
+      // buttonItems. The curation contract is unchanged: only actions
+      // this reader chose, and none of the native defaults. The menu
+      // grew from two to three when Kindle-style highlights landed
+      // (Slice B, 2026-08-06); the row-fit guard for three actions on
+      // the narrowest phone lives in barrio_highlight_reader_test.dart.
       final menu = area.contextMenuBuilder!(
         tester.element(regionFinder),
         region,
@@ -115,8 +121,8 @@ void main() {
       expect(menu, isA<TextSelectionToolbar>(),
           reason: 'the reader floats its own branded selection surface');
       final toolbar = menu as TextSelectionToolbar;
-      expect(toolbar.children.length, 2,
-          reason: 'exactly two actions: Ask chat and Search the web');
+      expect(toolbar.children.length, 3,
+          reason: 'three actions: Highlight, Ask chat, Search the web');
 
       // Render the actions on their own to read their labels: the live
       // toolbar draws in a platform overlay the test binding cannot find.
@@ -128,6 +134,7 @@ void main() {
         ),
       );
       await tester.pump();
+      expect(find.text('Highlight'), findsOneWidget);
       expect(find.text('Ask chat'), findsOneWidget);
       expect(find.text('Search the web'), findsOneWidget);
       // Operator curation (2026-07-29): the native Copy / Select all
