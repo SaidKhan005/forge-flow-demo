@@ -126,6 +126,10 @@ DOCS = [
          const='kTrainingTequila', title='Tequila Training', kind='prose'),
     dict(md='Coffee Training.md', id='training_coffee',
          const='kTrainingCoffee', title='Coffee Training', kind='prose'),
+    # Manual-drop slice (2026-08-06): the operator wine manual, sitting with
+    # its Food & Drink neighbours Tequila and Coffee.
+    dict(md='Barrio Wine Training.md', id='training_wine',
+         const='kTrainingWine', title='Wine Training', kind='prose'),
     dict(md='Latin American Dishes.md', id='training_latin_dishes',
          const='kTrainingLatinDishes', title='Latin American Words To Know: Dishes', kind='glossary'),
     dict(md='Latin American Ingredients.md', id='training_latin_ingredients',

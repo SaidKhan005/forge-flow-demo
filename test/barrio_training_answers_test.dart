@@ -193,9 +193,45 @@ void main() {
     });
 
     test('an out-of-corpus question returns nothing (none tier)', () {
-      final answers =
-          BarrioTrainingAnswers.ask('what is the capital of france');
-      expect(answers, isEmpty);
+      // The probe is located at RUNTIME, never hard-coded. A question is
+      // only a valid out-of-corpus probe while none of its content words
+      // appear anywhere in the corpus, and the corpus grows: 'what is the
+      // capital of france' stopped qualifying the moment the Wine Training
+      // manual landed, because that manual names France on nearly every
+      // page. Pick the first candidate whose every content word is absent
+      // from the folded corpus, and fail loudly if the corpus ever swallows
+      // all of them (that is a signal to add a candidate, not to weaken the
+      // assertion).
+      final haystack = StringBuffer();
+      for (final doc in kBarrioTrainingDocs.values) {
+        for (final chapter in doc.chapters) {
+          for (final unit in chapter.units) {
+            haystack
+              ..write(BarrioTrainingSearch.fold(unit.title))
+              ..write(' ')
+              ..write(BarrioTrainingSearch.fold(unit.body))
+              ..write(' ');
+          }
+        }
+      }
+      final corpusText = haystack.toString();
+      const candidates = <List<String>>[
+        ['photosynthesis', 'chloroplast'],
+        ['perihelion', 'asteroid'],
+        ['glockenspiel', 'xylophone'],
+      ];
+      final probe = candidates.firstWhere(
+        (words) => words.every((word) => !corpusText.contains(word)),
+        orElse: () => throw StateError(
+          'every out-of-corpus probe now appears in the training corpus; '
+          'add a new candidate rather than relaxing the none-tier rule',
+        ),
+      );
+
+      final answers = BarrioTrainingAnswers.ask('what is ${probe.join(' ')}');
+      expect(answers, isEmpty,
+          reason: 'probe "${probe.join(' ')}" is absent from every card '
+              'body, so the answerer must claim nothing');
       expect(
         BarrioTrainingAnswers.overallConfidence(answers),
         BarrioAnswerConfidence.none,

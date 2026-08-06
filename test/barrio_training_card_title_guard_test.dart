@@ -48,7 +48,23 @@ const int kMaxCardTitleChars = 26;
 /// 100 continuation cards whose generated `'<heading> (cont.)'` title
 /// inherited a long heading. Authoring all 183 continuation cards took
 /// the continuation share to 0, leaving the 251 source headings.
-const int kOverBudgetTitleBaseline = 251;
+///
+/// 257 as of 2026-08-06, the only sanctioned reason this number moves up:
+/// a source document was ADDED. The Wine Training manual contributes six
+/// run-start cards whose verbatim source headings exceed the budget:
+///
+///   Other Notable Grape Varietals    (29)
+///   Asti Spumante/Moscato d'Asti     (28)
+///   History of Argentinian Wine      (27)
+///   Portuguese White Wine Varietals  (31)
+///   How to Open Champagne/Sparkling  (31)
+///   How to Pour Champagne/Sparkling  (31)
+///
+/// None can be shortened: they are the operator PDF's own headings, and
+/// `tool/barrio_training_verbatim_check.py` only passes at `lost=0w`.
+/// Wine's continuation share is 0, exactly like every other manual, and
+/// the `authoredOver` assertion below is what actually holds the rule.
+const int kOverBudgetTitleBaseline = 257;
 
 /// RATCHET: cards that repeat a title already used in the same chapter.
 ///

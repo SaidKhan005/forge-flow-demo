@@ -201,6 +201,8 @@ flutter:
     - assets/internal/barrio/training/bar_manual/
     - assets/internal/barrio/training/drink_specs/
     - assets/internal/barrio/training/host_manual/
+    # Manual-drop slice (2026-08-06): wine manual source figures.
+    - assets/internal/barrio/training/wine_training/
     - assets/internal/barrio/training/training_tequila_diagrams/
     # Full diagram coverage (2026-07-30): a house-style line-icon pictogram
     # on every previously text-only reading card, wired via the diagrams

@@ -326,6 +326,25 @@ const List<BarrioDestination> barrioDestinations = [
     prominence: BarrioProminence.secondary,
     showOnHomeHub: true,
   ),
+  // Manual-drop bubble (2026-08-06 operator wine manual). Sits directly
+  // after Tequila in the Food & Drink group.
+  BarrioDestination(
+    id: 'training_wine',
+    label: 'Wine',
+    description:
+        'Wine Training: grapes, regions, sparkling, glassware, service, '
+        'tasting.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    category: BarrioCategory.foodAndDrink,
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+    iconCodePoint: 0xe383, // Icons.liquor
+  ),
   BarrioDestination(
     id: 'training_coffee',
     label: 'Coffee',

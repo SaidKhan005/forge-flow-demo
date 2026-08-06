@@ -251,15 +251,21 @@ void main() {
     // corpus held 743 and 652, so both guards were failing on master
     // before this pass. 743 is the true imaged count; 652 + the 3 cards
     // above = 655.
-    test('forms exactly 88 slide groups across 88 cards', () {
-      expect(imagedUnits, 743);
-      expect(groups, hasLength(88));
-      expect(unitsWithSlideGroup, 88,
+    // Wine Training (2026-08-06 manual drop) shifts three of these. Its
+    // 24 extracted source figures land on 23 cards, and the two page-56
+    // decanting figures share `training_wine_c37_u0`, so that one card
+    // adds the 89th group (2 slides, both uncaptioned, so neither is a
+    // diagram). imaged 743 + 23 = 766, groups 88 + 1 = 89, slides
+    // 200 + 2 = 202, single-picture 655 + 22 = 677.
+    test('forms exactly 89 slide groups across 89 cards', () {
+      expect(imagedUnits, 766);
+      expect(groups, hasLength(89));
+      expect(unitsWithSlideGroup, 89,
           reason: 'no card carries two separate slide holders today');
       expect(
         groups.fold<int>(0, (sum, group) => sum + group.length),
-        200,
-        reason: '200 photographs now live inside a holder that slides',
+        202,
+        reason: '202 photographs now live inside a holder that slides',
       );
       expect(
         groups.map((group) => group.length).reduce((a, b) => a > b ? a : b),
@@ -268,11 +274,11 @@ void main() {
       );
     });
 
-    test('655 imaged cards keep the single-picture degrade path', () {
+    test('677 imaged cards keep the single-picture degrade path', () {
       // The degrade rule at corpus scale: the overwhelming majority of
       // imaged cards still render exactly today's tree, one picture per
       // holder, no chips, no dots, no counter.
-      expect(unitsWithNoSlideGroup, 655);
+      expect(unitsWithNoSlideGroup, 677);
       expect(unitsWithSlideGroup + unitsWithNoSlideGroup, imagedUnits);
     });
 

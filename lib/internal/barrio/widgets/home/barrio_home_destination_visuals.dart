@@ -38,6 +38,7 @@ const Map<String, IconData> _kBarrioHomeIcons = <String, IconData>{
   'training_three_pillars': Icons.account_balance_outlined,
   'training_suggestive_selling': Icons.trending_up_rounded,
   'training_tequila': Icons.local_bar_rounded,
+  'training_wine': Icons.liquor,
   'training_coffee': Icons.local_cafe_rounded,
   'training_latin_dishes': Icons.restaurant_rounded,
   'training_latin_ingredients': Icons.eco_rounded,

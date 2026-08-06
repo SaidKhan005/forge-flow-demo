@@ -84,7 +84,11 @@ documents:
     word_count_estimate: 21598
     heading_count: 171
     line_count: 1381
-    sha256: "fa8542948c049b3880bc46b5ef5e9e4d84d69c529134bd02ea28a517ea67a413"
+    # Refreshed 2026-08-06: PR #1543 (e726d69e) added 'Diagram: ' captions to
+    # this doc's image markers without re-checksumming it, so the validator
+    # was reporting a SHA-256 mismatch on master. This is the actual
+    # LF-normalized content hash of the file that PR intentionally shipped.
+    sha256: "4d88e533b06ac7924cff9705f5304a691cc2d6c70acc8a99f497dd3b31fce025"
 
   - doc_id: "barrio_interview_playbook"
     file_name: "Barrio_interview_playbook.md"
@@ -326,7 +330,9 @@ documents:
     word_count_estimate: 10801
     heading_count: 86
     line_count: 725
-    sha256: "f1a1f5ab14e1c700bae2e98e9308b2dbea5f0c4b7082f0fac252b33a0166952d"
+    # Refreshed 2026-08-06: same stale-checksum drift from PR #1543
+    # (e726d69e) as barrio_company_handbook above.
+    sha256: "3d5cadf20db8e5ae10ca3d5d0997813520c8d3c48f1ac9b318495567e7468d57"
 
   - doc_id: "general_words_to_know"
     file_name: "GENERAL WORDS TO KNOW.md"
@@ -760,3 +766,35 @@ documents:
     heading_count: 17
     line_count: 369
     sha256: "bad7820897ff527fc52bee8869db192314a4bfb6ea31fa44d61f33290dca2304"
+
+  - doc_id: "wine_training"
+    file_name: "Barrio Wine Training.md"
+    source_path: "docs/Knowledge_graph_docs/Barrio Wine Training.md"
+    title: "Wine Training"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "beverage_training"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "low"
+    audience:
+      - "staff"
+      - "managers"
+      - "founder_ops"
+    chunk_profile: "heading_aware_training_narrative"
+    graph_profiles:
+      - "Concept"
+      - "Term"
+      - "Procedure"
+    tags:
+      - "wine"
+      - "grape_varietals"
+      - "wine_regions"
+      - "beverage"
+      - "service"
+      - "training"
+    word_count_estimate: 21806
+    heading_count: 170
+    line_count: 946
+    sha256: "89efa7feeb0e64e8a69a6d33a8fdca1c78af9b159e2664c3073a1b0061e9b0b7"
