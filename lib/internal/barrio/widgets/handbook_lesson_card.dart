@@ -103,7 +103,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
       case HandbookUnitType.explainer:
         return const Color(0x1F16243B); // hairline navy on the white card
       case HandbookUnitType.decision:
-        return const Color(0xFF2ECC71).withValues(alpha: 0.35);
+        return BarrioColors.success.withValues(alpha: 0.35);
       case HandbookUnitType.checkpoint:
         return BarrioColors.warning.withValues(alpha: 0.35);
     }
@@ -412,7 +412,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
   Color get _badgeColor {
     return switch (widget.unit.type) {
       HandbookUnitType.explainer  => BarrioColors.tealWarm,
-      HandbookUnitType.decision   => const Color(0xFF2ECC71),
+      HandbookUnitType.decision   => BarrioColors.success,
       HandbookUnitType.checkpoint => BarrioColors.warning,
     };
   }
@@ -460,7 +460,7 @@ class _TypeBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final (defaultLabel, color) = switch (type) {
       HandbookUnitType.explainer  => ('LEARN',  BarrioColors.tealWarm),
-      HandbookUnitType.decision   => ('DECIDE', const Color(0xFF2ECC71)),
+      HandbookUnitType.decision   => ('DECIDE', BarrioColors.success),
       HandbookUnitType.checkpoint => ('CHECK',  BarrioColors.warning),
     };
     final label = badgeHint ?? defaultLabel;
@@ -522,8 +522,8 @@ class _OptionTile extends StatelessWidget {
   (Color, Color) _stateColors(bool showCorrect, bool showWrong) {
     if (showCorrect) {
       return (
-        const Color(0xFF2ECC71).withValues(alpha: 0.55),
-        const Color(0xFF2ECC71).withValues(alpha: 0.10),
+        BarrioColors.success.withValues(alpha: 0.55),
+        BarrioColors.success.withValues(alpha: 0.10),
       );
     }
     if (showWrong) {
@@ -602,11 +602,11 @@ class _OptionTile extends StatelessWidget {
                   if (showCorrect) ...[
                     if (showSparkle)
                       CorrectAnswerSparkle(
-                        accentColor: const Color(0xFF2ECC71),
+                        accentColor: BarrioColors.success,
                         onComplete: onSparkleComplete,
                       ),
                     const Icon(Icons.check_circle,
-                        size: 18, color: Color(0xFF2ECC71)),
+                        size: 18, color: BarrioColors.success),
                   ],
                   if (showWrong)
                     const Icon(Icons.cancel, size: 18, color: BarrioColors.error),

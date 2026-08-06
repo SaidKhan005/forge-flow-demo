@@ -283,7 +283,7 @@ class _PlaybookHero extends StatelessWidget {
               fontSize: 11,
               color: remaining > 0
                   ? BarrioColors.textMuted
-                  : const Color(0xFF2ECC71),
+                  : BarrioColors.success,
               letterSpacing: 0.3,
             ),
           ),

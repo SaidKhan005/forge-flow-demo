@@ -109,7 +109,7 @@ class _JimTaylorModelScreenState extends State<JimTaylorModelScreen>
   Widget _buildCard(JtUnit unit, BuildContext cardContext) {
     final (defaultBadge, color) = switch (unit.type) {
       JtUnitType.concept    => ('CONCEPT',  _accent),
-      JtUnitType.scenario   => ('SCENARIO', const Color(0xFF2ECC71)),
+      JtUnitType.scenario   => ('SCENARIO', BarrioColors.success),
       JtUnitType.checkpoint => ('CHECK',    BarrioColors.warning),
     };
     final badge = unit.badgeHint ?? defaultBadge;
@@ -295,7 +295,7 @@ class _JtModuleHero extends StatelessWidget {
               fontSize: 11,
               color: remaining > 0
                   ? BarrioColors.textMuted
-                  : const Color(0xFF2ECC71),
+                  : BarrioColors.success,
               letterSpacing: 0.3,
             ),
           ),

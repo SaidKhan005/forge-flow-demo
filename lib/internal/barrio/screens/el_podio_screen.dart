@@ -336,7 +336,7 @@ class _PodiumColumn extends StatelessWidget {
             style: GoogleFonts.ibmPlexMono(
               fontSize: 11,
               color: entry.weeklyChange >= 0
-                  ? const Color(0xFF2ECC71).withValues(alpha: 0.7)
+                  ? BarrioColors.success.withValues(alpha: 0.7)
                   : BarrioColors.textMuted.withValues(alpha: 0.5),
               letterSpacing: 0.2,
             ),
@@ -528,7 +528,7 @@ class _RankTile extends StatelessWidget {
                   style: GoogleFonts.ibmPlexMono(
                     fontSize: 11,
                     color: entry.weeklyChange >= 0
-                        ? const Color(0xFF2ECC71).withValues(alpha: 0.6)
+                        ? BarrioColors.success.withValues(alpha: 0.6)
                         : BarrioColors.textMuted.withValues(alpha: 0.4),
                     letterSpacing: 0.2,
                   ),

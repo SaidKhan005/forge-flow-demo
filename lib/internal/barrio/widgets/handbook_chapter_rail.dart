@@ -301,7 +301,7 @@ class _ChapterRailTile extends StatelessWidget {
                     if (isCompleted) ...[
                       const SizedBox(width: 4),
                       const Icon(Icons.check_circle,
-                          size: 12, color: Color(0xFF2ECC71)),
+                          size: 12, color: BarrioColors.success),
                     ],
                   ],
                 ),

@@ -288,8 +288,8 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
 
                   Color border, bg;
                   if (showCorrect) {
-                    border = const Color(0xFF2ECC71).withValues(alpha: 0.55);
-                    bg = const Color(0xFF2ECC71).withValues(alpha: 0.10);
+                    border = BarrioColors.success.withValues(alpha: 0.55);
+                    bg = BarrioColors.success.withValues(alpha: 0.10);
                   } else if (showWrong) {
                     border = BarrioColors.error.withValues(alpha: 0.55);
                     bg = BarrioColors.error.withValues(alpha: 0.10);
@@ -340,7 +340,7 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
                                 if (showCorrect) ...[
                                   if (_showSparkle)
                                     CorrectAnswerSparkle(
-                                      accentColor: const Color(0xFF2ECC71),
+                                      accentColor: BarrioColors.success,
                                       onComplete: () {
                                         if (mounted) {
                                           setState(() => _showSparkle = false);
@@ -348,7 +348,7 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
                                       },
                                     ),
                                   const Icon(Icons.check_circle,
-                                      size: 18, color: Color(0xFF2ECC71)),
+                                      size: 18, color: BarrioColors.success),
                                 ],
                                 if (showWrong)
                                   const Icon(Icons.cancel,
@@ -594,7 +594,7 @@ class LearningSectionRail extends StatelessWidget {
                       if (isComplete) ...[
                         const SizedBox(width: 4),
                         const Icon(Icons.check_circle,
-                            size: 12, color: Color(0xFF2ECC71)),
+                            size: 12, color: BarrioColors.success),
                       ],
                     ],
                   ),
