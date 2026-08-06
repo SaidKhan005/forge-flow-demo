@@ -37,10 +37,10 @@ class _CompanyHandbookScreenState extends State<CompanyHandbookScreen>
   // Hero entrance animation
   late final AnimationController _heroController = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 700),
+    duration: BarrioMotion.hero,
   )..forward();
   late final Animation<double> _heroFade =
-      CurvedAnimation(parent: _heroController, curve: Curves.easeOutCubic);
+      CurvedAnimation(parent: _heroController, curve: BarrioMotion.curve);
 
   @override
   void dispose() {

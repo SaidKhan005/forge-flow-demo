@@ -92,11 +92,61 @@ class HandbookLessonCard extends StatefulWidget {
   State<HandbookLessonCard> createState() => _HandbookLessonCardState();
 }
 
-class _HandbookLessonCardState extends State<HandbookLessonCard> {
+class _HandbookLessonCardState extends State<HandbookLessonCard>
+    with SingleTickerProviderStateMixin {
   int? _selectedIndex;
   bool _expanded = false;
   bool _showSparkle = false;
   bool _isPressed = false;
+
+  /// One ticker for the whole option cascade (audit B11). Every option used
+  /// to own an [AnimationController] started by its own `Future.delayed`:
+  /// timers nothing owned, which kept firing while the app was backgrounded
+  /// and ignored reduce-motion.
+  late final AnimationController _optionStagger;
+
+  bool _reduceMotion = false;
+  bool _motionDecided = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Built here rather than lazily on the field. Most cards are never
+    // expanded, so a lazy initializer would make `dispose()` the first
+    // touch, and creating a Ticker then does a TickerMode lookup on an
+    // already-deactivated element.
+    _optionStagger = AnimationController(
+      vsync: this,
+      duration: BarrioMotion.stagger,
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_motionDecided) return;
+    _motionDecided = true;
+    _reduceMotion = MediaQuery.of(context).disableAnimations;
+  }
+
+  @override
+  void dispose() {
+    _optionStagger.dispose();
+    super.dispose();
+  }
+
+  /// Runs the option cascade as the card expands.
+  ///
+  /// Accessibility (rec #12): reduce motion holds the controller at its end
+  /// value, so the options are present and settled on the very first frame
+  /// with no ticker running and no timer pending.
+  void _revealOptions() {
+    if (_reduceMotion) {
+      _optionStagger.value = 1.0;
+    } else {
+      _optionStagger.forward(from: 0);
+    }
+  }
 
   Color get _borderColor {
     switch (widget.unit.type) {
@@ -165,6 +215,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
                 _isPressed = false;
                 _expanded = true;
               });
+              _revealOptions();
             }
           : null,
       // Conditional EXACTLY like onTapDown/onTapUp (#1483 audit fix):
@@ -176,9 +227,9 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
           ? () => setState(() => _isPressed = false)
           : null,
       child: AnimatedScale(
-        scale: _isPressed ? 0.95 : 1.0,
-        duration: const Duration(milliseconds: 150),
-        curve: Curves.easeOutBack,
+        scale: _isPressed ? BarrioMotion.pressScale : 1.0,
+        duration: BarrioMotion.fast,
+        curve: BarrioMotion.curve,
         child: Container(
           margin: carousel ? EdgeInsets.zero : const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
@@ -234,8 +285,8 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
               Padding(
                 padding: const EdgeInsets.all(20),
                 child: AnimatedSize(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOutCubic,
+                  duration: BarrioMotion.base,
+                  curve: BarrioMotion.curve,
                   alignment: Alignment.topCenter,
                   child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -368,8 +419,13 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
               if (_isInteractive && _expanded && unit.options.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 ...List.generate(unit.options.length, (i) {
-                  return _StaggeredOption(
-                    index: i,
+                  return BarrioStaggerReveal(
+                    parent: _optionStagger,
+                    interval: barrioStaggerInterval(
+                      slot: i,
+                      count: unit.options.length,
+                    ),
+                    slideFrom: const Offset(0, 0.15),
                     child: _OptionTile(
                       option: unit.options[i],
                       index: i,
@@ -566,7 +622,8 @@ class _OptionTile extends StatelessWidget {
         onTap: onTap,
         child: ExcludeSemantics(
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
+          duration: BarrioMotion.base,
+          curve: BarrioMotion.curve,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             color: bgColor,
@@ -1806,7 +1863,7 @@ class _UnitPhotoSlidesState extends State<_UnitPhotoSlides> {
     // options follow. Nothing here ever autoplays.
     final swapDuration = MediaQuery.of(context).disableAnimations
         ? Duration.zero
-        : const Duration(milliseconds: 180);
+        : BarrioMotion.fast;
     final caption = _slide.caption;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -2063,58 +2120,3 @@ class _BookmarkToggle extends StatelessWidget {
   }
 }
 
-/// Staggered option animation for premium reveal.
-class _StaggeredOption extends StatefulWidget {
-  final int index;
-  final Widget child;
-  const _StaggeredOption({required this.index, required this.child});
-
-  @override
-  State<_StaggeredOption> createState() => _StaggeredOptionState();
-}
-
-class _StaggeredOptionState extends State<_StaggeredOption>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 300),
-  );
-  late final Animation<double> _fade =
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic);
-  late final Animation<Offset> _slide = Tween<Offset>(
-    begin: const Offset(0, 0.15),
-    end: Offset.zero,
-  ).animate(_fade);
-
-  bool _motionDecided = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_motionDecided) return;
-    _motionDecided = true;
-    if (MediaQuery.of(context).disableAnimations) {
-      // Accessibility (rec #12): reduce motion shows the options
-      // settled immediately, no stagger.
-      _ctrl.value = 1.0;
-      return;
-    }
-    Future.delayed(Duration(milliseconds: 100 * widget.index), () {
-      if (mounted) _ctrl.forward();
-    });
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _fade,
-      child: SlideTransition(position: _slide, child: widget.child),
-    );
-  }
-}

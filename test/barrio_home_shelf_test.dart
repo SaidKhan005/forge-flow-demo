@@ -85,8 +85,9 @@ void main() {
         navigatorObservers: [if (observer != null) observer],
       ),
     );
-    // Let the one-shot entrance (900ms) and header wordmark (700ms)
-    // finish. Looping ambient motion continues; explicit pumps only.
+    // Let the one-shot entrance and header wordmark (both
+    // BarrioMotion.hero, 700ms) finish. Looping ambient motion continues;
+    // explicit pumps only.
     await tester.pump(const Duration(milliseconds: 1000));
   }
 

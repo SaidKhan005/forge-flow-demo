@@ -480,9 +480,10 @@ class _BarrioHeaderState extends State<_BarrioHeader>
     super.initState();
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 700),
+      duration: BarrioMotion.hero,
     );
-    final curve = CurvedAnimation(parent: _ctrl, curve: Curves.easeOutQuart);
+    final curve =
+        CurvedAnimation(parent: _ctrl, curve: BarrioMotion.curveEmphasis);
     _barrioSpacing = Tween<double>(begin: 6.0, end: 2.0).animate(curve);
     _legadoSpacing = Tween<double>(begin: 6.0, end: 1.0).animate(curve);
   }
@@ -741,8 +742,8 @@ class _RolePreviewRow extends StatelessWidget {
                 onChanged(role);
               },
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
+                duration: BarrioMotion.fast,
+                curve: BarrioMotion.curve,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
                   vertical: 5,
@@ -824,9 +825,9 @@ class _ElPodioButtonState extends State<_ElPodioButton> {
         },
         onTapCancel: () => setState(() => _pressed = false),
         child: AnimatedScale(
-          scale: _pressed ? 0.95 : 1.0,
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOutBack,
+          scale: _pressed ? BarrioMotion.pressScale : 1.0,
+          duration: BarrioMotion.fast,
+          curve: BarrioMotion.curve,
           child: Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 14),

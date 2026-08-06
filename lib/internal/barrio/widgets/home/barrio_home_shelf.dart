@@ -210,7 +210,7 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
 
   late final AnimationController _entrance = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 900),
+    duration: BarrioMotion.hero,
   );
   bool _entranceDecided = false;
 
@@ -1387,10 +1387,17 @@ class _FlashcardPill extends StatelessWidget {
   }
 }
 
-/// One-time staggered entrance: fade + 14px upward slide over ~280ms,
-/// offset ~117ms per slot. Once the parent controller completes (or is
+/// One-time staggered entrance: fade + 14px upward slide over ~217ms,
+/// offset ~91ms per slot. Once the parent controller completes (or is
 /// jumped to 1.0 for `disableAnimations`), lazily-built slivers render
 /// fully settled with no further rebuilds.
+///
+/// This deliberately keeps its own slot rhythm rather than taking
+/// [barrioStaggerInterval]. That helper times an in-card option cascade,
+/// where eight items must all be settled inside [BarrioMotion.stagger]; this
+/// is the app's front door arriving section by section over a
+/// [BarrioMotion.hero] window, which is a different job. The shared piece is
+/// the total duration and the curve.
 class _EntranceReveal extends StatelessWidget {
   final Animation<double> entrance;
   final int slot;
@@ -1408,7 +1415,7 @@ class _EntranceReveal extends StatelessWidget {
     final end = (start + 0.31).clamp(0.0, 1.0);
     final curved = CurvedAnimation(
       parent: entrance,
-      curve: Interval(start, end, curve: Curves.easeOutCubic),
+      curve: Interval(start, end, curve: BarrioMotion.curve),
     );
     return FadeTransition(
       opacity: curved,

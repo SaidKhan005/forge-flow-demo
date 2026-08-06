@@ -23,20 +23,38 @@ class _ElPodioScreenState extends State<ElPodioScreen>
   static const _silver = Color(0xFFC0C0C0);
   static const _bronze = Color(0xFFCD7F32);
 
+  /// The one ticker this screen runs on: the page fade, the three podium
+  /// columns, and the ranked-list cascade all read slices of it (audit B11,
+  /// which replaced a `Future.delayed` per rank tile).
   late final AnimationController _entranceCtrl;
   late final Animation<double> _entranceFade;
+  bool _entranceDecided = false;
 
   @override
   void initState() {
     super.initState();
     _entranceCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
-    )..forward();
+      duration: BarrioMotion.hero,
+    );
     _entranceFade = CurvedAnimation(
       parent: _entranceCtrl,
-      curve: Curves.easeOutCubic,
+      curve: BarrioMotion.curve,
     );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_entranceDecided) return;
+    _entranceDecided = true;
+    if (MediaQuery.of(context).disableAnimations) {
+      // Accessibility (rec #12): the podium and the whole ranked list land
+      // settled on the first frame. Nothing waits, nothing ticks.
+      _entranceCtrl.value = 1.0;
+    } else {
+      _entranceCtrl.forward();
+    }
   }
 
   @override
@@ -104,8 +122,18 @@ class _ElPodioScreenState extends State<ElPodioScreen>
                       itemCount: rest.length,
                       itemBuilder: (context, index) {
                         final rank = index + 4; // top 3 already shown
-                        return _StaggeredTileEntry(
-                          index: index,
+                        return BarrioStaggerReveal(
+                          parent: _entranceCtrl,
+                          // The podium owns the first stretch of the
+                          // entrance; the list cascades behind it and the
+                          // whole page is settled by BarrioMotion.hero.
+                          interval: barrioStaggerInterval(
+                            slot: index,
+                            count: rest.length,
+                            parent: BarrioMotion.hero,
+                            delay: BarrioMotion.slow,
+                          ),
+                          slideFrom: const Offset(0, 0.08),
                           child: _RankTile(
                             entry: rest[index],
                             rank: rank,
@@ -220,12 +248,14 @@ class _PodiumColumn extends StatelessWidget {
     final slideUp = CurvedAnimation(
       parent: entranceCtrl,
       curve: Interval(entranceDelay, entranceDelay + 0.5,
-          curve: Curves.easeOutCubic),
+          curve: BarrioMotion.curve),
     );
+    // The crown lands with a sharper deceleration, not a bounce: `elasticOut`
+    // read as a party trick on a staff scoreboard (audit B10).
     final crownScale = CurvedAnimation(
       parent: entranceCtrl,
       curve: Interval(entranceDelay + 0.4, entranceDelay + 0.7,
-          curve: Curves.elasticOut),
+          curve: BarrioMotion.curveEmphasis),
     );
 
     return AnimatedBuilder(
@@ -361,23 +391,38 @@ class _PodiumColumn extends StatelessWidget {
                 ],
                 stops: const [0.0, 0.4, 1.0],
               ),
-              border: Border(
-                top: BorderSide(
-                  color: medalColor.withValues(alpha: 0.45),
-                  width: 1.5,
-                ),
-                left: BorderSide(
-                  color: medalColor.withValues(alpha: 0.18),
-                  width: 0.5,
-                ),
-                right: BorderSide(
-                  color: medalColor.withValues(alpha: 0.18),
-                  width: 0.5,
-                ),
-              ),
             ),
             child: Stack(
               children: [
+                // Bright top rail plus faint side hairlines. Painted INSIDE
+                // the rounded clip rather than as the decoration's border:
+                // Flutter asserts in paint() when a non-uniform [Border] is
+                // combined with a borderRadius, which this screen was doing
+                // (found by the reduce-motion widget test added this slice).
+                // The clip rounds the rail's top corners, so the look is the
+                // one the design already intended.
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        border: Border(
+                          top: BorderSide(
+                            color: medalColor.withValues(alpha: 0.45),
+                            width: 1.5,
+                          ),
+                          left: BorderSide(
+                            color: medalColor.withValues(alpha: 0.18),
+                            width: 0.5,
+                          ),
+                          right: BorderSide(
+                            color: medalColor.withValues(alpha: 0.18),
+                            width: 0.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
                 // Specular highlight — top-left light catch
                 Positioned.fill(
                   child: IgnorePointer(
@@ -562,55 +607,6 @@ class _RankTile extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Staggered tile entry animation
-// ---------------------------------------------------------------------------
-
-class _StaggeredTileEntry extends StatefulWidget {
-  final int index;
-  final Widget child;
-  const _StaggeredTileEntry({required this.index, required this.child});
-
-  @override
-  State<_StaggeredTileEntry> createState() => _StaggeredTileEntryState();
-}
-
-class _StaggeredTileEntryState extends State<_StaggeredTileEntry>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 300),
-  );
-  late final Animation<double> _fade =
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic);
-  late final Animation<Offset> _slide = Tween<Offset>(
-    begin: const Offset(0, 0.08),
-    end: Offset.zero,
-  ).animate(_fade);
-
-  @override
-  void initState() {
-    super.initState();
-    Future.delayed(Duration(milliseconds: 500 + 80 * widget.index), () {
-      if (mounted) _ctrl.forward();
-    });
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _fade,
-      child: SlideTransition(position: _slide, child: widget.child),
     );
   }
 }

@@ -45,7 +45,7 @@ class _BarrioFlashcardCardState extends State<BarrioFlashcardCard>
     with SingleTickerProviderStateMixin {
   late final AnimationController _flip = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 320),
+    duration: BarrioMotion.base,
   );
   bool _motionDecided = false;
 

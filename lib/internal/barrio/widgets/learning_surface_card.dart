@@ -64,6 +64,56 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
   bool _showSparkle = false;
   bool _isPressed = false;
 
+  /// One ticker for the whole option cascade (audit B11), matching the twin
+  /// [HandbookLessonCard]. Every option used to own an
+  /// [AnimationController] started by its own `Future.delayed`: timers
+  /// nothing owned, which kept firing while the app was backgrounded and
+  /// ignored reduce-motion entirely.
+  late final AnimationController _optionStagger;
+
+  bool _reduceMotion = false;
+  bool _motionDecided = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Built here rather than lazily on the field. A read-only card never
+    // expands, so a lazy initializer would make `dispose()` the first
+    // touch, and creating a Ticker then does a TickerMode lookup on an
+    // already-deactivated element.
+    _optionStagger = AnimationController(
+      vsync: this,
+      duration: BarrioMotion.stagger,
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_motionDecided) return;
+    _motionDecided = true;
+    _reduceMotion = MediaQuery.of(context).disableAnimations;
+  }
+
+  @override
+  void dispose() {
+    _optionStagger.dispose();
+    super.dispose();
+  }
+
+  /// Runs the option cascade as the card expands.
+  ///
+  /// Accessibility: reduce motion holds the controller at its end value, so
+  /// the options are present and settled on the very first frame with no
+  /// ticker running and no timer pending.
+  void _revealOptions() {
+    if (_reduceMotion) {
+      _optionStagger.value = 1.0;
+    } else {
+      _optionStagger.forward(from: 0);
+    }
+  }
+
   /// Estimate reading time based on word count (200 wpm average).
   String get _readingTime {
     final words = widget.body.split(_whitespaceRegExp).length +
@@ -91,13 +141,14 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
                 _isPressed = false;
                 _expanded = true;
               });
+              _revealOptions();
             }
           : null,
       onTapCancel: () => setState(() => _isPressed = false),
       child: AnimatedScale(
-        scale: _isPressed ? 0.95 : 1.0,
-        duration: const Duration(milliseconds: 150),
-        curve: Curves.easeOutBack,
+        scale: _isPressed ? BarrioMotion.pressScale : 1.0,
+        duration: BarrioMotion.fast,
+        curve: BarrioMotion.curve,
         child: Container(
           margin: carousel ? EdgeInsets.zero : const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
@@ -156,8 +207,8 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
               Padding(
                 padding: const EdgeInsets.all(20),
                 child: AnimatedSize(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOutCubic,
+                  duration: BarrioMotion.base,
+                  curve: BarrioMotion.curve,
                   alignment: Alignment.topCenter,
                   child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -298,14 +349,20 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
                     bg = const Color(0x0A16243B);
                   }
 
-                  return _StaggeredOption(
-                    index: i,
+                  return BarrioStaggerReveal(
+                    parent: _optionStagger,
+                    interval: barrioStaggerInterval(
+                      slot: i,
+                      count: widget.options.length,
+                    ),
+                    slideFrom: const Offset(0, 0.15),
                     child: Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: GestureDetector(
                         onTap: _selected == null ? () => _select(i) : null,
                         child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 250),
+                          duration: BarrioMotion.base,
+                          curve: BarrioMotion.curve,
                           padding: const EdgeInsets.symmetric(
                               horizontal: 14, vertical: 12),
                           decoration: BoxDecoration(
@@ -451,52 +508,6 @@ class _PremiumBadge extends StatelessWidget {
   }
 }
 
-/// Staggered option animation for premium reveal.
-class _StaggeredOption extends StatefulWidget {
-  final int index;
-  final Widget child;
-  const _StaggeredOption({required this.index, required this.child});
-
-  @override
-  State<_StaggeredOption> createState() => _StaggeredOptionState();
-}
-
-class _StaggeredOptionState extends State<_StaggeredOption>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 300),
-  );
-  late final Animation<double> _fade =
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic);
-  late final Animation<Offset> _slide = Tween<Offset>(
-    begin: const Offset(0, 0.15),
-    end: Offset.zero,
-  ).animate(_fade);
-
-  @override
-  void initState() {
-    super.initState();
-    Future.delayed(Duration(milliseconds: 100 * widget.index), () {
-      if (mounted) _ctrl.forward();
-    });
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _fade,
-      child: SlideTransition(position: _slide, child: widget.child),
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Generic section/module rail — shared by Playbook and Jim Taylor screens
 // ---------------------------------------------------------------------------
@@ -552,8 +563,8 @@ class LearningSectionRail extends StatelessWidget {
           return GestureDetector(
             onTap: () => onTap(i),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
+              duration: BarrioMotion.fast,
+              curve: BarrioMotion.curve,
               padding:
                   const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(

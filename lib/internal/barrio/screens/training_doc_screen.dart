@@ -206,10 +206,10 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
 
   late final AnimationController _heroController = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 700),
+    duration: BarrioMotion.hero,
   );
   late final Animation<double> _heroFade =
-      CurvedAnimation(parent: _heroController, curve: Curves.easeOutCubic);
+      CurvedAnimation(parent: _heroController, curve: BarrioMotion.curve);
   bool _heroMotionDecided = false;
 
   /// True when the caller supplied an explicit deep link (search or the

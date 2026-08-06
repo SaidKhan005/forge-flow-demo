@@ -51,6 +51,12 @@ class _ModuleCompleteBanner extends StatefulWidget {
 
 class _ModuleCompleteBannerState extends State<_ModuleCompleteBanner>
     with SingleTickerProviderStateMixin {
+  /// Deliberately off the [BarrioMotion] scale: this is not a transition, it
+  /// is the banner's whole life. 3500ms is in / read / out, and the number is
+  /// set by how long a reader needs to take in the congratulation, not by how
+  /// long a surface should take to move. The in-curves are the house curve;
+  /// the out-curves are its mirror, which the scale has no token for because
+  /// nothing else in the module animates itself away on a timer.
   late final AnimationController _ctrl = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 3500),
@@ -58,7 +64,7 @@ class _ModuleCompleteBannerState extends State<_ModuleCompleteBanner>
 
   late final Animation<double> _slideIn = CurvedAnimation(
     parent: _ctrl,
-    curve: const Interval(0.0, 0.15, curve: Curves.easeOutCubic),
+    curve: const Interval(0.0, 0.15, curve: BarrioMotion.curve),
   );
   late final Animation<double> _slideOut = CurvedAnimation(
     parent: _ctrl,
@@ -66,7 +72,7 @@ class _ModuleCompleteBannerState extends State<_ModuleCompleteBanner>
   );
   late final Animation<double> _fade = CurvedAnimation(
     parent: _ctrl,
-    curve: const Interval(0.0, 0.10, curve: Curves.easeOut),
+    curve: const Interval(0.0, 0.10, curve: BarrioMotion.curve),
   );
   late final Animation<double> _fadeOut = CurvedAnimation(
     parent: _ctrl,
@@ -200,6 +206,9 @@ class CorrectAnswerSparkle extends StatefulWidget {
 
 class _CorrectAnswerSparkleState extends State<CorrectAnswerSparkle>
     with SingleTickerProviderStateMixin {
+  /// Also deliberately off the [BarrioMotion] scale: 800ms is how long the
+  /// particles take to rise and fade, a physical burst rather than a UI
+  /// transition. Reduce-motion collapses it to zero below.
   late final AnimationController _ctrl = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 800),
