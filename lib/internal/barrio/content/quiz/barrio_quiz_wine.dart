@@ -1063,5 +1063,495 @@ const BarrioQuizBank kBarrioQuizWine = BarrioQuizBank(
       sourceUnitId: 'training_wine_c22_u8',
       answerEvidence: 'the world\'s most planted grape variety',
     ),
+    // ---- c23: Spanish Wine Classification -----------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c23_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c23',
+      prompt: 'How long must a red Crianza be aged?',
+      options: <String>[
+        'At least 2 years, with a minimum of 6 months in oak',
+        'At least 5 years, with a minimum of 18 months in oak',
+        'No minimum aging at all',
+        'At least 10 years, all of it in oak',
+      ],
+      correctIndex: 0,
+      whyLine: 'Red Crianza needs at least two years of aging, six months of it '
+          'in oak.',
+      sourceUnitId: 'training_wine_c23_u0',
+      answerEvidence: 'Red wines aged for at least 2 years, with a minimum of 6 '
+          'months in oak',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c23_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c23',
+      prompt: 'How long must a red Gran Reserva be aged?',
+      options: <String>[
+        'At least 5 years, with a minimum of 18 months in oak',
+        'At least 2 years, with a minimum of 6 months in oak',
+        'At least 1 year, with no oak requirement',
+        'At least 3 years, with a minimum of 1 year in oak',
+      ],
+      correctIndex: 0,
+      whyLine: 'Red Gran Reserva needs at least five years of aging, eighteen '
+          'months of it in oak.',
+      sourceUnitId: 'training_wine_c23_u2',
+      answerEvidence: 'Red wines aged for at least 5 years, with a minimum of 18 '
+          'months in oak',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c23_q2',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c23',
+      prompt: 'What does Vinos de Pago on a Spanish label mean?',
+      options: <String>[
+        'Single-estate wines that meet strict quality standards',
+        'Wines blended from several regions for value',
+        'Wines with no denomination of origin',
+        'Wines aged at least five years',
+      ],
+      correctIndex: 0,
+      whyLine: 'Vinos de Pago is the single-estate classification: grapes and '
+          'winemaking both stay on one estate.',
+      sourceUnitId: 'training_wine_c23_u4',
+      answerEvidence: 'single-estate wines that meet strict quality standards',
+    ),
+    // ---- c24: Portuguese Wine -----------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c24_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c24',
+      prompt: 'Instead of planting global varieties, what did Portuguese '
+          'winemakers stay committed to?',
+      options: <String>[
+        'Their native cultivars',
+        'Cabernet, Merlot, and Chardonnay',
+        'Only fortified wine production',
+        'Imported American rootstock varieties',
+      ],
+      correctIndex: 0,
+      whyLine: 'Portugal held to its native cultivars, and that patience is now '
+          'its greatest market asset.',
+      sourceUnitId: 'training_wine_c24_u0',
+      answerEvidence: 'their commitment to native cultivars',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c24_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c24',
+      prompt: 'How would you describe cork harvesting to a guest who asks about '
+          'the cork in their bottle?',
+      options: <String>[
+        'A time-honoured, fully renewable practice',
+        'A one-time harvest that kills the tree',
+        'A synthetic process done in a factory',
+        'A recent invention from the last decade',
+      ],
+      correctIndex: 0,
+      whyLine: 'Harvesting cork bark is time-honoured and fully renewable, '
+          'supporting both the environment and local livelihoods.',
+      sourceUnitId: 'training_wine_c24_u1',
+      answerEvidence: 'a time-honoured, fully renewable practice',
+    ),
+    // ---- c25: Portuguese Wine Regions ---------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c25_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c25',
+      prompt: 'Which grape backs Vinho Verde in the north of the region?',
+      options: <String>[
+        'Alvarinho, called Albariño in Spain',
+        'Loureiro, called Verdejo in Spain',
+        'Baga, called Bobal in Spain',
+        'Arinto, called Airen in Spain',
+      ],
+      correctIndex: 0,
+      whyLine: 'Alvarinho, the same grape Spain calls Albariño, is the backbone '
+          'of northern Vinho Verde blends.',
+      sourceUnitId: 'training_wine_c25_u0',
+      answerEvidence: 'Alvarinho (Spain\'s Albariño) reigns supreme in the north',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c25_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c25',
+      prompt: 'The Douro is famous for Port. What has it also become?',
+      options: <String>[
+        'The country\'s premier source of unfortified table wines',
+        'Portugal\'s largest sparkling wine region',
+        'A region that now grows only white grapes',
+        'The only Portuguese region using international varieties',
+      ],
+      correctIndex: 0,
+      whyLine: 'The Douro now leads Portugal for unfortified table wines, driven '
+          'by the port shippers themselves.',
+      sourceUnitId: 'training_wine_c25_u3',
+      answerEvidence: 'the country\'s premier source of unfortified table wines',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c25_q2',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c25',
+      prompt: 'Bairrada is one of the few Portuguese regions dominated by a '
+          'single grape. Which one?',
+      options: <String>[
+        'Baga',
+        'Touriga Nacional',
+        'Castelao',
+        'Alvarinho',
+      ],
+      correctIndex: 0,
+      whyLine: 'Bairrada is dominated by baga: tough and astringent young, '
+          'elegantly perfumed with age.',
+      sourceUnitId: 'training_wine_c25_u7',
+      answerEvidence: 'dominated by a single grape: baga',
+    ),
+    // ---- c26: Portuguese White Wine Varietals -------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c26_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c26',
+      prompt: 'What is remarkable about Portugal\'s grape diversity?',
+      options: <String>[
+        'It has more indigenous grape varieties than any other wine-producing nation',
+        'It grows only three permitted grape varieties',
+        'Every one of its grapes came from France',
+        'It has fewer varieties than any other nation',
+      ],
+      correctIndex: 0,
+      whyLine: 'Portugal has more indigenous grape varieties than any other '
+          'wine-producing nation.',
+      sourceUnitId: 'training_wine_c26_u0',
+      answerEvidence: 'more than any other wine-producing nation',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c26_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c26',
+      prompt: 'Alvarinho from the Minho is known by which name across the border '
+          'in Spain?',
+      options: <String>[
+        'Albariño',
+        'Verdejo',
+        'Godello',
+        'Macabeo',
+      ],
+      correctIndex: 0,
+      whyLine: 'Alvarinho in Portugal is the same grape Spain calls Albariño.',
+      sourceUnitId: 'training_wine_c26_u1',
+      answerEvidence: 'known as Albariño across the border in Spain',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c26_q2',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c26',
+      prompt: 'Verdelho gives the rich, medium-sweet character of which '
+          'fortified wine?',
+      options: <String>[
+        'Madeira',
+        'Port',
+        'Sherry',
+        'Marsala',
+      ],
+      correctIndex: 0,
+      whyLine: 'Verdelho is behind the rich, medium-sweet style of Madeira, and '
+          'also makes dry table wines.',
+      sourceUnitId: 'training_wine_c26_u5',
+      answerEvidence: 'the rich, medium-sweet character of Madeira',
+    ),
+    // ---- c27: Portuguese Red Wine Varietals ---------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c27_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c27',
+      prompt: 'Aragonez, the cornerstone Douro red, is known by which name in '
+          'Spain?',
+      options: <String>[
+        'Tempranillo',
+        'Garnacha',
+        'Monastrell',
+        'Mencia',
+      ],
+      correctIndex: 0,
+      whyLine: 'Aragonez is Tinta Roriz in northern Portugal and Tempranillo in '
+          'Spain: one grape, three names.',
+      sourceUnitId: 'training_wine_c27_u0',
+      answerEvidence: 'Tempranillo in Spain',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c27_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c27',
+      prompt: 'What does Baga give in skilled hands?',
+      options: <String>[
+        'Dense, bright cherry-driven wines with remarkable aging potential',
+        'Soft, low-acid wines meant to drink immediately',
+        'Sweet fortified wines with a black hue',
+        'Neutral white wines used for brandy',
+      ],
+      correctIndex: 0,
+      whyLine: 'Baga can be lean and tannic in lesser hands, but skilled '
+          'winemaking gives dense, cherry-driven, age-worthy reds.',
+      sourceUnitId: 'training_wine_c27_u2',
+      answerEvidence: 'dense, bright cherry-driven wines with remarkable aging '
+          'potential',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c27_q2',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c27',
+      prompt: 'Why is Touriga Nacional so well suited to long ageing?',
+      options: <String>[
+        'Its small berries give exceptional concentration of colour, extract, and aroma',
+        'Its very large berries dilute the tannins',
+        'It has almost no colour or aroma to lose',
+        'It is always fortified before bottling',
+      ],
+      correctIndex: 0,
+      whyLine: 'Touriga Nacional\'s small berries deliver exceptional '
+          'concentration of colour, extract, and aroma.',
+      sourceUnitId: 'training_wine_c27_u4',
+      answerEvidence: 'an exceptional concentration of colour, extract, and '
+          'aroma',
+    ),
+    // ---- c28: Port ----------------------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c28_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c28',
+      prompt: 'How does Port get its signature sweetness?',
+      options: <String>[
+        'Fermentation is halted early with aguardente, a neutral grape brandy',
+        'Sugar is stirred in just before bottling',
+        'The grapes are dried in the sun for a year',
+        'A second fermentation is run inside the bottle',
+      ],
+      correctIndex: 0,
+      whyLine: 'Port stops fermentation early by adding aguardente, so '
+          'unfermented grape sugar stays in the wine.',
+      sourceUnitId: 'training_wine_c28_u0',
+      answerEvidence: 'halting fermentation early with the addition of '
+          'aguardente',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c28_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c28',
+      prompt: 'Where must a wine come from to be called Port?',
+      options: <String>[
+        'Only the Douro Valley',
+        'Anywhere in Portugal',
+        'Anywhere a fortified style is made',
+        'Only the city of Lisbon',
+      ],
+      correctIndex: 0,
+      whyLine: 'Only wines from the UNESCO-designated Douro Valley may be called '
+          'Port, a rule as strict as Champagne\'s.',
+      sourceUnitId: 'training_wine_c28_u0',
+      answerEvidence: 'only wines from this UNESCO-designated region may bear '
+          'its name',
+    ),
+    // ---- c29: Wine Glasses --------------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c29_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c29',
+      prompt: 'Why does a wine glass have a long stem?',
+      options: <String>[
+        'A long stem prevents body heat from warming the wine',
+        'It makes the glass easier to stack',
+        'It increases the surface area for aeration',
+        'It concentrates aromas at the rim',
+      ],
+      correctIndex: 0,
+      whyLine: 'The stem keeps your hand off the bowl so body heat does not warm '
+          'the wine.',
+      sourceUnitId: 'training_wine_c29_u0',
+      answerEvidence: 'a long stem prevents body heat from warming the wine',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c29_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c29',
+      prompt: 'What does swirling a wine in a large, wide bowl do?',
+      options: <String>[
+        'Increases oxygen contact, releasing compounds that soften tannins',
+        'Cools the wine several degrees',
+        'Removes sulfites from the wine',
+        'Raises the alcohol level in the glass',
+      ],
+      correctIndex: 0,
+      whyLine: 'Swirling in a wide bowl raises oxygen contact, softening tannins '
+          'and unlocking aromas in young reds.',
+      sourceUnitId: 'training_wine_c29_u1',
+      answerEvidence: 'increases oxygen contact, releasing volatile compounds '
+          'that soften tannins',
+    ),
+    // ---- c30: Red Wine Glasses ----------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c30_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c30',
+      prompt: 'What shape do red wine glasses generally take, and why?',
+      options: <String>[
+        'Full, round bowls and wide rim diameters, which maximize aeration',
+        'Narrow bowls and tight rims, to keep oxygen out',
+        'Straight sides with no bowl, to hold more wine',
+        'Shallow saucers, to release the bubbles faster',
+      ],
+      correctIndex: 0,
+      whyLine: 'Red glasses use full, round bowls and wide rims to maximize '
+          'aeration and soften harsh tannins.',
+      sourceUnitId: 'training_wine_c30_u0',
+      answerEvidence: 'full, round bowls and wide rim diameters, which together '
+          'maximize aeration',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c30_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c30',
+      prompt: 'The Pinot Noir glass goes by which other name?',
+      options: <String>[
+        'A Burgundy glass',
+        'A Bordeaux glass',
+        'A flute',
+        'A coupe',
+      ],
+      correctIndex: 0,
+      whyLine: 'The Pinot Noir glass is also called a Burgundy glass: round wide '
+          'bowl, narrow mouth.',
+      sourceUnitId: 'training_wine_c30_u1',
+      answerEvidence: 'the Pinot Noir glass, also known as a Burgundy glass',
+    ),
+    // ---- c31: White Wine Glasses --------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c31_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c31',
+      prompt: 'Why are white wine glasses smaller and narrower than red wine '
+          'glasses?',
+      options: <String>[
+        'To preserve acidity and keep the wine cooler',
+        'To let as much oxygen in as possible',
+        'To make the wine taste sweeter',
+        'To hold a larger pour',
+      ],
+      correctIndex: 0,
+      whyLine: 'Tighter bowls preserve acidity, hold a cooler serving '
+          'temperature, and protect delicate aromatics.',
+      sourceUnitId: 'training_wine_c31_u0',
+      answerEvidence: 'engineered to preserve acidity, maintain a cooler serving '
+          'temperature',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c31_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c31',
+      prompt: 'Which white wine glass breaks the narrow-bowl rule, and why?',
+      options: <String>[
+        'The Chardonnay and White Burgundy glass, with a wider bowl that softens acidity',
+        'The Riesling glass, with a tall narrow opening',
+        'The Sauvignon Blanc glass, with a narrow bowl',
+        'The flute, with its tall straight sides',
+      ],
+      correctIndex: 0,
+      whyLine: 'Chardonnay and White Burgundy get a wider bowl so oak-aged '
+          'whites develop creamy texture and layered flavour.',
+      sourceUnitId: 'training_wine_c31_u1',
+      answerEvidence: 'the Chardonnay and White Burgundy glass, which offers a '
+          'wider bowl that softens acidity',
+    ),
+    // ---- c32: Specialty Glasses ---------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c32_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c32',
+      prompt: 'Which glass is tailored for medium-bodied reds with gripping '
+          'tannins?',
+      options: <String>[
+        'The Syrah/Shiraz glass',
+        'The Riesling glass',
+        'The coupe',
+        'The Sauvignon Blanc glass',
+      ],
+      correctIndex: 0,
+      whyLine: 'The Syrah/Shiraz glass suits medium-bodied reds, balancing '
+          'gripping tannins with concentrated fruit.',
+      sourceUnitId: 'training_wine_c32_u0',
+      answerEvidence: 'the Syrah/Shiraz glass is tailored for medium-bodied reds',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c32_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c32',
+      prompt: 'What do red wines of every style benefit from in a glass?',
+      options: <String>[
+        'Larger bowls that encourage interaction with air',
+        'Smaller bowls that keep air out',
+        'A chilled glass straight from the freezer',
+        'A stemless tumbler held in the palm',
+      ],
+      correctIndex: 0,
+      whyLine: 'Larger bowls let reds interact with air, and the wider opening '
+          'tames tannins and releases aromatics.',
+      sourceUnitId: 'training_wine_c32_u0',
+      answerEvidence: 'larger bowls that encourage interaction with air',
+    ),
+    // ---- c33: Reading Wine Labels -------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c33_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c33',
+      prompt: 'A label names a single vineyard rather than a broad region. What '
+          'does that usually signal?',
+      options: <String>[
+        'Higher quality and greater expense',
+        'A cheaper, value-oriented wine',
+        'That the wine is non-vintage',
+        'That the wine contains no sulfites',
+      ],
+      correctIndex: 0,
+      whyLine: 'The narrower the source on the label, the more refined and '
+          'expensive the wine tends to be.',
+      sourceUnitId: 'training_wine_c33_u0',
+      answerEvidence: 'suggests higher quality and greater expense',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c33_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c33',
+      prompt: 'A guest asks what Reserve on a label guarantees. What is the '
+          'honest answer?',
+      options: <String>[
+        'Nothing official: the term has no legal definition',
+        'At least ten years in oak',
+        'That the wine is estate bottled',
+        'That the grapes came from a single vineyard',
+      ],
+      correctIndex: 0,
+      whyLine: 'Reserve has no official legal definition, so it guarantees '
+          'nothing on its own.',
+      sourceUnitId: 'training_wine_c33_u2',
+      answerEvidence: 'carries no official legal definition',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c33_q2',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c33',
+      prompt: 'Does Old Vine on a label mean the vines are a regulated minimum '
+          'age?',
+      options: <String>[
+        'No, there is no regulatory threshold for vine age',
+        'Yes, the vines must be at least fifty years old',
+        'Yes, but only in the United States',
+        'Yes, and no younger fruit may be blended in',
+      ],
+      correctIndex: 0,
+      whyLine: 'Old Vine has no regulatory threshold, and the blend may even '
+          'include younger vine grapes.',
+      sourceUnitId: 'training_wine_c33_u3',
+      answerEvidence: 'there is no regulatory threshold for vine age',
+    ),
   ],
 );
