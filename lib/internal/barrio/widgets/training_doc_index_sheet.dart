@@ -218,9 +218,10 @@ enum _IndexView { az, photos }
 ///
 /// A DATA row, not a widget (audit A7). The list used to be built as a
 /// `List<Widget>` and then indexed from `itemBuilder`, which quietly
-/// defeated the builder: every header and every one of the 100+ term
-/// rows (each with its own tap closure) was constructed on every sheet
-/// build, whether or not it was on screen. Flattening to data and
+/// defeated the builder: every letter header and every term row (each
+/// with its own tap closure) was constructed on every sheet build,
+/// whether or not it was on screen, and the largest glossary index
+/// runs to well over a hundred rows. Flattening to data and
 /// constructing in `itemBuilder` matches what the sibling photo grid
 /// below already does.
 class _IndexRow {
@@ -329,8 +330,8 @@ class _TrainingDocIndexSheetState extends State<TrainingDocIndexSheet> {
 
   Widget _buildList() {
     // One flat DATA list (headers + entries) walked once at mount; the
-    // widgets themselves build on demand, so a 100+ term glossary
-    // constructs only the rows on screen (audit A7).
+    // widgets themselves build on demand, so a 100-plus-row glossary
+    // constructs only the rows near the viewport (audit A7).
     return ListView.builder(
       key: const ValueKey<String>('training_doc_index_list'),
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
