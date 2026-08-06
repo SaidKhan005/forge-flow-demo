@@ -69,6 +69,12 @@ class BarrioColors {
   // (#F2FFFFFF, #E6FFFFFF, shellMid@0.92). One token now.
   static const Color glassFill = Color(0xF2FFFFFF); // ~95% white glass on cream
 
+  // The one deliberately lighter glass: input fields that should let a
+  // little of the cream page read through so they sit *in* the page
+  // rather than on top of it. Previously written as shellMid@0.80.
+  // Only two rungs exist: [glassFill] for surfaces, this for fields.
+  static const Color glassFillSoft = Color(0xCCFFFFFF); // 80% white glass
+
   // Trophy gold for El Podio — deliberately distinct from brand [gold].
   static const Color trophyGold = Color(0xFFD4AF37);
 }

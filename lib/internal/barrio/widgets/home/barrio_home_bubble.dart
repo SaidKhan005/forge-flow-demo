@@ -25,9 +25,22 @@
 // premium look is quiet and static. Press feedback stays a gentle scale
 // (no neon flare). The home screen's [TickerMode] gate remains upstream
 // but now wraps a still subtree, which is harmless.
+//
+// GPU diet (2026-08-05, premium+performance Wave 2). Both discs used to
+// sit inside a [BackdropFilter] gaussian blur. Two reasons that was pure
+// cost with no picture:
+//   1. The fill painted straight over it is [BarrioColors.glassFill] at
+//      ~95% opacity, so at most ~5% of the blurred backdrop survived.
+//   2. What it was blurring is `_BarrioHomeBackdrop`: a 3-stop vertical
+//      cream-to-mint gradient plus one 8%-alpha teal radial. Blurring a
+//      smooth gradient returns the same smooth gradient, so even that
+//      ~5% was visually identical to no blur at all.
+// With 25 `showOnHomeHub` destinations plus the centre bubble, that was
+// ~26 saveLayer + gaussian passes every frame for a no-op. The glass
+// read is carried entirely by the near-opaque fill, the hairline ring
+// and the top specular gradient, all of which are unchanged.
 
 import 'dart:math';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -36,34 +49,6 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../routes/barrio_destinations.dart';
 import '../barrio_destination_scaffold.dart';
 import 'barrio_home_destination_visuals.dart';
-
-// ---------------------------------------------------------------------------
-// Shared premium surface tokens
-// ---------------------------------------------------------------------------
-
-/// Frosted disc base fill for the light theme: a clean, near-white glass
-/// so the navy label and accents stay crisp on the cream backdrop. Kept
-/// slightly translucent so the BackdropFilter frost still reads at the
-/// disc edges.
-const Color _kDiscFill = Color(0xE6FFFFFF);
-
-/// ONE soft, neutral drop shadow: the premium lift that replaced the old
-/// colored glow halos. Deep navy at low alpha so it reads as quiet
-/// elevation on the cream page, never as a colored glow. A single
-/// BoxShadow only: no double/triple stacked or colored shadows.
-List<BoxShadow> _neutralLift({
-  double blur = 24,
-  double dy = 8,
-  double alpha = 0.10,
-}) {
-  return [
-    BoxShadow(
-      color: BarrioColors.textPrimary.withValues(alpha: alpha),
-      blurRadius: blur,
-      offset: Offset(0, dy),
-    ),
-  ];
-}
 
 // ---------------------------------------------------------------------------
 // Center / primary bubble: frosted glass Dashboard
@@ -152,16 +137,16 @@ class _BarrioHomeCenterBubbleState extends State<BarrioHomeCenterBubble> {
     );
   }
 
-  /// The premium lift: a single soft, neutral navy shadow (see
-  /// [_neutralLift]). Drawn on an otherwise-transparent circle so only
-  /// the shadow shows around the disc.
+  /// The premium lift: a single soft, neutral navy shadow from the
+  /// shared [barrioSoftShadow] token. Drawn on an otherwise-transparent
+  /// circle so only the shadow shows around the disc.
   Widget _lift(double diameter) {
     return Container(
       width: diameter,
       height: diameter,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        boxShadow: _neutralLift(),
+        boxShadow: barrioSoftShadow(y: 8, blur: 24, opacity: 0.10),
       ),
     );
   }
@@ -169,53 +154,52 @@ class _BarrioHomeCenterBubbleState extends State<BarrioHomeCenterBubble> {
   Widget _glassDisc(double diameter) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(diameter / 2),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          width: diameter,
-          height: diameter,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: _kDiscFill,
-            border: Border.fromBorderSide(
-              BorderSide(
-                // A single thin teal hairline: the Barrio brand accent,
-                // restrained (was a 67%-alpha orange F&F-logo border).
-                color: BarrioColors.tealDeep.withValues(alpha: 0.35),
-                width: 1.0,
-              ),
+      child: Container(
+        width: diameter,
+        height: diameter,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: BarrioColors.glassFill,
+          border: Border.fromBorderSide(
+            BorderSide(
+              // A single thin teal hairline: the Barrio brand accent,
+              // restrained (was a 67%-alpha orange F&F-logo border).
+              color: BarrioColors.tealDeep.withValues(alpha: 0.35),
+              width: 1.0,
             ),
           ),
-          child: Stack(
-            children: [
-              // Top specular: glass catching overhead light. Neutral
-              // white at low alpha, a premium sheen, not a colored glow.
-              Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    center: const Alignment(0.0, -0.6),
-                    radius: 0.9,
-                    colors: [
-                      Colors.white.withValues(alpha: 0.45),
-                      Colors.transparent,
-                    ],
-                  ),
+        ),
+        child: Stack(
+          children: [
+            // Top specular: glass catching overhead light. Neutral
+            // white at low alpha, a premium sheen, not a colored glow.
+            // With the backdrop blur gone this gradient plus the
+            // hairline ring is what sells the glass.
+            Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  center: const Alignment(0.0, -0.6),
+                  radius: 0.9,
+                  colors: [
+                    Colors.white.withValues(alpha: 0.45),
+                    Colors.transparent,
+                  ],
                 ),
               ),
-              // Accessibility clamp (rec #12, documented): the glass
-              // disc is a fixed-diameter circle, so its label scales
-              // up to 1.35x and no further. The full label is always
-              // in the bubble's merged semantics and on the opened
-              // screen's app bar, so no content is lost at any scale.
-              Center(
-                child: MediaQuery.withClampedTextScaling(
-                  maxScaleFactor: 1.35,
-                  child: _discContent(diameter),
-                ),
+            ),
+            // Accessibility clamp (rec #12, documented): the glass
+            // disc is a fixed-diameter circle, so its label scales
+            // up to 1.35x and no further. The full label is always
+            // in the bubble's merged semantics and on the opened
+            // screen's app bar, so no content is lost at any scale.
+            Center(
+              child: MediaQuery.withClampedTextScaling(
+                maxScaleFactor: 1.35,
+                child: _discContent(diameter),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -350,7 +334,9 @@ class _BarrioHomeOrbitBubbleState extends State<BarrioHomeOrbitBubble> {
       height: widget.diameter,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        boxShadow: widget.dimmed ? null : _neutralLift(blur: 18, dy: 6),
+        boxShadow: widget.dimmed
+            ? null
+            : barrioSoftShadow(y: 6, blur: 18, opacity: 0.10),
       ),
     );
   }
@@ -360,77 +346,76 @@ class _BarrioHomeOrbitBubbleState extends State<BarrioHomeOrbitBubble> {
     final isDimmed = widget.dimmed;
     return ClipRRect(
       borderRadius: BorderRadius.circular(diameter / 2),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          width: diameter,
-          height: diameter,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            // Frosted glass base (light theme): near-white for active
-            // bubbles, a faint navy grey for dimmed ones.
-            color: isDimmed ? const Color(0x0F16243B) : _kDiscFill,
-            border: Border.all(
-              // A single muted accent hairline (was a 55%-alpha accent
-              // ring): the destination's identity, restrained.
-              color: isDimmed
-                  ? const Color(0x1416243B)
-                  : accent.withValues(alpha: 0.38),
-              width: 1.0,
-            ),
+      child: Container(
+        width: diameter,
+        height: diameter,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          // Frosted glass base (light theme): near-white for active
+          // bubbles, a faint navy grey for dimmed ones.
+          color: isDimmed ? const Color(0x0F16243B) : BarrioColors.glassFill,
+          border: Border.all(
+            // A single muted accent hairline (was a 55%-alpha accent
+            // ring): the destination's identity, restrained.
+            color: isDimmed
+                ? const Color(0x1416243B)
+                : accent.withValues(alpha: 0.38),
+            width: 1.0,
           ),
-          child: Stack(
-            children: [
-              // Whisper-soft accent tint, weighted to the bottom: a hint
-              // of the destination's identity, never a saturated fill
-              // (was a 42%-alpha neon accent wash).
-              if (!isDimmed)
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      center: const Alignment(0.15, 0.65),
-                      radius: 1.0,
-                      colors: [
-                        accent.withValues(alpha: 0.14),
-                        accent.withValues(alpha: 0.04),
-                        Colors.transparent,
-                      ],
-                      stops: const [0.0, 0.55, 1.0],
-                    ),
-                  ),
-                ),
-              // Top specular: overhead light on the glass surface.
-              // Neutral white sheen, not a colored glow.
+        ),
+        child: Stack(
+          children: [
+            // Whisper-soft accent tint, weighted to the bottom: a hint
+            // of the destination's identity, never a saturated fill
+            // (was a 42%-alpha neon accent wash).
+            if (!isDimmed)
               Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
-                    center: const Alignment(0.0, -0.6),
-                    radius: 0.85,
+                    center: const Alignment(0.15, 0.65),
+                    radius: 1.0,
                     colors: [
-                      Colors.white.withValues(alpha: isDimmed ? 0.06 : 0.4),
+                      accent.withValues(alpha: 0.14),
+                      accent.withValues(alpha: 0.04),
                       Colors.transparent,
                     ],
+                    stops: const [0.0, 0.55, 1.0],
                   ),
                 ),
               ),
-              // Content: handbook uses a Stack so its leaf art sits
-              // behind the label (hub-identical special case).
-              // Accessibility clamp (rec #12, documented): the glass
-              // disc is a fixed-diameter circle, so the in-circle
-              // label scales up to 1.35x and no further (it already
-              // wraps to 2 lines). The full label is always in the
-              // bubble's merged semantics and on the opened screen's
-              // app bar, so no content is lost at any scale.
-              MediaQuery.withClampedTextScaling(
-                maxScaleFactor: 1.35,
-                child: widget.destination.id == 'company_handbook'
-                    ? _handbookContent(context, accent)
-                    : _centeredContent(context, accent),
+            // Top specular: overhead light on the glass surface.
+            // Neutral white sheen, not a colored glow. With the backdrop
+            // blur gone this gradient plus the hairline ring is what
+            // sells the glass.
+            Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  center: const Alignment(0.0, -0.6),
+                  radius: 0.85,
+                  colors: [
+                    Colors.white.withValues(alpha: isDimmed ? 0.06 : 0.4),
+                    Colors.transparent,
+                  ],
+                ),
               ),
-            ],
-          ),
+            ),
+            // Content: handbook uses a Stack so its leaf art sits
+            // behind the label (hub-identical special case).
+            // Accessibility clamp (rec #12, documented): the glass
+            // disc is a fixed-diameter circle, so the in-circle
+            // label scales up to 1.35x and no further (it already
+            // wraps to 2 lines). The full label is always in the
+            // bubble's merged semantics and on the opened screen's
+            // app bar, so no content is lost at any scale.
+            MediaQuery.withClampedTextScaling(
+              maxScaleFactor: 1.35,
+              child: widget.destination.id == 'company_handbook'
+                  ? _handbookContent(context, accent)
+                  : _centeredContent(context, accent),
+            ),
+          ],
         ),
       ),
     );
