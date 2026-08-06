@@ -232,10 +232,7 @@ class _AdvanceButton extends StatelessWidget {
   Widget build(BuildContext context) {
     // Light theme: solid accent primary with a luminance-picked label;
     // quiet accent-outline secondary with a slate label.
-    final onAccent =
-        ThemeData.estimateBrightnessForColor(accent) == Brightness.dark
-            ? Colors.white
-            : const Color(0xFF10151F);
+    final onAccent = barrioOnAccent(accent);
     // Accessibility (rec #12): a proper button role; the visible text
     // merges in as the label.
     return MergeSemantics(

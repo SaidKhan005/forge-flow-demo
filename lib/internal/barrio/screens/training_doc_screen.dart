@@ -1145,10 +1145,7 @@ class _SearchActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final onAccent =
-        ThemeData.estimateBrightnessForColor(accent) == Brightness.dark
-            ? Colors.white
-            : const Color(0xFF10151F);
+    final onAccent = barrioOnAccent(accent);
     return Material(
       color: accent,
       borderRadius: BorderRadius.circular(12),
@@ -1434,10 +1431,7 @@ class _FlashcardsChip extends StatelessWidget {
   Widget build(BuildContext context) {
     // Luminance-picked foreground so the label stays legible on any
     // manual accent (white on dark accents, near-black on bright ones).
-    final onAccent =
-        ThemeData.estimateBrightnessForColor(accent) == Brightness.dark
-            ? Colors.white
-            : const Color(0xFF10151F);
+    final onAccent = barrioOnAccent(accent);
     return Semantics(
       button: true,
       label: 'Review as flashcards',

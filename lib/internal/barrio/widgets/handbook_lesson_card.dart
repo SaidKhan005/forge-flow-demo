@@ -467,10 +467,7 @@ class _TypeBadge extends StatelessWidget {
     // Solid accent chip with a luminance-picked foreground so the label
     // stays legible on the white card (the old pale-tint-on-dark badge
     // relied on bright accent text against a dark surface).
-    final onColor =
-        ThemeData.estimateBrightnessForColor(color) == Brightness.dark
-            ? Colors.white
-            : const Color(0xFF10151F);
+    final onColor = barrioOnAccent(color);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(

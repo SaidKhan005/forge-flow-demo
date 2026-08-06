@@ -1334,10 +1334,7 @@ class _FlashcardPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final onAccent =
-        ThemeData.estimateBrightnessForColor(accent) == Brightness.dark
-            ? Colors.white
-            : const Color(0xFF10151F);
+    final onAccent = barrioOnAccent(accent);
     return Semantics(
       button: true,
       label: semanticsLabel ?? label,

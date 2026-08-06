@@ -266,8 +266,11 @@ class _QuickCheckBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Solid amber chip with a near-black label so it stays legible on
-    // the white card (was a pale-tint badge tuned for the dark shell).
+    // Solid amber chip with a luminance-picked label so it stays legible on
+    // the white card (was a pale-tint badge tuned for the dark shell). The
+    // ink is derived from _kQuizAccent rather than hardcoded to the dark
+    // side, so re-tinting the quiz accent can never strand the label at
+    // near-black on near-black.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -287,7 +290,7 @@ class _QuickCheckBadge extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w700,
           letterSpacing: 1.0,
-          color: const Color(0xFF10151F),
+          color: barrioOnAccent(_kQuizAccent),
         ),
       ),
     );

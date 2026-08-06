@@ -59,6 +59,13 @@ class BarrioColors {
   static const Color comingSoonTag = Color(0xFF8B6F47);
   static const Color audienceTag   = Color(0xFF1E3A5F);
 
+  // The ink for text and icons painted directly on a saturated accent fill.
+  // Deliberately deeper than [textPrimary] (#16243B): a badge label sitting on
+  // a bright accent needs more contrast headroom than body text does on cream.
+  // Reach for it through [barrioOnAccent] so the light/dark branch is never
+  // dropped — hardcoding this side is a latent bug on a dark accent.
+  static const Color onAccentDark = Color(0xFF10151F);
+
   // Semantic status tokens (2026-07-31 premium pass) — one source of truth for
   // the green/amber/red that were previously hardcoded across ~10 files.
   static const Color success = Color(0xFF2ECC71); // emerald — correct / positive
@@ -105,6 +112,18 @@ List<BoxShadow> barrioSoftShadow({
       offset: Offset(0, y),
     ),
   ];
+}
+
+/// The legible ink for text or icons painted directly on top of [accent].
+///
+/// White on dark accents, [BarrioColors.onAccentDark] on bright ones. The
+/// branch was copy-pasted at seven call sites and dropped entirely at an
+/// eighth (the QUICK CHECK badge), which reads as near-black on near-black
+/// the moment its accent darkens. One helper now.
+Color barrioOnAccent(Color accent) {
+  return ThemeData.estimateBrightnessForColor(accent) == Brightness.dark
+      ? Colors.white
+      : BarrioColors.onAccentDark;
 }
 
 /// Decode width, in device pixels, for an [Image.asset] that renders at
