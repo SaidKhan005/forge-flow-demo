@@ -170,25 +170,35 @@ class BarrioHighlightPlan {
     required List<BarrioBodyChunk> chunks,
   }) {
     if (highlights.isEmpty || chunks.isEmpty) return empty;
-
-    // Per chunk, the id+colour owning each character. Small by
-    // construction (a card's chunks are paragraphs, list rows, and
-    // table cells) and only ever built for a card that has highlights.
-    final owners = <int, List<BarrioHighlightRun?>>{};
     final orphans = <String>[];
+    final owners = _paintOwners(highlights, chunks, orphans);
+    return BarrioHighlightPlan._(
+      owners.isEmpty
+          ? const <int, List<BarrioHighlightRun>>{}
+          : Map<int, List<BarrioHighlightRun>>.unmodifiable(_coalesce(owners)),
+      List<String>.unmodifiable(orphans),
+    );
+  }
 
+  /// Per chunk, which run owns each character, plus [orphans] filled in
+  /// with every highlight that could not be placed.
+  ///
+  /// A character array rather than a range list because two marks may
+  /// cover the same words and the paint side needs runs that do not
+  /// overlap: writing highlights in stored order (oldest first) makes
+  /// the newer one the owner wherever they meet, which is what a reader
+  /// means when they mark over their own mark. The arrays are small by
+  /// construction (a chunk is one paragraph, list row, or table cell)
+  /// and only ever built for a card that actually has marks.
+  static Map<int, List<BarrioHighlightRun?>> _paintOwners(
+    List<BarrioHighlight> highlights,
+    List<BarrioBodyChunk> chunks,
+    List<String> orphans,
+  ) {
+    final owners = <int, List<BarrioHighlightRun?>>{};
     for (final highlight in highlights) {
-      final placed = <(int, int, int)>[];
-      var orphaned = false;
-      for (final segment in highlight.segments) {
-        final spot = _placeSegment(segment, chunks);
-        if (spot == null) {
-          orphaned = true;
-          break;
-        }
-        placed.add((spot.$1, spot.$2, spot.$2 + segment.text.length));
-      }
-      if (orphaned) {
+      final placed = _placeHighlight(highlight, chunks);
+      if (placed == null) {
         orphans.add(highlight.id);
         continue;
       }
@@ -208,44 +218,60 @@ class BarrioHighlightPlan {
         }
       }
     }
+    return owners;
+  }
 
-    if (owners.isEmpty) {
-      return BarrioHighlightPlan._(
-        const <int, List<BarrioHighlightRun>>{},
-        List<String>.unmodifiable(orphans),
-      );
+  /// Every `(chunkIndex, start, end)` [highlight] covers on the body as
+  /// it reads now, or null when even one of its segments is unplaceable.
+  static List<(int, int, int)>? _placeHighlight(
+    BarrioHighlight highlight,
+    List<BarrioBodyChunk> chunks,
+  ) {
+    final placed = <(int, int, int)>[];
+    for (final segment in highlight.segments) {
+      final spot = _placeSegment(segment, chunks);
+      if (spot == null) return null;
+      placed.add((spot.$1, spot.$2, spot.$2 + segment.text.length));
     }
+    return placed;
+  }
 
-    // Coalesce each chunk's per-character owners back into runs.
+  /// Per-character owners folded back into ordered, non-overlapping
+  /// runs, chunk by chunk.
+  static Map<int, List<BarrioHighlightRun>> _coalesce(
+    Map<int, List<BarrioHighlightRun?>> owners,
+  ) {
     final byChunk = <int, List<BarrioHighlightRun>>{};
     final chunkIndices = owners.keys.toList()..sort();
     for (final chunkIndex in chunkIndices) {
-      final slots = owners[chunkIndex]!;
-      final runs = <BarrioHighlightRun>[];
-      var i = 0;
-      while (i < slots.length) {
-        final owner = slots[i];
-        if (owner == null) {
-          i++;
-          continue;
-        }
-        final start = i;
-        while (i < slots.length && identical(slots[i], owner)) {
-          i++;
-        }
-        runs.add(BarrioHighlightRun(
-          highlightId: owner.highlightId,
-          color: owner.color,
-          start: start,
-          end: i,
-        ));
-      }
+      final runs = _runsOf(owners[chunkIndex]!);
       if (runs.isNotEmpty) byChunk[chunkIndex] = List.unmodifiable(runs);
     }
-    return BarrioHighlightPlan._(
-      Map.unmodifiable(byChunk),
-      List<String>.unmodifiable(orphans),
-    );
+    return byChunk;
+  }
+
+  /// One chunk's per-character owners folded into runs.
+  static List<BarrioHighlightRun> _runsOf(List<BarrioHighlightRun?> slots) {
+    final runs = <BarrioHighlightRun>[];
+    var i = 0;
+    while (i < slots.length) {
+      final owner = slots[i];
+      if (owner == null) {
+        i++;
+        continue;
+      }
+      final start = i;
+      while (i < slots.length && identical(slots[i], owner)) {
+        i++;
+      }
+      runs.add(BarrioHighlightRun(
+        highlightId: owner.highlightId,
+        color: owner.color,
+        start: start,
+        end: i,
+      ));
+    }
+    return runs;
   }
 
   /// The `(chunkIndex, start)` where [segment]'s words sit in [chunks]

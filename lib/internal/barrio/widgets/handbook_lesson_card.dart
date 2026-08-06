@@ -1050,16 +1050,15 @@ class _UnitBody extends StatelessWidget {
               ...answerRanges,
             ],
           );
-    if (highlightRanges.isEmpty &&
-        termMatches.isEmpty &&
-        numericMatches.isEmpty &&
-        answerRanges.isEmpty &&
-        keyTermMatches.isEmpty &&
-        marks.isEmpty) {
-      return null;
-    }
-    return _composeSpans(text, highlightRanges, termMatches, numericMatches,
-        answerRanges, keyTermMatches, style, marks);
+    final tiers = _TierMatches(
+      searchHits: highlightRanges,
+      terms: termMatches,
+      numerics: numericMatches,
+      answers: answerRanges,
+      keyTerms: keyTermMatches,
+    );
+    if (tiers.isEmpty && marks.isEmpty) return null;
+    return _composeSpans(text, tiers, style, marks);
   }
 
   /// Exact [start, end) ranges of every answer-evidence phrase in [text],
@@ -1125,11 +1124,7 @@ class _UnitBody extends StatelessWidget {
   /// mutually non-overlapping) into one span run over [text].
   List<InlineSpan> _composeSpans(
     String text,
-    List<List<int>> searchHits,
-    List<BarrioTermMatch> terms,
-    List<BarrioNumericMatch> numerics,
-    List<List<int>> answers,
-    List<BarrioKeyTermMatch> keyTermSpans,
+    _TierMatches tiers,
     TextStyle style,
     List<BarrioHighlightRun> marks,
   ) {
@@ -1168,11 +1163,12 @@ class _UnitBody extends StatelessWidget {
     // term link is a tappable widget span; every other tier is a plain
     // styled TextSpan over the verbatim substring).
     final segments = <_BodySegment>[
-      for (final r in searchHits) _BodySegment(r[0], r[1], mark: mark),
-      for (final t in terms) _BodySegment(t.start, t.end, term: t),
-      for (final n in numerics) _BodySegment(n.start, n.end, mark: numberPop),
-      for (final r in answers) _BodySegment(r[0], r[1], mark: answerMark),
-      for (final k in keyTermSpans)
+      for (final r in tiers.searchHits) _BodySegment(r[0], r[1], mark: mark),
+      for (final t in tiers.terms) _BodySegment(t.start, t.end, term: t),
+      for (final n in tiers.numerics)
+        _BodySegment(n.start, n.end, mark: numberPop),
+      for (final r in tiers.answers) _BodySegment(r[0], r[1], mark: answerMark),
+      for (final k in tiers.keyTerms)
         _BodySegment(k.start, k.end, mark: keyTermMark),
     ]..sort((a, b) => a.start.compareTo(b.start));
     final spans = <InlineSpan>[];
@@ -1531,6 +1527,43 @@ void barrioClearBodySpanCache() => _kBodySpanCache.clear();
 /// would not prove the `dispose` wiring, which is the part that can rot.
 @visibleForTesting
 Set<Object> barrioDebugBodySpanCacheOwners() => _kBodySpanCache.owners();
+
+/// What each of the five emphasis tiers matched inside one text chunk,
+/// carried as one value so the composer takes a tier bundle instead of a
+/// growing parameter list.
+class _TierMatches {
+  /// Search deep-link hits: the highest tier.
+  final List<List<int>> searchHits;
+
+  /// Tap-to-define term occurrences.
+  final List<BarrioTermMatch> terms;
+
+  /// Number+unit fact tokens.
+  final List<BarrioNumericMatch> numerics;
+
+  /// Chapter-end quiz answer phrases.
+  final List<List<int>> answers;
+
+  /// Curated key terms: the lowest tier.
+  final List<BarrioKeyTermMatch> keyTerms;
+
+  const _TierMatches({
+    required this.searchHits,
+    required this.terms,
+    required this.numerics,
+    required this.answers,
+    required this.keyTerms,
+  });
+
+  /// True when no tier matched anything, so the chunk needs no emphasis
+  /// at all.
+  bool get isEmpty =>
+      searchHits.isEmpty &&
+      terms.isEmpty &&
+      numerics.isEmpty &&
+      answers.isEmpty &&
+      keyTerms.isEmpty;
+}
 
 /// One styled segment inside a text chunk. [term] non-null renders a
 /// tappable term-link widget span; otherwise the segment renders as a
