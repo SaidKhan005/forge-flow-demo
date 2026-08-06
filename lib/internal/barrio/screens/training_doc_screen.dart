@@ -626,6 +626,20 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   /// zones), a clearly horizontal swipe still moves between cards, a
   /// near-vertical drag still scrolls a long card, term-link taps still
   /// open the definition popover, and an image tap still zooms.
+  ///
+  /// DO NOT move this into the card builder. Perf audit A9 proposed
+  /// scoping the area to the current card to shrink the registrar;
+  /// it was built, measured, and rejected on 2026-08-06. A
+  /// [SelectableRegion] is not only a registrar, it plants a
+  /// RawGestureDetector carrying a horizontal-drag, a long-press and a
+  /// right-click recognizer. Above the carousel (here) the reading
+  /// gestures are deeper and win the arena; below it they lose, and
+  /// in-card edge taps and horizontal flings stop turning the page.
+  /// The saving was not there either: on the heaviest authored card in
+  /// the corpus the visible card carries 53 of the 61 registered
+  /// selectables, so per-card scoping drops 61 to 53 and buys 13%.
+  /// Locked by `test/barrio_selection_scope_test.dart`, which carries
+  /// the full measurement.
   Widget _buildSelectableDeck(Color accent) {
     return SelectionArea(
       key: _selectionKey,
