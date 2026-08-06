@@ -1121,7 +1121,7 @@ class _WebSearchDialogState extends State<_WebSearchDialog> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 5),
                 _SearchActionButton(accent: accent, onTap: _submit),
               ],
             ),
@@ -1161,7 +1161,7 @@ class _SearchActionButton extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.arrow_forward_rounded, size: 16, color: onAccent),
-              const SizedBox(width: 6),
+              const SizedBox(width: 5),
               Text(
                 'Search',
                 style: GoogleFonts.ibmPlexMono(
@@ -1466,7 +1466,7 @@ class _FlashcardsChip extends StatelessWidget {
                 size: 16,
                 color: onAccent,
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 5),
               Text(
                 'FLASHCARDS',
                 style: GoogleFonts.ibmPlexMono(
@@ -1599,6 +1599,18 @@ class _BarrioSelectionSurface extends StatelessWidget {
 
 /// One action inside the branded selection menu: the manual accent glyph
 /// beside an IBM Plex label, sized to a comfortable 44px tap target.
+///
+/// The horizontal padding is deliberately tight, and that is a fix, not
+/// a preference. [TextSelectionToolbar] does not wrap: an action that
+/// does not fit on one row is pushed behind an overflow chevron, where a
+/// reader will not look for it. Two actions fit at the roomier 16px
+/// padding; adding Highlight made three, and at 16px "Search the web"
+/// fell off a 390dp phone entirely. At 6px horizontal with a 5px glyph
+/// gap the three measure 94.8 + 91.8 + 136.9 = 323.4 of the 344 a 360dp
+/// phone gives, the narrowest the reader supports.
+/// `barrio_highlight_reader_test.dart` holds that at 360dp, so a fourth
+/// action (Slice D's colour dots) has to solve the row rather than
+/// silently hide something.
 class _BarrioSelectionAction extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -1618,7 +1630,7 @@ class _BarrioSelectionAction extends StatelessWidget {
       onPressed: onPressed,
       style: TextButton.styleFrom(
         foregroundColor: BarrioColors.textPrimary,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
         minimumSize: const Size(0, 44),
         shape: const RoundedRectangleBorder(),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -1627,7 +1639,7 @@ class _BarrioSelectionAction extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Icon(icon, size: 18, color: accent),
-          const SizedBox(width: 8),
+          const SizedBox(width: 5),
           Text(
             label,
             style: GoogleFonts.ibmPlexSans(
