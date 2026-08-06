@@ -675,11 +675,15 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('the selection menu still offers exactly its three actions',
+    testWidgets('the selection menu offers exactly its four labelled actions',
         (tester) async {
-      // Slice C adds nothing to this toolbar: a fourth action would push
-      // "Search the web" behind an overflow chevron. That belongs to
-      // Slice D, which replaces the toolbar outright.
+      // Slice C added nothing to this toolbar: a fourth action would have
+      // pushed "Search the web" behind an overflow chevron. Slice D
+      // replaced the toolbar outright and put the marker pens on a row of
+      // their own, so the labelled actions went from three to four and
+      // the count moved with them. What this still guards is that the
+      // inventory is CLOSED: nothing else has crept onto the toolbar,
+      // where it would compete for the same 344px.
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       try {
         seed(_stored());
@@ -692,8 +696,9 @@ void main() {
         expect(find.text('Highlight'), findsOneWidget);
         expect(find.text('Ask chat'), findsOneWidget);
         expect(find.text('Search the web'), findsOneWidget);
-        expect(find.byType(TextButton), findsNWidgets(3),
-            reason: 'three actions, no fourth');
+        expect(find.text('Add note'), findsOneWidget);
+        expect(find.byType(TextButton), findsNWidgets(4),
+            reason: 'four labelled actions, no fifth');
         expect(tester.takeException(), isNull);
       } finally {
         debugDefaultTargetPlatformOverride = null;

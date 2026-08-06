@@ -80,6 +80,9 @@ const List<String> kUxCopyRoots = <String>[
   // Manage a mark: the actions sheet and the note editor (Slice C).
   'lib/internal/barrio/widgets/barrio_highlight_actions_sheet.dart',
   'lib/internal/barrio/widgets/barrio_highlight_note_sheet.dart',
+  // Review every mark in one manual: the "Your highlights" sheet
+  // (Slice D). Its group headings and row labels are reader copy.
+  'lib/internal/barrio/widgets/training_doc_highlights_sheet.dart',
 ];
 
 /// The banned code point: EM DASH (U+2014).
