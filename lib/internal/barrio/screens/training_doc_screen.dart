@@ -1844,8 +1844,8 @@ class _PartLabel extends StatelessWidget {
 }
 
 /// The marker toolbar's height at the default text scale: the pens row
-/// (44) plus the actions row (44) plus the hairline between them and the
-/// 4px of breathing room above and below the pens.
+/// (44 plus 4px of breathing room above and below), the 2px between the
+/// rows, and the actions row (44).
 ///
 /// It decides ONE thing: whether the toolbar is drawn above the
 /// selection or below it, the same job `_kToolbarHeight` does inside
@@ -1853,7 +1853,7 @@ class _PartLabel extends StatelessWidget {
 /// extra line at a very large text scale is taller than this and simply
 /// gets the same above/below choice; it is never clipped, because the
 /// rows wrap rather than overflow.
-const double _kBarrioMarkerToolbarHeight = 97.0;
+const double _kBarrioMarkerToolbarHeight = 98.0;
 
 /// The reader's own text-selection toolbar (Kindle-style highlights,
 /// Slice D, 2026-08-06).
@@ -1977,7 +1977,12 @@ class _BarrioMarkerToolbar extends StatelessWidget {
                   ],
                 ),
               ),
-              Container(height: 1, color: BarrioColors.hairline),
+              // A rule between the rows is deliberately absent. A
+              // divider with no child expands to the widest width it is
+              // offered, which would stretch this pill across the whole
+              // screen instead of letting it hug its own content, and
+              // the reader's chrome stays calm.
+              const SizedBox(height: 2),
               Wrap(
                 alignment: WrapAlignment.center,
                 crossAxisAlignment: WrapCrossAlignment.center,

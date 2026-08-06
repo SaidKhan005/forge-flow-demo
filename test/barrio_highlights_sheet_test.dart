@@ -40,6 +40,7 @@ import 'package:forge_and_flow/internal/barrio/content/training/barrio_training_
 import 'package:forge_and_flow/internal/barrio/screens/training_doc_screen.dart';
 import 'package:forge_and_flow/internal/barrio/services/barrio_highlights_service.dart';
 import 'package:forge_and_flow/internal/barrio/services/barrio_training_deck.dart';
+import 'package:forge_and_flow/internal/barrio/widgets/barrio_destination_scaffold.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/barrio_highlight_actions_sheet.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/barrio_highlight_note_sheet.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/handbook_lesson_card.dart';
@@ -729,6 +730,28 @@ void main() {
 
         // Nothing was hidden to make room.
         expect(find.byIcon(Icons.more_vert), findsNothing);
+
+        // The glass pill hugs its rows instead of spanning the screen.
+        // A bare divider or any other childless full-width widget in the
+        // column would silently stretch it to the full 344, and nothing
+        // else in this test would notice.
+        final surface = tester.getSize(find
+            .ancestor(
+              of: find.byKey(
+                  const ValueKey<String>('barrio_marker_dot_gold')),
+              matching: find.byWidgetPredicate((w) =>
+                  w is Container &&
+                  w.decoration is BoxDecoration &&
+                  (w.decoration! as BoxDecoration).color ==
+                      BarrioColors.glassFill),
+            )
+            .first);
+        // Two pixels wider than its content: the surface's own 1px
+        // border, each side.
+        expect(surface.width, closeTo(bounds!.width + 2, 0.5),
+            reason: 'measured surface ${surface.width} against content '
+                '${bounds!.width}');
+        expect(surface.width, lessThan(344.0));
         expect(tester.takeException(), isNull);
       } finally {
         debugDefaultTargetPlatformOverride = null;
