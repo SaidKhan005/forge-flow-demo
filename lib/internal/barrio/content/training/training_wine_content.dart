@@ -45,6 +45,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'specific grape varieties used.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c0_u0.webp',
+              caption: 'Crushed grapes, or must, at the start of fermentation. This is what wine looks like before it is wine. Photo: kvins.com via Flickr, CC BY 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c0_u1',
@@ -67,6 +74,18 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'particular bottle.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c0_u1.webp',
+              caption: 'Wine grapes: small berries, packed tight, thick skins. Photo: Alabama Extension, CC0',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c0_u1_2.webp',
+              caption: 'Table grapes for comparison: bigger, looser, thinner skinned, and sweeter to eat. Photo: Famartin, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -102,6 +121,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'wine that truly reflects its unique terroir.',
           runIndex: 1,
           runLength: 4,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c1_u0.webp',
+              caption: 'Vines growing in stones at La Crau in Chateauneuf du Pape. Ground like this drains hard and makes the vine work for water. Photo: Treephoto, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c1_u1',
@@ -176,6 +202,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'in blends, particularly in classic Bordeaux-style wines.',
           runIndex: 4,
           runLength: 4,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c1_u3.webp',
+              caption: 'Pressed grape skins, seeds and stems. Every bit of the tannin in a red wine started here. Photo: davitydave, CC BY 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -208,6 +241,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'ABV. Nutritionally, white wines often contain fewer calories '
               'per glass than their red counterparts, though this can '
               'fluctuate based on the wine\'s residual sugar content.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c2_u0.webp',
+              caption: 'Red grapes fermenting on their skins, trodden by foot in the traditional way. The colour and the tannin come out of those skins. Photo: Jeffrey Keeton, CC BY 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -237,6 +277,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'spices, and cedarwood.',
           runIndex: 1,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c3_u0.webp',
+              caption: 'Cabernet Sauvignon on the vine: small, blue black, thick skinned. Photo: Megan Mallen, CC BY 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c3_u1',
@@ -269,6 +316,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'still showcasing the grape\'s signature characteristics.',
           runIndex: 2,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c3_u1.webp',
+              caption: 'A Napa Valley vineyard. The warm climate here ripens Cabernet fully, which is why Napa Cabernet tastes so ripe and forward. Photo: Rhododendrites, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c3_u2',
@@ -315,6 +369,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'most sought-after in the world.',
           runIndex: 1,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c3_u3.webp',
+              caption: 'Pinot Noir: a tight little cluster, thin skinned, which is why the wine is paler than Cabernet. Photo: CSIRO, CC BY 3.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c3_u4',
@@ -376,6 +437,18 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'depth and complexity over time.',
           runIndex: 1,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c3_u6.webp',
+              caption: 'Syrah on an old vine, ripe and almost black. Photo: CevatKaraman, CC0',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c3_u6_2.webp',
+              caption: 'Cote Rotie in the northern Rhone. Syrah grown on slopes this steep is picked entirely by hand. Photo: Olivier Lemoine (https://Photo-Terroir.fr), CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c3_u7',
@@ -471,6 +544,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'its high sugar content, often leading to higher alcohol '
               'levels. When crafted skillfully, Zinfandel showcases a '
               'sumptuous texture that enlivens the palate.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c3_u10.webp',
+              caption: 'A Zinfandel vine planted in 1902, still fruiting. Old head trained vines like this are a California signature. Photo: Randy Caparoso, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c3_u11',
@@ -492,6 +572,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'sophisticated profiles over time.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c3_u11.webp',
+              caption: 'Malbec in Cahors, its French home, where the wine is darker and more savoury than the Argentine style. Photo: Lapastoure Didier from Cazals, France, CC BY-SA 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c3_u12',
@@ -515,6 +602,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'range of palates.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c3_u12.webp',
+              caption: 'Malbec vineyards below the Andes in Mendoza. Altitude gives hot sun by day and cold nights, which is why the fruit stays fresh. Photo: Beatrice Murch, CC BY-SA 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c3_u13',
@@ -537,6 +631,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'flavors, along with subtle herbal notes and a touch of spice.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c3_u13.webp',
+              caption: 'A Grenache bush vine at Chateauneuf du Pape. No trellis, no irrigation: the shape shades its own fruit and survives drought. Photo: Julian Fong, CC BY-SA 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c3_u14',
@@ -581,6 +682,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'Sauvignon.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c3_u15.webp',
+              caption: 'Merlot on the vine: large, dark blue berries in loose clusters, which is where its soft round texture comes from. Photo: Porao, Wikimedia Commons, CC BY-SA 3.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c3_u16',
@@ -634,6 +742,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'into vineyards across the globe, including California and '
               'Argentina, Tuscany remains the quintessential home showcasing '
               'traditional expressions.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c3_u17.webp',
+              caption: 'Sangiovese picked for Chianti. Thin skinned and high in acid, which is why it works so well with food. Photo: sherseydc via Flickr, CC BY-SA 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -670,6 +785,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'slightly herbal undertone, while Australian and Pacific '
               'Northwest expressions often balance the bright acidity with a '
               'medium body.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c4_u0.webp',
+              caption: 'Sauvignon Blanc: leaf and fruit. Small green berries that hold their acidity in cool weather. Photo: Karl Bauer, CC BY 3.0 at',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c4_u1',
@@ -687,6 +809,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'white wine selection. This innovative style showcases the '
               'versatility of Sauvignon Blanc while also highlighting the '
               'influence of winemaking techniques on flavor development.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c4_u1.webp',
+              caption: 'A barrel being toasted over open flame at the cooperage. That fire is where the smoke, toast and caramel notes in an oaked wine begin. Photo: Maison Louis Latour, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c4_u2',
@@ -710,6 +839,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'terroir.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c4_u2.webp',
+              caption: 'Chardonnay on the vine. A neutral grape, which is exactly why it takes the shape of wherever it is grown. Photo: Harold Litwiler from Orcutt/Istanbul, USA, CC BY-SA 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c4_u3',
@@ -730,6 +866,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'status as a cornerstone of the wine world.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c4_u3.webp',
+              caption: 'A barrel cellar in Chianti. Months in oak add the vanilla, spice and creamy weight the card describes. Photo: Rob & Lisa Meehan, CC BY 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c4_u4',
@@ -751,6 +894,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'profile that features bright lemon and melon notes.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c4_u4.webp',
+              caption: 'Pinot Gris on the vine. The skins are pink and coppery even though the wine it makes is white. Photo: Ermell, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c4_u5',
@@ -792,6 +942,18 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'maintaining its hallmark high acidity and low alcohol content.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c4_u6.webp',
+              caption: 'The Calmont on the Mosel, one of the steepest vineyards in the world. Slate holds the day\'s heat and hands it back at night. Photo: Rolf Kranz, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c4_u6_2.webp',
+              caption: 'Riesling on the vine: small, golden green, and high in acid right through ripening. Photo: Kmtextor, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c4_u7',
@@ -842,6 +1004,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'wine, its inherent fruitiness and aromatic intensity '
               'contribute to a lingering residual sweetness that captivates '
               'the palate.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c4_u8.webp',
+              caption: 'Gewurztraminer in Alsace. The pink skin is a giveaway, and it is where the perfume comes from. Photo: Rolf Kranz, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c4_u9',
@@ -874,6 +1043,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'California and Australia have embraced Chenin Blanc, crafting '
               'unique interpretations that reflect their own climates and '
               'winemaking traditions.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c4_u9.webp',
+              caption: 'Chenin Blanc in the Loire. The same grape makes bone dry wine here and rich sweet wine down the road. Photo: Benjamin Smith, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c4_u10',
@@ -897,6 +1073,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'grapes.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c4_u10.webp',
+              caption: 'Muscat on the vine. One of the few grapes that smells like grapes, which is why the wine does too. Photo: Petrconti, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c4_u11',
@@ -1023,6 +1206,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'apart from other sparkling wines.',
           runIndex: 1,
           runLength: 5,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c6_u0.webp',
+              caption: 'Champagne resting on its side in a chalk cellar. The second fermentation happens inside each of these sealed bottles. Photo: Tomas er, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c6_u1',
@@ -1091,6 +1281,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               '- Extra Brut: 0 to 0.6% sugar',
           runIndex: 4,
           runLength: 5,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c6_u3.webp',
+              caption: 'Riddling racks. Bottles are turned and tipped a little each day so the spent yeast slides down into the neck, ready to be removed. Photo: Cynwolfe, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c6_u4',
@@ -1233,6 +1430,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           body: 'A red sparkling wine from central Italy that is unique among '
               'bubblies as it ranges in color from light ruby to deep purple '
               'and can be either bone dry or semi-sweet.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c6_u10.webp',
+              caption: 'Lambrusco in the glass. Yes, it is a red sparkling wine, and that surprises most guests. Photo: Lore & Guille, CC BY 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c6_u11',
@@ -1340,6 +1544,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'become the world\'s fifth-largest wine producer.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c8_u0.webp',
+              caption: 'Harvesting Mission vines. Mission, known as Pais in South America, was the workhorse grape of the Americas for three centuries. Photo: Randy Caparoso, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c8_u1',
@@ -1459,6 +1670,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'like Bonarda, Cabernet Sauvignon, Syrah, and Tempranillo.',
           runIndex: 1,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c10_u0.webp',
+              caption: 'Mendoza: vine rows in the desert with the snow line of the Andes behind. The mountains take the rain, which is why this is so dry. Photo: Juan Pelizzatti, CC BY 3.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c10_u1',
@@ -1481,6 +1699,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'Americas.',
           runIndex: 2,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c10_u1.webp',
+              caption: 'The Uco Valley with the Andes across the horizon. Those peaks are what shape the cool nights the wines depend on. Photo: Cornelius Kibelka from Berlin, Germany, CC BY-SA 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c10_u2',
@@ -1512,7 +1737,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/wine_training/02.webp',
+              caption: 'Diagram: the Mendoza wine region, its major grapes and its key subregions',
               afterParagraph: 0,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c10_u2.webp',
+              caption: 'A pergola trained vineyard in Argentina. The leaf roof shades the fruit and keeps it out of the fierce high altitude sun. Photo: Justin De La Ornellas, CC BY 2.0',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -1587,6 +1818,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'remarkable purity and concentration that yield wines with '
               'vivid aromatics, bright acidity, and deeply structured '
               'flavors.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c10_u6.webp',
+              caption: 'Vineyards at Cafayate in Salta, among the highest on earth. Thin air, hard sun and cold nights concentrate everything. Photo: aaepstein, CC BY 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -1890,6 +2128,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'in Chile.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c13_u1.webp',
+              caption: 'Ancient vines at Sauzal in Maule, still on their own roots. Chile never had phylloxera, so vines like these were never pulled up. Photo: Alder Yarrow, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -2342,6 +2587,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'Today, this red grape is prized for its deep color and '
               'complexity, offering flavors of tart raspberries, cocoa '
               'powder, and herbaceous notes of green peppercorn.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c16_u1.webp',
+              caption: 'Carmenere. For a century Chile grew this and called it Merlot, until DNA testing settled it in the 1990s. Photo: Lebowskyclone, CC BY-SA 3.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c16_u2',
@@ -2368,6 +2620,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'Blanc an exceptional pairing for ceviche, as the wine\'s '
               'acidity and herbal hint beautifully complement the dish\'s '
               'fresh, citrus-marinated seafood.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c16_u3.webp',
+              caption: 'Ceviche. Citrus cured fish and a high acid Sauvignon Blanc: the pairing the card names, and one you can sell. Photo: Jorge G. Mori, Public domain',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c16_u4',
@@ -2424,6 +2683,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'so uniquely inviting.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c17_u0.webp',
+              caption: 'Sangria: red wine, fresh fruit and often a splash of brandy. Spain\'s most exported drinking habit. Photo: Justin Henry, CC BY 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c17_u1',
@@ -2478,6 +2744,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'enduring passion and resilience.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c18_u0.webp',
+              caption: 'The graft union on a vine. European vine above, American rootstock below. This join is what saved wine from phylloxera. Photo: W.carter, CC0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c18_u1',
@@ -2497,6 +2770,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'evolve, honoring its deep heritage while embracing the future.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c18_u1.webp',
+              caption: 'Tinajas in a Spanish bodega. Clay jars with narrow mouths, used for centuries to keep air away from the wine. Photo: Poniol60, Wikimedia Commons, CC BY-SA 3.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -2579,6 +2859,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'Rioja Oriental, the region delivers a compelling spectrum of '
               'styles while maintaining its distinctive hallmark of balance '
               'and longevity.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c20_u0.webp',
+              caption: 'Vineyards in Rioja. Tempranillo on chalky, limestone rich ground is the backbone of the region. Photo: Random username 083794703875938, CC0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c20_u1',
@@ -2603,8 +2890,9 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'powerful character.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/wine_training/14.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c20_u2.webp',
+              caption: 'Priorat at Gratallops. Those steep slate terraces are the llicorella that gives the wine its concentration. Photo: Angela Llop, CC BY-SA 2.0',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -2618,6 +2906,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'distinctive character to the perfect growing conditions '
               'created by the vineyards\' proximity to sea level and the '
               'moderating influence of the Atlantic Ocean.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c20_u3.webp',
+              caption: 'Albarino trained overhead on granite posts in Rias Baixas. Lifting the fruit off damp Atlantic ground keeps it healthy. Photo: jacilluch, CC BY-SA 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c20_u4',
@@ -2641,6 +2936,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'fortified wines like Fino, Manzanilla, and Oloroso from '
               'Palomino grapes, each aged to perfection through the '
               'meticulous solera system.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c20_u5.webp',
+              caption: 'A sherry bodega in Jerez. Butts stacked in rows: wine is drawn from the bottom and topped up from above, year after year. Photo: El Pantera, CC BY-SA 3.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c20_u6',
@@ -2659,6 +2961,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'surprising, with a distinct earthiness that speaks to both the '
               'ancient geology and the cool Atlantic influence that shapes '
               'this dramatic landscape.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c20_u6.webp',
+              caption: 'Mencia at harvest in Bierzo. Almost every red in the region is made from this one grape. Photo: Alejandro Bolado (Bolado), CC BY 3.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c20_u7',
@@ -2717,6 +3026,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'dance with oak: aging in American or French barrels imparts '
               'layers of vanilla, spice, and toast, lending elegance without '
               'overwhelming the fruit.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c21_u0.webp',
+              caption: 'Tempranillo from Rioja Alavesa. Spain\'s flagship red grape, moderate in acid and famously smooth in tannin. Photo: María Jesús Tomé, CC BY 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c21_u1',
@@ -2756,6 +3072,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'vibrant complexity and deep, ripe fruit character, while still '
               'retaining the powerful structure and strength that make it a '
               'distinctive, age-worthy variety.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c21_u2.webp',
+              caption: 'Monastrell country in southeastern Spain. Baked, dry and low yielding, which is where the dark fruit and firm tannin come from. Photo: Malegaetan, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c21_u3',
@@ -2799,6 +3122,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'Canary Islands has been skillfully harnessed by local wineries '
               'to produce distinctive, terroir-driven wines that vividly '
               'express the region\'s volcanic origins.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c21_u6.webp',
+              caption: 'Vines in black volcanic ground on Lanzarote, each in its own hollow behind a stone wall. Canary Island wine really does taste of this. Photo: Tamara Kulikova, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c21_u7',
@@ -2892,6 +3222,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'vibrant, mineral-driven whites that are rich yet never '
               'cloying, making them a perfect, time-honored match for the '
               'region\'s celebrated seafood.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c22_u1.webp',
+              caption: 'Albarino on the vine in Galicia. Thick skinned for a white grape, which helps it survive a wet Atlantic summer. Photo: Miguel Ángel García., CC BY 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c22_u2',
@@ -2935,6 +3272,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'in the chalky soils of Jerez de la Frontera, where its prized '
               'Flor yeast coat emerges to drive the intricate solera aging '
               'process and produce the region\'s iconic Fino sherries.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c22_u5.webp',
+              caption: 'Flor: a living blanket of yeast floating on sherry in the butt. It protects the wine from air and gives Fino its tang. Photo: El Pantera, CC BY-SA 3.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c22_u6',
@@ -2969,6 +3313,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'now, modern winemaking techniques are unlocking its potential, '
               'and visitors can explore its endless vineyards on tours from '
               'Madrid that also pass the iconic Don Quixote windmills.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c22_u8.webp',
+              caption: 'The windmills at Campo de Criptana in La Mancha, the Don Quixote country the card mentions. Airen vineyards run out in every direction from here. Photo: Lourdes Cardenal, CC BY-SA 3.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c22_u9',
@@ -3003,6 +3354,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'dessert wines that, with age, deepen to an almost black hue, '
               'making them equally superb for sipping and as a decadent '
               'topping for cakes and ice cream.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c22_u11.webp',
+              caption: 'Pedro Ximenez in the glass beside dessert. Aged PX goes almost black and is sweet enough to pour over ice cream. Photo: Javier Lastras, CC BY 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -3125,6 +3483,16 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               assetPath: 'assets/internal/barrio/training/wine_training/15.webp',
               afterParagraph: 0,
             ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c24_u1.webp',
+              caption: 'A cork oak after harvest. The bark is stripped by hand, the tree is unharmed, and it grows back over about nine years. Photo: Ken & Nyetta, CC BY 2.0',
+              afterParagraph: -1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c24_u1_2.webp',
+              caption: 'Harvested cork bark stacked to season before it becomes stoppers. Photo: Kolforn, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
           ],
         ),
       ],
@@ -3239,6 +3607,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'ensuring that power never comes at the expense of elegance.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c25_u4.webp',
+              caption: 'The Douro. Terraces cut into slate so steep that nearly all the work is still done by hand. Photo: Feliciano Guimarães, CC BY 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c25_u5',
@@ -3350,6 +3725,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'Despite these extremes, Alentejo has emerged as one of '
               'Portugal\'s most dynamic wine regions, where resilience and '
               'innovation drive a thriving, modern viticultural scene.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c25_u10.webp',
+              caption: 'Vineyards in the Alentejo, a wide, hot, dry province that covers nearly a third of mainland Portugal. Photo: Cruz Liljegren, CC BY 3.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -3516,6 +3898,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'Quinta, determines its own aging journey in barrels, vats, or '
               'bottles. The result is a spectrum of wines that balance '
               'sweetness, structure, and heritage in every sip.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c28_u0.webp',
+              caption: 'A Port lodge at Vila Nova de Gaia. Ruby, Tawny and the rest are all decided by how long the wine sits in wood like this. Photo: Ken & Nyetta, CC BY 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -3638,6 +4027,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'intended.',
           runIndex: 2,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c30_u1.webp',
+              caption: 'A wide bowled Burgundy glass on the left beside a narrower all purpose glass. The wider the bowl, the more air the wine gets. Photo: Loimo, CC0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -3827,8 +4223,9 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
           runLength: 4,
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/wine_training/20.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c33_u3.webp',
+              caption: 'A vine planted in 1930, still cropping. This is what old vine means, though no law says how old a vine has to be to earn the words. Photo: Randy Caparoso, CC BY-SA 4.0',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -3904,6 +4301,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'horizontally on each side for maximum leverage.',
           runIndex: 2,
           runLength: 5,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c34_u1.webp',
+              caption: 'A waiter\'s corkscrew: foil knife at one end, two step lever, and the spiral worm. Everything you need in one tool. Photo: Ivar Leidus, CC BY-SA 4.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c34_u2',
@@ -3954,6 +4358,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'their expectations.',
           runIndex: 4,
           runLength: 5,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c34_u3.webp',
+              caption: 'An extracted cork. The end that sat in the wine is stained and damp, the outer end is dry. That is the sign of a properly stored bottle. Photo: Beatrice Murch, CC BY-SA 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c34_u4',
@@ -3977,6 +4388,11 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/wine_training/21.webp',
               afterParagraph: 0,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c34_u4.webp',
+              caption: 'Pouring into the centre of the bowl, slow and steady, about five ounces. Photo: Dave Gough, CC BY 2.0',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -4016,6 +4432,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'precaution, especially if the wire cage has been removed.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c35_u0.webp',
+              caption: 'The wire cage, or muselet, on a sparkling bottle. Six counter clockwise turns of the tab loosens it, and your thumb stays on the cork. Photo: Peter Burka, CC BY-SA 2.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c35_u1',
@@ -4097,12 +4520,14 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'treatment.',
           images: [
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/wine_training/23.webp',
+              assetPath: 'assets/internal/barrio/training/wine_training/24.webp',
+              caption: 'Diagram: how to decant, from priming the decanter through to returning the wine to the glass',
               afterParagraph: 0,
             ),
             HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/wine_training/24.webp',
-              afterParagraph: 0,
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c37_u0.webp',
+              caption: 'Decanting: a steady, unbroken pour that leaves the sediment behind in the bottle. Photo: Didriks, CC BY 2.0',
+              afterParagraph: -1,
             ),
           ],
         ),
@@ -4152,6 +4577,13 @@ const BarrioTrainingDoc kTrainingWine = BarrioTrainingDoc(
               'purposeful haze or a dusting of sediment at the bottom.',
           runIndex: 1,
           runLength: 3,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/training_wine_photos/training_wine_c38_u1.webp',
+              caption: 'Two reds side by side. Colour shifts with age and handling, so what you see in the glass tells you something before you smell it. Photo: Mick Stephenson mixpix, CC BY-SA 3.0',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_wine_c38_u2',

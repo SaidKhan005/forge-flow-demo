@@ -262,5 +262,11 @@
       "assets/internal/barrio/training/latin_american_ingredients/53.webp"
     ],
     "reason": "Extractor photo superseded by the curated food photograph for this card (PR #1515)."
+  },
+  "training_wine_c37_u0": {
+    "drop": [
+      "assets/internal/barrio/training/wine_training/23.webp"
+    ],
+    "reason": "Source figure 23 is a scanned page about cork and screwcap closures, body text and all, sitting on the decanting card. Superseded by the curated decanting photograph. Figure 24, the on-subject how-to-decant diagram, stays."
   }
 }

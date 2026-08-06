@@ -307,7 +307,7 @@ The undisputed heart of Argentine viticulture, accounting for an extraordinary 7
 
 Mendoza's climate is classified as semi-desert, with only about 232mm of rainfall annually and over 300 sunny days. However, the rainfall distribution is problematic: most of it falls between January and March, just before the harvest in mid-to-late March, which can threaten the quality of the grapes. To mitigate this, many vineyards are planted on light, free-draining soils. Hail is a significant risk, damaging around 30% of vineyards each year, prompting most producers to protect their best plots with hail nets. Vineyards are often trained using the pergola system, where a leafy roof shields the grapes from intense sun, allowing them to hang in dappled shade and avoid sunburn. Irrigation is essential, as vines require about 700mm of water annually. Well-managed flood irrigation, applied infrequently with large volumes, encourages deep root growth and prevents superficial rooting that could absorb excess rainfall near harvest and split berries. Drip irrigation is now used in a similar manner on suitable soils, while the area also excels in olive-oil production, with olive trees often interplanted among old vines.
 
-![](assets/internal/barrio/training/wine_training/02.webp)
+![Diagram: the Mendoza wine region, its major grapes and its key subregions](assets/internal/barrio/training/wine_training/02.webp)
 
 ### La Rioja
 
@@ -903,7 +903,7 @@ Decanting is far more than a dramatic flourish at the dinner table: it's a purpo
 
 ![](assets/internal/barrio/training/wine_training/23.webp)
 
-![](assets/internal/barrio/training/wine_training/24.webp)
+![Diagram: how to decant, from priming the decanter through to returning the wine to the glass](assets/internal/barrio/training/wine_training/24.webp)
 
 ## How to Taste Wine
 
