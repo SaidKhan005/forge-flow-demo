@@ -35,12 +35,11 @@ const _kIngredients = 'training_latin_ingredients';
 const _kWords = 'training_general_words';
 const _kTequila = 'training_tequila';
 
-/// Push Training carries no card art at all, so it is the fixture for
-/// photo-free behavior. Words To Know used to fill that role, but build 32
-/// gave it real photographs on some cards, which is the point of the
-/// build: a manual's picture coverage is content that changes, so the
-/// photo-free assertions hang off a manual that genuinely has none.
-const _kPushSop = 'training_push_sop';
+// No photo-free manual is pinned here on purpose. A manual's picture
+// coverage is content that changes (build 32 gave Words To Know real
+// photographs and retired it from that role), so the photo-free
+// assertions below scan the registry at runtime for a card that
+// genuinely has none instead of naming one that may gain art tomorrow.
 
 /// A resolved coordinate: chapter index, unit index within the chapter,
 /// and the unit itself.
