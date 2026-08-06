@@ -35,13 +35,6 @@ const _kIngredients = 'training_latin_ingredients';
 const _kWords = 'training_general_words';
 const _kTequila = 'training_tequila';
 
-/// Push Training carries no card art at all, so it is the fixture for
-/// photo-free behavior. Words To Know used to fill that role, but build 32
-/// gave it real photographs on some cards, which is the point of the
-/// build: a manual's picture coverage is content that changes, so the
-/// photo-free assertions hang off a manual that genuinely has none.
-const _kPushSop = 'training_push_sop';
-
 /// A resolved coordinate: chapter index, unit index within the chapter,
 /// and the unit itself.
 typedef _Coord = ({int chapterIndex, int unitIndex, HandbookUnit unit});
@@ -385,9 +378,15 @@ void main() {
     testWidgets('a photo-free manual index shows plain text rows and never '
         'a thumbnail', (tester) async {
       usePhone(tester);
-      // Found at runtime rather than named: which manuals carry photos is
-      // content that changes build to build, and hard-coding one here is
-      // exactly what went stale when build 32 added photographs.
+      // The photo-free fixture is found at runtime, never named, because a
+      // manual's picture coverage is content that changes build to build.
+      // Naming one has already gone stale twice: Words To Know held the
+      // role until build 32 gave it real photographs, and the replacement
+      // named in that same build (Push Training) has since gained photos of
+      // its own. Any name written here is a claim about content that a
+      // later build can quietly falsify, so the test asks the wired content
+      // which manual still has zero photo entries and exercises the
+      // plain-row path on whichever one that is.
       final photoFree = kBarrioTrainingDocs.entries.firstWhere(
         (e) =>
             buildTrainingIndexGroups(e.value).isNotEmpty &&
@@ -406,7 +405,7 @@ void main() {
       expect(
         find.descendant(of: list, matching: find.byType(BarrioRowThumbnail)),
         findsNothing,
-        reason: 'Push Training has zero card photos, so zero thumbnails',
+        reason: '${photoFree.key} has zero card photos, so zero thumbnails',
       );
       // The plain text row still renders and is tappable.
       expect(
