@@ -114,7 +114,9 @@ class _BarrioHomeSearchFieldState extends State<BarrioHomeSearchField> {
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
         decoration: BoxDecoration(
-          color: BarrioColors.shellMid.withValues(alpha: 0.80),
+          // The one deliberately lighter glass rung: a field, not a
+          // surface, so a little cream reads through (was shellMid@0.80).
+          color: BarrioColors.glassFillSoft,
           borderRadius: BorderRadius.circular(BarrioRadii.card),
           border: Border.all(
             color: BarrioColors.tealWarm
@@ -266,7 +268,7 @@ class _EmptyState extends StatelessWidget {
         // hairline navy edge so it reads on the cream backdrop.
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
         decoration: BoxDecoration(
-          color: BarrioColors.shellMid.withValues(alpha: 0.92),
+          color: BarrioColors.glassFill,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: const Color(0x1416243B)),
         ),
@@ -323,7 +325,7 @@ class _SearchResultRow extends StatelessWidget {
               decoration: BoxDecoration(
                 // Near-opaque white card with a hairline navy edge so
                 // each result row reads cleanly on the cream backdrop.
-                color: BarrioColors.shellMid.withValues(alpha: 0.92),
+                color: BarrioColors.glassFill,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: const Color(0x1416243B)),
               ),

@@ -794,7 +794,7 @@ class _ContinueReadingCard extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: BarrioColors.shellMid.withValues(alpha: 0.92),
+                color: BarrioColors.glassFill,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: accent.withValues(alpha: 0.40)),
               ),
@@ -920,7 +920,7 @@ class _QuickRefresherCard extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: BarrioColors.shellMid.withValues(alpha: 0.92),
+                color: BarrioColors.glassFill,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: accent.withValues(alpha: 0.40)),
               ),
@@ -1094,7 +1094,7 @@ class _SavedRow extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
             decoration: BoxDecoration(
-              color: BarrioColors.shellMid.withValues(alpha: 0.92),
+              color: BarrioColors.glassFill,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: accent.withValues(alpha: 0.28)),
             ),
