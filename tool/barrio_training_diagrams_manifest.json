@@ -4135,7 +4135,24 @@
     {
       "afterParagraph": -1,
       "assetPath": "assets/internal/barrio/training/training_wine_photos/training_wine_c10_u2.webp",
-      "caption": "A pergola trained vineyard in Argentina. The leaf roof shades the fruit and keeps it out of the fierce high altitude sun. Photo: Justin De La Ornellas, CC BY 2.0"
+      "caption": "A pergola trained vineyard in Argentina. The leaf roof shades the fruit and keeps it out of the fierce high altitude sun. Photo: Justin De La Ornellas, CC BY 2.0",
+      "replace": true
+    }
+  ],
+  "training_wine_c10_u4": [
+    {
+      "afterParagraph": -1,
+      "assetPath": "assets/internal/barrio/training/training_wine_photos/training_wine_c10_u4.webp",
+      "caption": "A vineyard in Patagonia. Cool, dry and wide open, which is what keeps the acidity in the Pinot Noir and Chardonnay grown here. Photo: Denis Rudenko, CC BY-SA 4.0",
+      "replace": true
+    }
+  ],
+  "training_wine_c10_u5": [
+    {
+      "afterParagraph": -1,
+      "assetPath": "assets/internal/barrio/training/training_wine_photos/training_wine_c10_u5.webp",
+      "caption": "Vine rows on dry bare ground in the Ullum valley, San Juan. Hot days and thin soil are what this region gives its Tempranillo and Syrah. Photo: EagLau, CC BY-SA 4.0",
+      "replace": true
     }
   ],
   "training_wine_c10_u6": [
@@ -4145,11 +4162,75 @@
       "caption": "Vineyards at Cafayate in Salta, among the highest on earth. Thin air, hard sun and cold nights concentrate everything. Photo: aaepstein, CC BY 2.0"
     }
   ],
+  "training_wine_c11_u1": [
+    {
+      "afterParagraph": -1,
+      "assetPath": "assets/internal/barrio/training/training_wine_photos/training_wine_c11_u1.webp",
+      "caption": "Malbec on the vine at Cafayate, with a drip line running along the row. Massal selection means walking thousands of vines like these and taking cuttings from the best. Photo: Micah MacAllen, CC BY-SA 2.0",
+      "replace": true
+    }
+  ],
+  "training_wine_c11_u2": [
+    {
+      "afterParagraph": -1,
+      "assetPath": "assets/internal/barrio/training/training_wine_photos/training_wine_c11_u2.webp",
+      "caption": "A ripe Cabernet Sauvignon bunch, this one in Bordeaux. Small, thick skinned berries are where the dark fruit and the firm tannin come from. Photo: Christophe Eyquem, CC BY 3.0",
+      "replace": true
+    }
+  ],
+  "training_wine_c11_u3": [
+    {
+      "afterParagraph": -1,
+      "assetPath": "assets/internal/barrio/training/training_wine_photos/training_wine_c11_u3.webp",
+      "caption": "Pinot Noir in Oregon, just after veraison, the point where the fruit has finished turning colour. Photo: Melinda, CC BY 2.0",
+      "replace": true
+    }
+  ],
+  "training_wine_c11_u4": [
+    {
+      "afterParagraph": -1,
+      "assetPath": "assets/internal/barrio/training/training_wine_photos/training_wine_c11_u4.webp",
+      "caption": "Syrah on the vine, the berries almost black. That depth of colour in the skin is where the colour in the glass comes from. Photo: Chrisada Sookdhis, CC BY 2.0",
+      "replace": true
+    }
+  ],
+  "training_wine_c11_u5": [
+    {
+      "afterParagraph": -1,
+      "assetPath": "assets/internal/barrio/training/training_wine_photos/training_wine_c11_u5.webp",
+      "caption": "Chardonnay in the Jura, still pale green. Picked before it over ripens, it keeps the lemon and lime edge this card describes. Photo: Arnaud 25, CC BY-SA 3.0",
+      "replace": true
+    }
+  ],
+  "training_wine_c11_u6": [
+    {
+      "afterParagraph": -1,
+      "assetPath": "assets/internal/barrio/training/training_wine_photos/training_wine_c11_u6.webp",
+      "caption": "Torrontes at Cafayate, with the block sign still hanging on the wire. Argentina's own white grape, on its home ground. Photo: aaepstein, CC BY 2.0",
+      "replace": true
+    }
+  ],
+  "training_wine_c11_u7": [
+    {
+      "afterParagraph": -1,
+      "assetPath": "assets/internal/barrio/training/training_wine_photos/training_wine_c11_u7.webp",
+      "caption": "Bottles nose down in riddling racks. This is the traditional method, where the second fermentation happens inside the bottle you are served from. Photo: Craig Hatfield, CC BY 2.0",
+      "replace": true
+    }
+  ],
   "training_wine_c13_u1": [
     {
       "afterParagraph": -1,
       "assetPath": "assets/internal/barrio/training/training_wine_photos/training_wine_c13_u1.webp",
       "caption": "Ancient vines at Sauzal in Maule, still on their own roots. Chile never had phylloxera, so vines like these were never pulled up. Photo: Alder Yarrow, CC BY-SA 4.0"
+    }
+  ],
+  "training_wine_c15_u0": [
+    {
+      "afterParagraph": -1,
+      "assetPath": "assets/internal/barrio/training/training_wine_diagrams/training_wine_c15_u0.webp",
+      "caption": "Diagram: Chile's Central Valley. Maipo, Cachapoal, Colchagua, Curico and Maule all run east to west, from the Andes down to the Pacific. This map covers the Central Valley only, not all of Chile. Map: Nicols Arce, CC BY-SA 4.0",
+      "replace": true
     }
   ],
   "training_wine_c16_u1": [
@@ -4319,6 +4400,14 @@
       "caption": "A Port lodge at Vila Nova de Gaia. Ruby, Tawny and the rest are all decided by how long the wine sits in wood like this. Photo: Ken & Nyetta, CC BY 2.0"
     }
   ],
+  "training_wine_c29_u1": [
+    {
+      "afterParagraph": -1,
+      "assetPath": "assets/internal/barrio/training/training_wine_photos/training_wine_c29_u1.webp",
+      "caption": "A glass of red at Barrio Legado. The bowl holds the wine, the stem keeps your hand off it, and the base sits on the coaster. A bowl this wide is what lets you swirl without spilling.",
+      "replace": true
+    }
+  ],
   "training_wine_c2_u0": [
     {
       "afterParagraph": -1,
@@ -4331,6 +4420,14 @@
       "afterParagraph": -1,
       "assetPath": "assets/internal/barrio/training/training_wine_photos/training_wine_c30_u1.webp",
       "caption": "A wide bowled Burgundy glass on the left beside a narrower all purpose glass. The wider the bowl, the more air the wine gets. Photo: Loimo, CC0"
+    }
+  ],
+  "training_wine_c31_u1": [
+    {
+      "afterParagraph": -1,
+      "assetPath": "assets/internal/barrio/training/training_wine_photos/training_wine_c31_u1.webp",
+      "caption": "The wide bowl on the left is the Chardonnay and white Burgundy shape. The narrower glass on the right is a standard white. Same family, different bowl. Photo: Loimo, CC0",
+      "replace": true
     }
   ],
   "training_wine_c33_u3": [
@@ -4552,6 +4649,14 @@
       "afterParagraph": -1,
       "assetPath": "assets/internal/barrio/training/training_wine_photos/training_wine_c8_u0.webp",
       "caption": "Harvesting Mission vines. Mission, known as Pais in South America, was the workhorse grape of the Americas for three centuries. Photo: Randy Caparoso, CC BY-SA 4.0"
+    }
+  ],
+  "training_wine_c9_u1": [
+    {
+      "afterParagraph": -1,
+      "assetPath": "assets/internal/barrio/training/training_wine_photos/training_wine_c9_u1.webp",
+      "caption": "Vines at Cafayate in Salta, on dry sandy ground with the mountains behind. The water comes off those peaks, and growers hold it back on purpose to concentrate the fruit. Photo: Micah MacAllen, CC BY-SA 2.0",
+      "replace": true
     }
   ]
 }

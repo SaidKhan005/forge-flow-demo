@@ -244,6 +244,10 @@ flutter:
     # Wine photo pass (2026-08-06): the operator-approved openly licensed
     # photographs for the wine manual, wired via the diagrams manifest.
     - assets/internal/barrio/training/training_wine_photos/
+    # Branded-figure swap (2026-08-06): openly licensed replacements for the
+    # third-party marketing figures the source manual carried. Maps are drawn
+    # art, not photographs, so a licensed map lives beside the pictograms.
+    - assets/internal/barrio/training/training_wine_diagrams/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
