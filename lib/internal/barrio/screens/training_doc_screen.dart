@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../content/barrio_body_chunks.dart';
 import '../content/company_handbook_content.dart';
 import '../content/training/barrio_training_doc.dart';
 import '../search/barrio_training_search.dart';
@@ -9,6 +10,8 @@ import '../routes/barrio_preview_role.dart';
 import '../routes/barrio_route_map.dart';
 import '../services/barrio_bookmarks_service.dart';
 import '../services/barrio_flashcard_deck.dart';
+import '../services/barrio_highlight_anchors.dart';
+import '../services/barrio_highlights_service.dart';
 import '../services/barrio_reading_progress_service.dart';
 import '../services/barrio_reading_time.dart';
 import '../services/barrio_term_links.dart';
@@ -123,6 +126,28 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   /// write through BarrioBookmarksService.
   final Set<String> _bookmarkKeys = {};
 
+  /// This manual's content cards by unit id. Built once at open so
+  /// turning a selection into a highlight can re-parse the right body
+  /// without walking the deck.
+  late final Map<String, HandbookUnit> _unitsById;
+
+  /// Where every rendered chunk of every live card publishes what the
+  /// reader has selected inside it (Kindle-style highlights, Slice B).
+  /// Owned here, handed to each lesson card, dropped in dispose.
+  final BarrioHighlightAnchorRegistry _anchors =
+      BarrioHighlightAnchorRegistry();
+
+  /// The reader's marked passages in THIS manual, grouped by the card
+  /// they live in. Loaded with the rest of the persisted state; a new
+  /// mark lands here and in storage at the same time.
+  Map<String, List<BarrioHighlight>> _highlightsByUnit =
+      const <String, List<BarrioHighlight>>{};
+
+  /// The marker colour the reader used last, applied to the next mark
+  /// they make. Slice B has no picker yet, so this is the stored value
+  /// or the default; Slice D lets them change it.
+  String _markerColor = kBarrioHighlightDefaultColor;
+
   /// True once the user moved the deck themselves (swipe or rail tap).
   /// The async position restore then stands down: the user's own
   /// position is fresher truth than the saved one.
@@ -221,10 +246,12 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   /// instead of a full-document walk on every settle and every build.
   void _indexUnits(List<HandbookChapter> chapters) {
     _chaptersOfUnitId = <String, List<int>>{};
+    _unitsById = <String, HandbookUnit>{};
     _chapterUnread = List<int>.filled(chapters.length, 0);
     for (var c = 0; c < chapters.length; c++) {
       final seen = <String>{};
       for (final unit in chapters[c].units) {
+        _unitsById[unit.id] = unit;
         // A repeated id inside one chapter is one card's worth of
         // coverage, matching the old `units.every(read)` test.
         if (!seen.add(unit.id)) continue;
@@ -273,11 +300,19 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
         : await BarrioReadingProgressService.getPosition(docId);
     final readIds = await BarrioReadingProgressService.getReadUnitIds(docId);
     final savedKeys = await BarrioBookmarksService.localKeysFor(docId);
+    // Kindle-style highlights (Slice B): the reader's own marks and the
+    // marker colour they last used, loaded alongside every other
+    // device-local reading fact. A store that never answers simply
+    // leaves the manual unmarked.
+    final highlights = await BarrioHighlightsService.getForDoc(docId);
+    final markerColor = await BarrioHighlightsService.getLastColor();
     if (!mounted) return;
     final restore = position != null && !_pageTouched;
     _markUnitsRead(readIds);
     setState(() {
       _bookmarkKeys.addAll(savedKeys);
+      _markerColor = markerColor;
+      _highlightsByUnit = _groupByUnit(highlights);
       if (restore) {
         _applyPosition(position.chapterIndex, position.unitInChapter);
       }
@@ -471,9 +506,63 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     );
   }
 
+  /// Groups [highlights] by the card they mark, keeping stored order
+  /// (oldest first) inside each card.
+  static Map<String, List<BarrioHighlight>> _groupByUnit(
+    List<BarrioHighlight> highlights,
+  ) {
+    final grouped = <String, List<BarrioHighlight>>{};
+    for (final highlight in highlights) {
+      (grouped[highlight.unitId] ??= <BarrioHighlight>[]).add(highlight);
+    }
+    return grouped;
+  }
+
+  /// Marks the reader's current selection (Kindle-style highlights,
+  /// Slice B), in the marker colour they used last.
+  ///
+  /// The selection can span several paragraphs, bullets, or table cells,
+  /// so the anchor registry reports one segment per rendered chunk it
+  /// touched and they become one highlight. Nothing selected, a
+  /// whitespace-only selection, or a card this manual no longer holds
+  /// does nothing at all. The mark paints immediately and is written to
+  /// the device store after; a store that cannot write leaves the mark
+  /// on screen for this session and says nothing, exactly like every
+  /// other reading fact this screen keeps.
+  Future<void> _highlightSelection(SelectableRegionState region) async {
+    final unitId = _anchors.selectedUnitId();
+    final unit = unitId == null ? null : _unitsById[unitId];
+    final segments = unit == null
+        ? const <BarrioHighlightSegment>[]
+        : _anchors.selectionSegments(unit.id, chunksForBody(unit.body));
+    region.hideToolbar();
+    _selectionKey.currentState?.selectableRegion.clearSelection();
+    _selectedText = null;
+    if (unit == null || segments.isEmpty) return;
+
+    final highlight = BarrioHighlight.create(
+      unitId: unit.id,
+      segments: segments,
+      color: _markerColor,
+    );
+    HapticFeedback.lightImpact();
+    setState(() {
+      _highlightsByUnit = <String, List<BarrioHighlight>>{
+        ..._highlightsByUnit,
+        unit.id: <BarrioHighlight>[
+          ...?_highlightsByUnit[unit.id],
+          highlight,
+        ],
+      };
+    });
+    await BarrioHighlightsService.add(widget.doc.id, highlight);
+    await BarrioHighlightsService.setLastColor(highlight.color);
+  }
+
   /// Builds the reading text selection menu (select-any-word action,
-  /// 2026-07-29 operator curation: only two actions, no Copy/Select all).
-  /// "Ask chat" opens ChatGPT and "Search the web" opens Google, each
+  /// 2026-07-29 operator curation: no Copy/Select all). "Highlight"
+  /// marks the selection in the reader's last marker colour, "Ask chat"
+  /// opens ChatGPT and "Search the web" opens Google, the latter two
   /// seeded with the highlighted words in the in-app browser through the
   /// same launch paths the surface uses elsewhere. Each action dismisses
   /// the menu first; an empty or whitespace-only selection does nothing.
@@ -501,6 +590,14 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
       anchorBelow: anchors.secondaryAnchor ?? anchors.primaryAnchor,
       toolbarBuilder: (context, child) => _BarrioSelectionSurface(child: child),
       children: <Widget>[
+        // Highlight leads: marking what you just read is the reading
+        // action, and the other two send the reader out of the manual.
+        _BarrioSelectionAction(
+          icon: Icons.border_color_rounded,
+          label: 'Highlight',
+          accent: widget.accent,
+          onPressed: () => _highlightSelection(selectableRegionState),
+        ),
         _BarrioSelectionAction(
           icon: Icons.chat_bubble_outline_rounded,
           label: 'Ask chat',
@@ -623,6 +720,10 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     _heroController.dispose();
     _activeChapter.dispose();
     _readUnitIds.dispose();
+    // Every chunk's selection notifier. Flutter unmounts children before
+    // their ancestors, so each card's SelectionListener has already
+    // detached by the time this runs.
+    _anchors.dispose();
     // On the culinary manuals this screen hands `_openTermSheet` to every
     // lesson card, and the memoized body spans key on that callback and
     // close over it. Dropping them here is what keeps a popped reader (and
@@ -665,6 +766,11 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
       onTermTap: BarrioTermLinks.kHostManualIds.contains(widget.doc.id)
           ? _openTermSheet
           : null,
+      // Kindle-style highlights (Slice B): this card's own marks to
+      // paint, and the registry every chunk reports its selection to.
+      highlights: _highlightsByUnit[entry.unit!.id] ??
+          const <BarrioHighlight>[],
+      anchorRegistry: _anchors,
     );
   }
 

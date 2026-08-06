@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -5,12 +7,15 @@ import 'package:google_fonts/google_fonts.dart';
 import 'barrio_celebration_overlay.dart';
 import 'barrio_destination_scaffold.dart';
 import 'barrio_training_image_viewer.dart';
+import '../content/barrio_body_chunks.dart';
 import '../content/company_handbook_content.dart';
 import '../content/highlight/barrio_key_terms.dart';
 import '../content/highlight/cards/barrio_card_keys_index.dart';
 import '../content/quiz/barrio_quiz_models.dart';
 import '../content/training/training_docs.dart';
 import '../search/barrio_training_search.dart';
+import '../services/barrio_highlight_anchors.dart';
+import '../services/barrio_highlights_service.dart';
 import '../services/barrio_numeric_highlight.dart';
 import '../services/barrio_term_links.dart';
 
@@ -54,6 +59,20 @@ class HandbookLessonCard extends StatefulWidget {
   /// exactly as before.
   final void Function(BarrioTermCard card)? onTermTap;
 
+  /// The reader's own marked passages in THIS card (Kindle-style
+  /// highlights, Slice B, 2026-08-06). Each one paints as a translucent
+  /// marker wash underneath every existing emphasis tier. Empty (the
+  /// default) renders the body exactly as it did before highlights
+  /// existed, which is what every curated screen gets.
+  final List<BarrioHighlight> highlights;
+
+  /// Where each rendered chunk publishes what the reader has selected
+  /// inside it (Slice B). Non-null wraps every body chunk in a
+  /// `SelectionListener` registered under (unit id, chunk index), so the
+  /// reading screen can turn a selection into a highlight. Null (the
+  /// default) adds nothing to the widget tree at all.
+  final BarrioHighlightAnchorRegistry? anchorRegistry;
+
   const HandbookLessonCard({
     super.key,
     required this.unit,
@@ -65,6 +84,8 @@ class HandbookLessonCard extends StatefulWidget {
     this.bookmarked = false,
     this.onBookmarkTap,
     this.onTermTap,
+    this.highlights = const [],
+    this.anchorRegistry,
   });
 
   @override
@@ -302,6 +323,8 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
                   accent: _numberAccent,
                   answerEvidence: answerEvidence,
                   keyTerms: keyTerms,
+                  highlights: widget.highlights,
+                  anchorRegistry: widget.anchorRegistry,
                 ),
                 const SizedBox(height: 12),
                 Row(
@@ -337,6 +360,8 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
                   accent: _numberAccent,
                   answerEvidence: answerEvidence,
                   keyTerms: keyTerms,
+                  highlights: widget.highlights,
+                  anchorRegistry: widget.anchorRegistry,
                 ),
               ],
 
@@ -609,52 +634,6 @@ class _OptionTile extends StatelessWidget {
   }
 }
 
-/// One parsed body block. The generator joins body paragraphs with a
-/// blank line; a paragraph beginning '- ' is a bullet, one beginning
-/// 'N. ' is a numbered step, and one containing ' | ' is a table row.
-/// Everything else is prose. Consecutive same-kind paragraphs group into
-/// one list/table block so they render with real structure and tight,
-/// even spacing instead of one flat run of text.
-enum _BlockKind { prose, bullet, numbered, table }
-
-final _numberedItem = RegExp(r'^(\d+)\.\s+(.*)$', dotAll: true);
-
-_BlockKind _classifyPara(String para) {
-  final t = para.trimLeft();
-  if (t.startsWith('- ')) return _BlockKind.bullet;
-  if (_numberedItem.hasMatch(t)) return _BlockKind.numbered;
-  if (para.contains(' | ')) return _BlockKind.table;
-  return _BlockKind.prose;
-}
-
-class _BodyBlock {
-  final _BlockKind kind;
-  final List<String> items; // prose: one entry; list/table: one per line
-  const _BodyBlock(this.kind, this.items);
-}
-
-/// Groups a paragraph slice into ordered blocks, merging runs of
-/// same-kind list/table paragraphs.
-List<_BodyBlock> _parseBlocks(List<String> paras) {
-  final blocks = <_BodyBlock>[];
-  var i = 0;
-  while (i < paras.length) {
-    final kind = _classifyPara(paras[i]);
-    if (kind == _BlockKind.prose) {
-      blocks.add(_BodyBlock(kind, [paras[i]]));
-      i++;
-      continue;
-    }
-    final items = <String>[];
-    while (i < paras.length && _classifyPara(paras[i]) == kind) {
-      items.add(paras[i]);
-      i++;
-    }
-    blocks.add(_BodyBlock(kind, items));
-  }
-  return blocks;
-}
-
 /// Full unit body, rendered as typed blocks (prose, bullet list,
 /// numbered list, table) with consistent spacing so every slide reads
 /// the same way. Words are the verbatim body string, unchanged; only the
@@ -692,6 +671,16 @@ class _UnitBody extends StatelessWidget {
   /// render unchanged.
   final List<String> keyTerms;
 
+  /// The reader's marked passages in this card (Slice B). Painted as a
+  /// translucent wash UNDER every tier above, never competing with
+  /// them. Empty renders exactly as before.
+  final List<BarrioHighlight> highlights;
+
+  /// Non-null wraps each rendered chunk in a `SelectionListener` so the
+  /// reading screen can read back what the reader selected. Null adds
+  /// nothing to the tree.
+  final BarrioHighlightAnchorRegistry? anchorRegistry;
+
   const _UnitBody({
     required this.unit,
     required this.accent,
@@ -699,6 +688,8 @@ class _UnitBody extends StatelessWidget {
     this.onTermTap,
     this.answerEvidence = const [],
     this.keyTerms = const [],
+    this.highlights = const [],
+    this.anchorRegistry,
   });
 
   static const double _blockGap = 12;
@@ -716,7 +707,7 @@ class _UnitBody extends StatelessWidget {
   /// Everything that can change this card's composed spans (perf audit
   /// A4). Every input the pipeline reads is here, so a cache hit can
   /// never serve a stale span run.
-  _SpanCacheKey get _spanCacheKey => _SpanCacheKey(
+  _SpanCacheKey _spanCacheKeyFor(BarrioHighlightPlan plan) => _SpanCacheKey(
         unitId: unit.id,
         body: unit.body,
         accent: accent,
@@ -724,6 +715,7 @@ class _UnitBody extends StatelessWidget {
         highlightTerms: highlightTerms,
         answerEvidence: answerEvidence,
         keyTerms: keyTerms,
+        highlights: plan,
       );
 
   @override
@@ -733,17 +725,35 @@ class _UnitBody extends StatelessWidget {
     // answer-evidence scan and a key-term scan PER CHUNK; it used to
     // re-run in full on every rebuild. The pass records what it composes
     // and an input-identical rebuild replays it instead.
-    final key = _spanCacheKey;
+    //
+    // The marker wash is composed in the SAME pass and therefore cached
+    // with it, which is exactly why the resolved highlight plan is part
+    // of the key: without it a mark made or recoloured right now would
+    // hit a warm entry and not appear until something else evicted it.
+    final blocks = barrioBodyBlocks(unit.body);
+    final plan = highlights.isEmpty
+        ? BarrioHighlightPlan.empty
+        : BarrioHighlightPlan.resolve(
+            highlights: highlights,
+            chunks: <BarrioBodyChunk>[
+              for (final block in blocks)
+                for (final row in block.rows) ...row.cells,
+            ],
+          );
+    final key = _spanCacheKeyFor(plan);
     final pass = _SpanPass(_kBodySpanCache.get(key));
-    final body = _buildBody(pass);
+    final body = _buildBody(blocks, pass, plan);
     if (pass.shouldStore) _kBodySpanCache.put(key, pass.recorded);
     return body;
   }
 
-  Widget _buildBody(_SpanPass pass) {
-    final paragraphs = unit.body.split('\n\n');
+  Widget _buildBody(
+    List<BarrioBodyBlock> blocks,
+    _SpanPass pass,
+    BarrioHighlightPlan plan,
+  ) {
     if (unit.images.isEmpty) {
-      return _renderRun(paragraphs, pass);
+      return _renderRun(blocks, pass, plan);
     }
     // Picture-first for every imaged card (visual-first pass rec #1,
     // 2026-07-24; extended 2026-07-26 from TERM glossary cards to ALL
@@ -770,22 +780,30 @@ class _UnitBody extends StatelessWidget {
               cardTitle: unit.title,
               accent: accent,
             ),
-        _renderRun(paragraphs, pass),
+        _renderRun(blocks, pass, plan),
       ],
     );
   }
 
-  /// Renders a contiguous paragraph slice. A lone prose paragraph renders
-  /// as a single Text; anything else stacks typed blocks with even gaps.
-  Widget _renderRun(List<String> paras, _SpanPass pass) {
-    final blocks = _parseBlocks(paras);
-    if (blocks.length == 1 && blocks.first.kind == _BlockKind.prose) {
-      return _bodyText(blocks.first.items.first, _kBodyStyle, pass);
+  /// Renders the parsed body. A lone prose paragraph renders as a single
+  /// Text; anything else stacks typed blocks with even gaps.
+  Widget _renderRun(
+    List<BarrioBodyBlock> blocks,
+    _SpanPass pass,
+    BarrioHighlightPlan plan,
+  ) {
+    if (blocks.length == 1 && blocks.first.kind == BarrioBodyBlockKind.prose) {
+      return _bodyText(
+        blocks.first.rows.first.cells.first,
+        _kBodyStyle,
+        pass,
+        plan,
+      );
     }
     final children = <Widget>[];
     for (var b = 0; b < blocks.length; b++) {
       if (b > 0) children.add(const SizedBox(height: _blockGap));
-      children.add(_renderBlock(blocks[b], pass));
+      children.add(_renderBlock(blocks[b], pass, plan));
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -793,21 +811,24 @@ class _UnitBody extends StatelessWidget {
     );
   }
 
-  Widget _renderBlock(_BodyBlock block, _SpanPass pass) {
+  Widget _renderBlock(
+    BarrioBodyBlock block,
+    _SpanPass pass,
+    BarrioHighlightPlan plan,
+  ) {
     switch (block.kind) {
-      case _BlockKind.prose:
-        return _bodyText(block.items.first, _kBodyStyle, pass);
-      case _BlockKind.bullet:
+      case BarrioBodyBlockKind.prose:
+        return _bodyText(block.rows.first.cells.first, _kBodyStyle, pass, plan);
+      case BarrioBodyBlockKind.bullet:
         return _spacedColumn([
-          for (final item in block.items)
-            _bulletRow(item.trimLeft().substring(2), pass),
+          for (final row in block.rows) _bulletRow(row, pass, plan),
         ]);
-      case _BlockKind.numbered:
+      case BarrioBodyBlockKind.numbered:
         return _spacedColumn([
-          for (final item in block.items) _numberedRow(item.trimLeft(), pass),
+          for (final row in block.rows) _numberedRow(row, pass, plan),
         ]);
-      case _BlockKind.table:
-        return _table(block.items, pass);
+      case BarrioBodyBlockKind.table:
+        return _table(block.rows, pass, plan);
     }
   }
 
@@ -824,7 +845,11 @@ class _UnitBody extends StatelessWidget {
     );
   }
 
-  Widget _bulletRow(String text, _SpanPass pass) {
+  Widget _bulletRow(
+    BarrioBodyRow row,
+    _SpanPass pass,
+    BarrioHighlightPlan plan,
+  ) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -837,22 +862,25 @@ class _UnitBody extends StatelessWidget {
             shape: BoxShape.circle,
           ),
         ),
-        Expanded(child: _bodyText(text, _kBodyStyle, pass)),
+        Expanded(
+          child: _bodyText(row.cells.first, _kBodyStyle, pass, plan),
+        ),
       ],
     );
   }
 
-  Widget _numberedRow(String text, _SpanPass pass) {
-    final match = _numberedItem.firstMatch(text);
-    final marker = match != null ? '${match.group(1)}.' : '•';
-    final body = match != null ? match.group(2)! : text;
+  Widget _numberedRow(
+    BarrioBodyRow row,
+    _SpanPass pass,
+    BarrioHighlightPlan plan,
+  ) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.only(right: 8),
           child: Text(
-            marker,
+            row.marker ?? '•',
             style: GoogleFonts.ibmPlexMono(
               fontSize: 13,
               height: 1.62,
@@ -861,15 +889,21 @@ class _UnitBody extends StatelessWidget {
             ),
           ),
         ),
-        Expanded(child: _bodyText(body, _kBodyStyle, pass)),
+        Expanded(
+          child: _bodyText(row.cells.first, _kBodyStyle, pass, plan),
+        ),
       ],
     );
   }
 
-  Widget _table(List<String> rows, _SpanPass pass) {
+  Widget _table(
+    List<BarrioBodyRow> rows,
+    _SpanPass pass,
+    BarrioHighlightPlan plan,
+  ) {
     final children = <Widget>[];
     for (var r = 0; r < rows.length; r++) {
-      children.add(_tableRow(rows[r].split(' | '), r == 0, pass));
+      children.add(_tableRow(rows[r], r == 0, pass, plan));
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -877,7 +911,12 @@ class _UnitBody extends StatelessWidget {
     );
   }
 
-  Widget _tableRow(List<String> cells, bool header, _SpanPass pass) {
+  Widget _tableRow(
+    BarrioBodyRow row,
+    bool header,
+    _SpanPass pass,
+    BarrioHighlightPlan plan,
+  ) {
     final cellStyle = _kBodyStyle.copyWith(
       fontSize: 12.5,
       fontWeight: header ? FontWeight.w700 : FontWeight.w400,
@@ -891,11 +930,11 @@ class _UnitBody extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (final cell in cells)
+          for (final cell in row.cells)
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.only(right: 8),
-                child: _bodyText(cell.trim(), cellStyle, pass),
+                child: _bodyText(cell, cellStyle, pass, plan),
               ),
             ),
         ],
@@ -907,10 +946,33 @@ class _UnitBody extends StatelessWidget {
   /// input-identical rebuild reuses the spans instead of recomposing
   /// them (perf audit A4). A null span run means the chunk carries no
   /// styling at all and renders as a plain [Text], exactly as before.
-  Widget _bodyText(String text, TextStyle style, _SpanPass pass) {
-    final spans = pass.spansFor(text, () => _composeChunk(text, style, pass));
-    if (spans == null) return Text(text, style: style);
-    return Text.rich(TextSpan(style: style, children: spans));
+  ///
+  /// When the reading screen supplied an [anchorRegistry], the chunk is
+  /// additionally wrapped in a `SelectionListener` registered under
+  /// (unit id, chunk index), which is how a selection is read back as a
+  /// highlight. `SelectionListener` is a `SelectionContainer`, not a
+  /// gesture detector: it registers NO recognizer, so page turns, edge
+  /// taps, scrolling and long-press-to-select are untouched (#1483).
+  Widget _bodyText(
+    BarrioBodyChunk chunk,
+    TextStyle style,
+    _SpanPass pass,
+    BarrioHighlightPlan plan,
+  ) {
+    final marks = plan.forChunk(chunk.index);
+    final spans = pass.spansFor(
+      chunk.text,
+      () => _composeChunk(chunk.text, style, pass, marks),
+    );
+    final text = spans == null
+        ? Text(chunk.text, style: style)
+        : Text.rich(TextSpan(style: style, children: spans));
+    final registry = anchorRegistry;
+    if (registry == null) return text;
+    return SelectionListener(
+      selectionNotifier: registry.notifierFor(unit.id, chunk.index),
+      child: text,
+    );
   }
 
   /// Composes one text chunk: plain, search-highlighted, term-linked,
@@ -922,7 +984,21 @@ class _UnitBody extends StatelessWidget {
   /// ranges as [blockedRanges] and drops any overlap whole, so no span
   /// fights another. The text itself is NEVER altered: styling only
   /// (verbatim law). Returns null when nothing needs styling.
-  List<InlineSpan>? _composeChunk(String text, TextStyle style, _SpanPass pass) {
+  ///
+  /// [marks] are the reader's own highlights on this chunk. They are NOT
+  /// a sixth tier and take no part in the precedence contest above: a
+  /// lower tier that overlaps a higher one is dropped whole and renders
+  /// nothing, which would silently lose either the mark or the emphasis.
+  /// Instead the marks are a SECOND PASS that splits whatever the five
+  /// tiers produced at the mark boundaries and merges a translucent
+  /// background underneath, so a marked passage keeps every emphasis it
+  /// had and gains a wash.
+  List<InlineSpan>? _composeChunk(
+    String text,
+    TextStyle style,
+    _SpanPass pass,
+    List<BarrioHighlightRun> marks,
+  ) {
     final linked = pass.linked;
     final keyed = pass.keyed;
     final highlightRanges = highlightTerms.isEmpty
@@ -978,11 +1054,12 @@ class _UnitBody extends StatelessWidget {
         termMatches.isEmpty &&
         numericMatches.isEmpty &&
         answerRanges.isEmpty &&
-        keyTermMatches.isEmpty) {
+        keyTermMatches.isEmpty &&
+        marks.isEmpty) {
       return null;
     }
     return _composeSpans(text, highlightRanges, termMatches, numericMatches,
-        answerRanges, keyTermMatches, style);
+        answerRanges, keyTermMatches, style, marks);
   }
 
   /// Exact [start, end) ranges of every answer-evidence phrase in [text],
@@ -1048,12 +1125,13 @@ class _UnitBody extends StatelessWidget {
   /// mutually non-overlapping) into one span run over [text].
   List<InlineSpan> _composeSpans(
     String text,
-    List<List<int>> highlights,
+    List<List<int>> searchHits,
     List<BarrioTermMatch> terms,
     List<BarrioNumericMatch> numerics,
     List<List<int>> answers,
     List<BarrioKeyTermMatch> keyTermSpans,
     TextStyle style,
+    List<BarrioHighlightRun> marks,
   ) {
     // Search highlight: bold navy on a soft tealWarm wash.
     final mark = style.copyWith(
@@ -1090,7 +1168,7 @@ class _UnitBody extends StatelessWidget {
     // term link is a tappable widget span; every other tier is a plain
     // styled TextSpan over the verbatim substring).
     final segments = <_BodySegment>[
-      for (final r in highlights) _BodySegment(r[0], r[1], mark: mark),
+      for (final r in searchHits) _BodySegment(r[0], r[1], mark: mark),
       for (final t in terms) _BodySegment(t.start, t.end, term: t),
       for (final n in numerics) _BodySegment(n.start, n.end, mark: numberPop),
       for (final r in answers) _BodySegment(r[0], r[1], mark: answerMark),
@@ -1101,32 +1179,117 @@ class _UnitBody extends StatelessWidget {
     var cursor = 0;
     for (final seg in segments) {
       if (seg.start > cursor) {
-        spans.add(TextSpan(text: text.substring(cursor, seg.start)));
+        _emitRun(spans, text, cursor, seg.start, null, marks);
       }
-      final segText = text.substring(seg.start, seg.end);
       final term = seg.term;
       if (term != null) {
-        spans.add(_termLinkSpan(segText, term, style));
+        spans.add(_termLinkSpan(
+          text.substring(seg.start, seg.end),
+          term,
+          style,
+          _washOver(seg.start, seg.end, marks),
+        ));
       } else {
-        spans.add(TextSpan(text: segText, style: seg.mark));
+        _emitRun(spans, text, seg.start, seg.end, seg.mark, marks);
       }
       cursor = seg.end;
     }
     if (cursor < text.length) {
-      spans.add(TextSpan(text: text.substring(cursor)));
+      _emitRun(spans, text, cursor, text.length, null, marks);
     }
     return spans;
+  }
+
+  /// Emits `text[from, to)` styled with [runStyle], split wherever a
+  /// reader's marker wash starts or stops.
+  ///
+  /// This is the whole of the highlight overlay for plain runs. A run
+  /// the reader did not mark is emitted exactly as it was before this
+  /// feature existed, character for character and style for style; a
+  /// marked sub-run is the same span with one extra property, a
+  /// translucent [TextStyle.backgroundColor]. Nothing is dropped and no
+  /// tier loses its colour, weight, or underline.
+  ///
+  /// A run that ALREADY carries a background (the search-hit wash is the
+  /// only one) keeps it on top: the two composite, marker underneath,
+  /// search wash over it, so both readings survive.
+  void _emitRun(
+    List<InlineSpan> spans,
+    String text,
+    int from,
+    int to,
+    TextStyle? runStyle,
+    List<BarrioHighlightRun> marks,
+  ) {
+    if (marks.isEmpty) {
+      spans.add(TextSpan(text: text.substring(from, to), style: runStyle));
+      return;
+    }
+    var cursor = from;
+    for (final run in marks) {
+      if (run.end <= cursor) continue;
+      if (run.start >= to) break;
+      final start = math.max(run.start, cursor);
+      final end = math.min(run.end, to);
+      if (start > cursor) {
+        spans.add(TextSpan(text: text.substring(cursor, start), style: runStyle));
+      }
+      spans.add(TextSpan(
+        text: text.substring(start, end),
+        style: _washed(runStyle, run.color),
+      ));
+      cursor = end;
+    }
+    if (cursor < to) {
+      spans.add(TextSpan(text: text.substring(cursor, to), style: runStyle));
+    }
+  }
+
+  /// [base] with the marker wash for [colorToken] merged in underneath
+  /// any background it already has. A null [base] becomes a
+  /// background-only style, so the run keeps inheriting everything else
+  /// from the body style exactly as an unstyled span does.
+  TextStyle _washed(TextStyle? base, String colorToken) {
+    final wash = barrioHighlightWash(colorToken);
+    final existing = base?.backgroundColor;
+    // Source-over: the existing background is the foreground here, the
+    // marker wash the layer beneath it.
+    final merged = existing == null ? wash : Color.alphaBlend(existing, wash);
+    return (base ?? const TextStyle()).copyWith(backgroundColor: merged);
+  }
+
+  /// The marker colour token covering `[start, end)`, or null when the
+  /// reader marked none of it. Used for term links, which are inline
+  /// widgets and so take the wash whole rather than splitting: term
+  /// titles are a few words, and half a washed link would read as a
+  /// rendering bug rather than a mark.
+  String? _washOver(int start, int end, List<BarrioHighlightRun> marks) {
+    for (final run in marks) {
+      if (run.start < end && run.end > start) return run.color;
+    }
+    return null;
   }
 
   /// One tappable term occurrence: the VERBATIM substring with a quiet
   /// dotted underline. Rendered as an inline widget so the tap needs
   /// no recognizer lifecycle management; baseline alignment keeps it
   /// sitting in the text line.
+  ///
+  /// [washToken] non-null means the reader marked this term: the wash
+  /// goes on the inner [Text]'s own style, which is the only place a
+  /// widget span can carry one.
   InlineSpan _termLinkSpan(
     String segText,
     BarrioTermMatch match,
     TextStyle style,
+    String? washToken,
   ) {
+    final linkStyle = style.copyWith(
+      decoration: TextDecoration.underline,
+      decorationStyle: TextDecorationStyle.dotted,
+      decorationColor: BarrioColors.tealWarm.withValues(alpha: 0.75),
+      decorationThickness: 1.6,
+    );
     return WidgetSpan(
       alignment: PlaceholderAlignment.baseline,
       baseline: TextBaseline.alphabetic,
@@ -1139,12 +1302,9 @@ class _UnitBody extends StatelessWidget {
           onTap: () => onTermTap?.call(match.card),
           child: Text(
             segText,
-            style: style.copyWith(
-              decoration: TextDecoration.underline,
-              decorationStyle: TextDecorationStyle.dotted,
-              decorationColor: BarrioColors.tealWarm.withValues(alpha: 0.75),
-              decorationThickness: 1.6,
-            ),
+            style: washToken == null
+                ? linkStyle
+                : _washed(linkStyle, washToken),
           ),
         ),
       ),
@@ -1244,6 +1404,22 @@ class _SpanCacheKey {
   final List<String> answerEvidence;
   final List<String> keyTerms;
 
+  /// The reader's OWN marks, already resolved to per-chunk paint runs.
+  ///
+  /// WHY THE RESOLVED PLAN AND NOT THE RAW HIGHLIGHT LIST. The marker
+  /// wash is composed in the same pass as the five emphasis tiers and
+  /// is therefore cached with them, so anything that changes what the
+  /// wash paints has to change this key or a warm entry would keep
+  /// serving the old picture: a mark made right now, or recoloured
+  /// right now, simply would not appear. The plan is exactly that
+  /// "what the wash paints" value, compared by id, colour token and
+  /// both offsets of every run of every chunk, so a new highlight, a
+  /// recolour, a re-anchor to different offsets, and a removal each
+  /// miss the cache and recompose. Highlights that resolved to nothing
+  /// (orphans) are in it too, so they cannot be confused with a card
+  /// that has no marks.
+  final BarrioHighlightPlan highlights;
+
   const _SpanCacheKey({
     required this.unitId,
     required this.body,
@@ -1252,6 +1428,7 @@ class _SpanCacheKey {
     required this.highlightTerms,
     required this.answerEvidence,
     required this.keyTerms,
+    required this.highlights,
   });
 
   @override
@@ -1264,7 +1441,8 @@ class _SpanCacheKey {
         other.onTermTap == onTermTap &&
         listEquals(other.highlightTerms, highlightTerms) &&
         listEquals(other.answerEvidence, answerEvidence) &&
-        listEquals(other.keyTerms, keyTerms);
+        listEquals(other.keyTerms, keyTerms) &&
+        other.highlights == highlights;
   }
 
   @override
@@ -1276,6 +1454,7 @@ class _SpanCacheKey {
         Object.hashAll(highlightTerms),
         Object.hashAll(answerEvidence),
         Object.hashAll(keyTerms),
+        highlights,
       );
 }
 
