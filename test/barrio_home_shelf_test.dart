@@ -36,6 +36,17 @@ import 'package:forge_and_flow/internal/barrio/widgets/barrio_ambient_leaves.dar
 import 'package:forge_and_flow/internal/barrio/widgets/home/barrio_home_bubble.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/home/barrio_home_shelf.dart';
 
+/// The bundled asset behind an [Image], seeing through the [ResizeImage]
+/// that a display-size decode (`cacheWidth`) wraps the [AssetImage] in.
+/// Home destination visuals decode at their on-screen size, so a bare
+/// `is AssetImage` check sees none of home's images. Null for anything
+/// that is not an asset image.
+String? _assetNameOf(Image image) {
+  var provider = image.image;
+  if (provider is ResizeImage) provider = provider.imageProvider;
+  return provider is AssetImage ? provider.assetName : null;
+}
+
 class _RecordingNavigatorObserver extends NavigatorObserver {
   int pushCount = 0;
 
@@ -344,14 +355,22 @@ void main() {
         (tester) async {
       await pumpHome(tester);
       // Walk every Image on the fresh home: none may be the old
-      // home_bg.webp full-bleed backdrop asset.
-      for (final image in tester.widgetList<Image>(find.byType(Image))) {
-        final provider = image.image;
-        if (provider is AssetImage) {
-          expect(provider.assetName, isNot(contains('home_bg')),
-              reason: 'the photo backdrop was removed from home');
-        }
+      // home_bg.webp full-bleed backdrop asset. The provider is unwrapped
+      // via _assetNameOf because home's images decode at their on-screen
+      // size, which wraps the AssetImage in a ResizeImage; the assertion
+      // then runs for EVERY image rather than hiding behind a type check
+      // that never matches.
+      final walked = tester.widgetList<Image>(find.byType(Image)).toList();
+      for (final image in walked) {
+        expect(_assetNameOf(image) ?? '', isNot(contains('home_bg')),
+            reason: 'the photo backdrop was removed from home');
       }
+      // The walk itself must have something to inspect, or the loop above
+      // proves nothing. Home renders bubble icons as Image widgets; if a
+      // redesign ever leaves home with zero images, re-point this guard
+      // at whatever renders the backdrop instead of deleting it.
+      expect(walked, isNotEmpty,
+          reason: 'the home_bg guard must actually walk home images');
       expect(tester.takeException(), isNull);
     });
 
