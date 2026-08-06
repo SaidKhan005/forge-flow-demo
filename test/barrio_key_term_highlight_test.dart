@@ -323,35 +323,53 @@ void main() {
       }
     });
 
-    test('T8 swap: the card lookup [barrioCardKeysForUnit] returns exactly '
-        'the per-manual terms while no per-card set is authored', () {
-      // The renderer reads barrioCardKeysForUnit now. On the pilot card, on
-      // a crafted id inside a curated doc, and on an uncurated doc, the new
-      // lookup must be indistinguishable from the old one, or the swap
-      // changed the screen. Ids come from the real registry so a content
-      // regeneration cannot rot this.
-      final sampled = <String>[
-        _pilotUnitId,
-        for (final doc in kBarrioTrainingDocs.values)
-          if (doc.chapters.isNotEmpty && doc.chapters.first.units.isNotEmpty)
-            doc.chapters.first.units.first.id,
-      ];
-      for (final unitId in sampled) {
-        expect(barrioCardKeysForUnit(unitId), barrioKeyTermsForUnit(unitId),
-            reason: '$unitId must render the same terms after the swap');
+    test('T8 fallback: a card with no authored set still gets its manual '
+        'terms, and an unknown doc still gets nothing', () {
+      // The authored sets landed 2026-08-03, so this no longer asserts that
+      // EVERY card falls back: it asserts the fallback still works for the
+      // cards that have no set, which is what keeps partial coverage safe.
+      // Ids come from the real registry so a content regeneration cannot rot
+      // this.
+      var checkedFallback = 0;
+      var checkedAuthored = 0;
+      for (final doc in kBarrioTrainingDocs.values) {
+        for (final chapter in doc.chapters) {
+          for (final unit in chapter.units) {
+            final resolved = barrioCardKeysForUnit(unit.id);
+            if (kBarrioCardKeysByUnit.containsKey(unit.id)) {
+              expect(resolved, kBarrioCardKeysByUnit[unit.id],
+                  reason: '${unit.id} must render its own authored phrases');
+              checkedAuthored++;
+            } else {
+              expect(resolved, barrioKeyTermsForUnit(unit.id),
+                  reason: '${unit.id} has no authored set, so it must fall '
+                      'back to the per-manual list');
+              checkedFallback++;
+            }
+          }
+        }
       }
+      expect(checkedAuthored, greaterThan(0),
+          reason: 'sanity: authored sets are wired in');
+      expect(checkedFallback, greaterThan(0),
+          reason: 'sanity: the fallback path is still exercised');
       expect(barrioCardKeysForUnit('some_unknown_doc_c0_u0'), isEmpty);
     });
   });
 
   group('HandbookLessonCard rendering', () {
     testWidgets(
-        'a real Three Pillars card renders curated terms as w700 + tealInk, '
-        'first-occurrence only, within the six-per-card cap, verbatim body',
-        (tester) async {
+        'a real Three Pillars card renders its AUTHORED phrases as w700 + '
+        'tealInk, within the six-per-card cap, verbatim body', (tester) async {
+      // Before the authored sets landed (2026-08-03) this card rendered its
+      // manual's single-word terms: hospitality, food, service, atmosphere.
+      // It now renders the phrases written for this card, which is the point
+      // of the change: scanning the highlights should convey what the card
+      // teaches, not just name its topic.
       final unit = _realUnit(_pilotUnitId);
-      // Sanity: the reader looks the terms up itself for this unit.
-      expect(barrioKeyTermsForUnit(unit.id), isNotEmpty);
+      final authored = kBarrioCardKeysByUnit[unit.id];
+      expect(authored, isNotNull,
+          reason: 'sanity: the pilot card has an authored set');
 
       await _pumpCard(tester, unit);
 
@@ -363,26 +381,20 @@ void main() {
       expect(keySpans, isNotEmpty, reason: 'the pilot card is highlighted');
       expect(keySpans.length, lessThanOrEqualTo(kBarrioKeyTermCardCap),
           reason: 'the hard per-card density cap holds');
-      final emphasized =
-          keySpans.map((s) => s.text!.toLowerCase()).toSet();
-      expect(
-          emphasized,
-          {
-            'hospitality',
-            'three pillars',
-            'food',
-            'service',
-            'atmosphere',
-            'guest experience',
-          },
-          reason: 'the six intro-card domain concepts are emphasized');
-      // First-occurrence-per-card: "food" appears twice in the body but is
-      // emphasized exactly once.
-      expect(unit.body.split('food').length - 1, greaterThanOrEqualTo(2),
-          reason: 'guard: "food" really does repeat in the body');
-      expect(
-          keySpans.where((s) => s.text!.toLowerCase() == 'food'), hasLength(1),
-          reason: 'only the first "food" is emphasized; the repeat stays plain');
+
+      final emphasized = keySpans.map((s) => s.text!).toSet();
+      for (final span in emphasized) {
+        expect(authored, contains(span),
+            reason: '"$span" is emphasized, so it must be an authored phrase '
+                'for this card and not a leftover per-manual term');
+      }
+      // Each authored phrase is emphasized at most once: the matcher takes
+      // the first occurrence only.
+      for (final phrase in authored!) {
+        expect(keySpans.where((s) => s.text == phrase).length,
+            lessThanOrEqualTo(1),
+            reason: '"$phrase" is emphasized at most once per card');
+      }
     });
 
     testWidgets(

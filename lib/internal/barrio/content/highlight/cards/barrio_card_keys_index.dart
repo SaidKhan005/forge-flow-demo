@@ -77,6 +77,20 @@
 // authoring slice is measured against.
 
 import '../barrio_key_terms.dart';
+import 'barrio_card_keys_company_handbook.dart';
+import 'barrio_card_keys_interview_playbook.dart';
+import 'barrio_card_keys_jim_taylor_labor_model.dart';
+import 'barrio_card_keys_training_bar_manual.dart';
+import 'barrio_card_keys_training_bold_by_design.dart';
+import 'barrio_card_keys_training_cheers_responsibility.dart';
+import 'barrio_card_keys_training_food_safety.dart';
+import 'barrio_card_keys_training_host_manual.dart';
+import 'barrio_card_keys_training_labour_cost.dart';
+import 'barrio_card_keys_training_mastering_metrics.dart';
+import 'barrio_card_keys_training_strong_foundation.dart';
+import 'barrio_card_keys_training_suggestive_selling.dart';
+import 'barrio_card_keys_training_table_manicuring.dart';
+import 'barrio_card_keys_training_three_pillars.dart';
 
 /// Per-CARD curated key phrases, keyed by [HandbookUnit.id].
 ///
@@ -84,20 +98,34 @@ import '../barrio_key_terms.dart';
 /// `'training_food_safety_c9_u0': ['harmful bacteria', 'danger zone']`.
 /// Every entry must satisfy the authoring contract in this file's header.
 ///
-/// EMPTY BY DESIGN in T8 slice 1: the mechanism ships before the data, so
-/// every card falls through to the per-manual list and today's rendering is
-/// bit-for-bit unchanged. Each authored doc adds ONE spread line here:
+/// POPULATED 2026-08-03 (T8 slice 2): 904 cards across the 14 curated
+/// manuals, operator-approved after reviewing a 20-card sample. Every phrase
+/// was verified against the live card body before landing here: unique,
+/// whole-word, non-overlapping, inside a single paragraph. A phrase that
+/// failed any of those would not have highlighted at all, silently, which is
+/// why the check runs before the data ships rather than after.
 ///
-/// ```dart
-/// const Map<String, List<String>> kBarrioCardKeysByUnit = <String, List<String>>{
-///   ..._kBarrioCardKeysFoodSafety,   // barrio_card_keys_food_safety.dart
-/// };
-/// ```
+/// Cards outside these manuals, and the handful of very short cards that were
+/// skipped, still fall through to the per-manual list below, so coverage can
+/// grow without touching the renderer.
 ///
 /// A duplicate unit id across two per-doc files is a compile-time error in a
 /// const map, which is the cheapest possible guard against double-authoring.
 const Map<String, List<String>> kBarrioCardKeysByUnit = <String, List<String>>{
-  // Per-doc data files are spread in here as they are authored.
+  ...kBarrioCardKeysCompanyHandbook,
+  ...kBarrioCardKeysInterviewPlaybook,
+  ...kBarrioCardKeysJimTaylorLaborModel,
+  ...kBarrioCardKeysTrainingBarManual,
+  ...kBarrioCardKeysTrainingBoldByDesign,
+  ...kBarrioCardKeysTrainingCheersResponsibility,
+  ...kBarrioCardKeysTrainingFoodSafety,
+  ...kBarrioCardKeysTrainingHostManual,
+  ...kBarrioCardKeysTrainingLabourCost,
+  ...kBarrioCardKeysTrainingMasteringMetrics,
+  ...kBarrioCardKeysTrainingStrongFoundation,
+  ...kBarrioCardKeysTrainingSuggestiveSelling,
+  ...kBarrioCardKeysTrainingTableManicuring,
+  ...kBarrioCardKeysTrainingThreePillars,
 };
 
 /// The key phrases to emphasize inside [unitId]'s body.
