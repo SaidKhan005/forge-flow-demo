@@ -17,7 +17,6 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/internal/barrio/content/company_handbook_content.dart';
-import 'package:forge_and_flow/internal/barrio/content/training/barrio_training_doc.dart';
 import 'package:forge_and_flow/internal/barrio/content/training/training_docs.dart';
 
 void main() {
