@@ -24,6 +24,7 @@
 import 'barrio_quiz_coffee.dart';
 import 'barrio_quiz_food_safety.dart';
 import 'barrio_quiz_latin_dishes.dart';
+import 'barrio_quiz_wine.dart';
 
 /// A single chapter-end recall question drawn from one training card.
 class BarrioQuizQuestion {
@@ -109,12 +110,14 @@ class BarrioQuizBank {
 }
 
 /// Every quiz bank, keyed by training-doc id (matches [BarrioTrainingDoc.id]
-/// / the `kBarrioTrainingDocs` registry key). Exactly the three manuals the
-/// approved quiz-bank slice covers.
+/// / the `kBarrioTrainingDocs` registry key). The three manuals the approved
+/// quiz-bank slice covers, plus the Wine Training manual (2026-08-06), which
+/// ships at the same 2 to 3 questions per chapter density.
 const Map<String, BarrioQuizBank> kBarrioQuizBanks = <String, BarrioQuizBank>{
   'training_food_safety': kBarrioQuizFoodSafety,
   'training_coffee': kBarrioQuizCoffee,
   'training_latin_dishes': kBarrioQuizLatinDishes,
+  'training_wine': kBarrioQuizWine,
 };
 
 /// Every non-null [BarrioQuizQuestion.answerEvidence] phrase whose
