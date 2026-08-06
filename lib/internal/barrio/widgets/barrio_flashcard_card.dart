@@ -230,16 +230,23 @@ class _FlashcardFront extends StatelessWidget {
       label: card.imageCaption ?? 'Photo: ${card.term}',
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        child: Image.asset(
-          imagePath,
-          fit: BoxFit.contain,
-          // Test environments load no real asset bytes: fall back to a
-          // quiet icon instead of throwing (same pattern as the home
-          // bubble visuals).
-          errorBuilder: (_, __, ___) => Icon(
-            Icons.image_outlined,
-            size: 56,
-            color: accent.withValues(alpha: 0.55),
+        child: LayoutBuilder(
+          builder: (context, constraints) => Image.asset(
+            imagePath,
+            fit: BoxFit.contain,
+            // Perf (premium audit A1): decode at the card's on-screen pixel
+            // width, not the 1400px source.
+            cacheWidth: constraints.hasBoundedWidth
+                ? barrioCacheWidth(context, constraints.maxWidth)
+                : null,
+            // Test environments load no real asset bytes: fall back to a
+            // quiet icon instead of throwing (same pattern as the home
+            // bubble visuals).
+            errorBuilder: (_, __, ___) => Icon(
+              Icons.image_outlined,
+              size: 56,
+              color: accent.withValues(alpha: 0.55),
+            ),
           ),
         ),
       ),

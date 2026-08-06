@@ -99,19 +99,26 @@ class BarrioTermDefinitionSheet extends StatelessWidget {
   Widget _termImage(String assetPath) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: Image.asset(
-        assetPath,
-        width: double.infinity,
-        height: 160,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => Container(
+      child: LayoutBuilder(
+        builder: (context, constraints) => Image.asset(
+          assetPath,
           width: double.infinity,
-          height: 100,
-          color: const Color(0x0F16243B),
-          child: Icon(
-            Icons.image_not_supported_outlined,
-            size: 26,
-            color: BarrioColors.textMuted.withValues(alpha: 0.6),
+          height: 160,
+          fit: BoxFit.cover,
+          // Perf (premium audit A1): decode at the sheet's on-screen pixel
+          // width, not the 1400px source.
+          cacheWidth: constraints.hasBoundedWidth
+              ? barrioCacheWidth(context, constraints.maxWidth)
+              : null,
+          errorBuilder: (context, error, stackTrace) => Container(
+            width: double.infinity,
+            height: 100,
+            color: const Color(0x0F16243B),
+            child: Icon(
+              Icons.image_not_supported_outlined,
+              size: 26,
+              color: BarrioColors.textMuted.withValues(alpha: 0.6),
+            ),
           ),
         ),
       ),

@@ -325,12 +325,15 @@ class _JtPremiumBackground extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Layer 1: Full-bleed book photo
+        // Layer 1: Full-bleed book photo. Decoded at screen width (perf
+        // audit A1), not the source resolution.
         Positioned.fill(
           child: Image.asset(
             'assets/internal/barrio/jim_taylor_bg.jpg',
             fit: BoxFit.cover,
             alignment: const Alignment(0.0, -0.2),
+            cacheWidth:
+                barrioCacheWidth(context, MediaQuery.sizeOf(context).width),
             errorBuilder: (_, __, ___) => const ColoredBox(
               color: BarrioColors.shellDeep,
             ),

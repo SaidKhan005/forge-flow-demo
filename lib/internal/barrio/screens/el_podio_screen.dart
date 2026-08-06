@@ -651,12 +651,15 @@ class _ElPodioPremiumBackground extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Layer 1: Full-bleed photo (reuse home background)
+        // Layer 1: Full-bleed photo (reuse home background). Decoded at
+        // screen width (perf audit A1), not the source resolution.
         Positioned.fill(
           child: Image.asset(
             'assets/internal/barrio/home_bg.webp',
             fit: BoxFit.cover,
             alignment: const Alignment(0.0, -0.4),
+            cacheWidth:
+                barrioCacheWidth(context, MediaQuery.sizeOf(context).width),
             errorBuilder: (_, __, ___) => const ColoredBox(
               color: BarrioColors.shellDeep,
             ),

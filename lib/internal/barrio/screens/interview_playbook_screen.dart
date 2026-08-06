@@ -311,12 +311,15 @@ class _PlaybookPremiumBackground extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Layer 1: Full-bleed photo
+        // Layer 1: Full-bleed photo. Decoded at screen width (perf audit
+        // A1), not the source resolution.
         Positioned.fill(
           child: Image.asset(
             'assets/internal/barrio/interview_bg.jpg',
             fit: BoxFit.cover,
             alignment: const Alignment(0.0, -0.2),
+            cacheWidth:
+                barrioCacheWidth(context, MediaQuery.sizeOf(context).width),
             errorBuilder: (_, __, ___) => const ColoredBox(
               color: BarrioColors.shellDeep,
             ),

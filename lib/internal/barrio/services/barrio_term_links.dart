@@ -105,6 +105,7 @@ class BarrioTermLinks {
   /// Lazily built folded-term registry, longest term first.
   static Map<String, BarrioTermCard>? _cachedRegistry;
   static List<String>? _cachedTermsByLength;
+  static Map<int, List<String>>? _cachedFirstUnitBuckets;
 
   /// Folded term -> definition card. Built once per process.
   static Map<String, BarrioTermCard> registry() {
@@ -150,6 +151,25 @@ class BarrioTermLinks {
       ..sort((a, b) => b.length.compareTo(a.length));
     _cachedTermsByLength = terms;
     return terms;
+  }
+
+  /// Registry terms bucketed by their first code unit, longest first
+  /// inside each bucket (perf audit A4).
+  ///
+  /// The old matcher walked all ~113 registry terms and ran a full
+  /// `indexOf` sweep of the chunk for each one, so a reading card cost
+  /// thousands of whole-string scans on every rebuild. With this index
+  /// the matcher instead walks the chunk once and, at each word start,
+  /// only tries the handful of terms that could begin there.
+  static Map<int, List<String>> _firstUnitBuckets() {
+    final cached = _cachedFirstUnitBuckets;
+    if (cached != null) return cached;
+    final buckets = <int, List<String>>{};
+    for (final term in _termsByLength()) {
+      (buckets[term.codeUnitAt(0)] ??= <String>[]).add(term);
+    }
+    _cachedFirstUnitBuckets = buckets;
+    return buckets;
   }
 
   /// Folded, guard-filtered term variants of one TERM card title.
@@ -201,11 +221,15 @@ class BarrioTermLinks {
     final reg = registry();
     if (reg.isEmpty) return const <BarrioTermMatch>[];
     final folded = BarrioTrainingSearch.fold(text);
+    final firstAt = _firstWholeWordPositions(folded, alreadyLinked);
+    if (firstAt.isEmpty) return const <BarrioTermMatch>[];
+    // Longest term first, exactly the order the old per-term sweep built
+    // its candidate list in, so the stable sort below still breaks a
+    // same-start tie in favour of the longer term.
     final candidates = <BarrioTermMatch>[];
     for (final term in _termsByLength()) {
-      if (alreadyLinked.contains(term)) continue;
-      final idx = _firstWholeWord(folded, term);
-      if (idx < 0) continue;
+      final idx = firstAt[term];
+      if (idx == null) continue;
       candidates.add(BarrioTermMatch(
         start: idx,
         end: idx + term.length,
@@ -227,19 +251,43 @@ class BarrioTermLinks {
     return accepted;
   }
 
-  /// First whole-word occurrence of [term] in [folded], or -1.
-  static int _firstWholeWord(String folded, String term) {
-    var from = 0;
-    while (true) {
-      final idx = folded.indexOf(term, from);
-      if (idx < 0) return -1;
-      final beforeOk = idx == 0 || !_isWordChar(folded.codeUnitAt(idx - 1));
-      final after = idx + term.length;
-      final afterOk =
-          after >= folded.length || !_isWordChar(folded.codeUnitAt(after));
-      if (beforeOk && afterOk) return idx;
-      from = idx + 1;
+  /// First whole-word occurrence of every not-yet-linked registry term
+  /// inside [folded], keyed by the folded term (perf audit A4).
+  ///
+  /// One left-to-right sweep of the chunk replaces one full `indexOf`
+  /// sweep per registry term. The result is identical by construction:
+  /// a position qualifies exactly when the old [_firstWholeWord] would
+  /// have accepted it (nothing word-like immediately before, nothing
+  /// word-like immediately after), and only the FIRST such position is
+  /// kept per term.
+  static Map<String, int> _firstWholeWordPositions(
+    String folded,
+    Set<String> alreadyLinked,
+  ) {
+    final buckets = _firstUnitBuckets();
+    final found = <String, int>{};
+    final length = folded.length;
+    for (var i = 0; i < length; i++) {
+      if (i > 0 && _isWordChar(folded.codeUnitAt(i - 1))) continue;
+      final bucket = buckets[folded.codeUnitAt(i)];
+      if (bucket == null) continue;
+      for (final term in bucket) {
+        if (found.containsKey(term)) continue;
+        if (alreadyLinked.contains(term)) continue;
+        if (!_endsWholeWordAt(folded, term, i)) continue;
+        found[term] = i;
+      }
     }
+    return found;
+  }
+
+  /// Whether [term] sits at [start] in [folded] with nothing word-like
+  /// immediately after it. The caller has already established that
+  /// nothing word-like sits immediately before [start].
+  static bool _endsWholeWordAt(String folded, String term, int start) {
+    if (!folded.startsWith(term, start)) return false;
+    final after = start + term.length;
+    return after >= folded.length || !_isWordChar(folded.codeUnitAt(after));
   }
 
   static bool _intersectsAny(BarrioTermMatch match, List<List<int>> ranges) {

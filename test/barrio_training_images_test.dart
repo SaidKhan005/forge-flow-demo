@@ -15,6 +15,15 @@ import 'package:forge_and_flow/internal/barrio/content/company_handbook_content.
 import 'package:forge_and_flow/internal/barrio/widgets/barrio_training_image_viewer.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/handbook_lesson_card.dart';
 
+/// The bundled asset behind an [Image], seeing through the [ResizeImage]
+/// that a display-size decode (`cacheWidth`, perf audit A1) wraps the
+/// [AssetImage] in. Null for anything that is not an asset image.
+String? _assetNameOf(Image image) {
+  var provider = image.image;
+  if (provider is ResizeImage) provider = provider.imageProvider;
+  return provider is AssetImage ? provider.assetName : null;
+}
+
 const _kBodyWithImages =
     'First paragraph of the fixture body.\n\n'
     'Second paragraph, which carries the picture.\n\n'
@@ -125,11 +134,13 @@ void main() {
     expect(para1, isNot(-1));
     // Both images precede the first body paragraph.
     expect(imageIndexes.last, lessThan(para1));
-    // Source list order is preserved: 01.webp renders above 02.webp.
+    // Source list order is preserved: 01.webp renders above 02.webp. The
+    // provider is unwrapped because reader pictures decode at their
+    // on-screen width (perf audit A1), which wraps the AssetImage in a
+    // ResizeImage.
     final assetNames = <String>[
       for (final w in order)
-        if (w is Image && w.image is AssetImage)
-          (w.image as AssetImage).assetName,
+        if (w is Image && _assetNameOf(w) != null) _assetNameOf(w)!,
     ];
     expect(assetNames, <String>[
       'assets/internal/barrio/training/fixture/01.webp',
