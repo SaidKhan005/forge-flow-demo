@@ -13,11 +13,24 @@
 //     preview-role-fallback visibility the shelf bubbles use, so a
 //     result the user cannot open never renders.
 //
+// Cost posture (audit A3, 2026-07-31): searching is expensive enough
+// that it must happen exactly once per query, never once per frame.
+//   * The field warms the folded corpus from a post-frame callback at
+//     mount, so the first keystroke never pays to fold the whole
+//     registry (A3.1).
+//   * The results sliver memoizes the hit list (A3.2). It used to call
+//     `BarrioTrainingSearch.search` straight out of `build`, so every
+//     unrelated home rebuild (a reading-progress future landing, an
+//     app-lifecycle change) re-ran the whole scan.
+//   * Snippets are built inside the item builder, not up front: the
+//     service defers them and only a rendered row reads one (A3.3).
+//
 // Lives under widgets/home so the UX no-em-dash lint root covers every
 // operator-facing string here.
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -69,6 +82,14 @@ class _BarrioHomeSearchFieldState extends State<BarrioHomeSearchField> {
   void initState() {
     super.initState();
     _focusNode.addListener(_onFocusChanged);
+    // A3.1: fold the corpus off the first frame, in chunks, so typing
+    // never pays for it. The field mounts with the home screen, so
+    // this is the home screen's own post-frame slot. Fire and forget:
+    // warmUp is idempotent, and a query that beats it to the corpus
+    // simply folds the rest itself.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(BarrioTrainingSearch.warmUp());
+    });
   }
 
   @override
@@ -193,7 +214,7 @@ class _BarrioHomeSearchFieldState extends State<BarrioHomeSearchField> {
 
 /// The search-results sliver shown in place of the center bubble and
 /// category sections while a query is active.
-class BarrioHomeSearchResults extends StatelessWidget {
+class BarrioHomeSearchResults extends StatefulWidget {
   /// Trimmed query, at least [BarrioTrainingSearch.kMinQueryLength]
   /// characters (the caller enforces the minimum).
   final String query;
@@ -217,23 +238,71 @@ class BarrioHomeSearchResults extends StatelessWidget {
     this.visibilityResolver,
   });
 
+  @override
+  State<BarrioHomeSearchResults> createState() =>
+      _BarrioHomeSearchResultsState();
+}
+
+class _BarrioHomeSearchResultsState extends State<BarrioHomeSearchResults> {
+  /// The query [_results] answers, or null before the first search.
+  String? _memoQuery;
+
+  /// The visible destination set [_results] were filtered against.
+  Set<String> _memoAllowed = const <String>{};
+
+  List<BarrioTrainingSearchResult> _results =
+      const <BarrioTrainingSearchResult>[];
+
   /// Resolver-first, preview-role-fallback visibility, mirroring
   /// `BarrioHomeShelf._isDestVisible`. A doc with no destination entry
   /// can never be opened, so it never renders.
   bool _isAllowed(String destinationId) {
     final dest = _kDestinationById[destinationId];
     if (dest == null) return false;
-    final resolver = visibilityResolver;
+    final resolver = widget.visibilityResolver;
     if (resolver != null) return resolver.isVisible(dest);
-    return previewRole.isIntendedFor(dest);
+    return widget.previewRole.isIntendedFor(dest);
+  }
+
+  /// The destination ids visible right now.
+  ///
+  /// This is the memo key rather than the resolver object because the
+  /// home screen builds a fresh
+  /// `PermissionContextBarrioVisibilityResolver` on every build, so
+  /// comparing resolver identity would miss every time and the memo
+  /// would never hold. Resolving the ~30 destinations up front is
+  /// cheap, exact, and re-runs the scan only when what the user may
+  /// open actually changed. It is also strictly fewer resolver calls
+  /// than the old path, which asked once per corpus unit.
+  Set<String> _allowedDestinationIds() {
+    return <String>{
+      for (final id in _kDestinationById.keys)
+        if (_isAllowed(id)) id,
+    };
+  }
+
+  /// Memoized hit list: the scan runs only when the query or the
+  /// visible destination set changed (audit A3.2).
+  List<BarrioTrainingSearchResult> _resultsFor(Set<String> allowed) {
+    if (_memoQuery == widget.query && setEquals(_memoAllowed, allowed)) {
+      return _results;
+    }
+    _memoQuery = widget.query;
+    _memoAllowed = allowed;
+    // `allowed.contains` answers exactly what `_isAllowed` answers: an
+    // id outside the destination registry is in neither.
+    _results = BarrioTrainingSearch.search(
+      widget.query,
+      isDestinationAllowed: allowed.contains,
+    );
+    return _results;
   }
 
   @override
   Widget build(BuildContext context) {
-    final results =
-        BarrioTrainingSearch.search(query, isDestinationAllowed: _isAllowed);
+    final results = _resultsFor(_allowedDestinationIds());
     if (results.isEmpty) {
-      return SliverToBoxAdapter(child: _EmptyState(query: query));
+      return SliverToBoxAdapter(child: _EmptyState(query: widget.query));
     }
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
@@ -245,7 +314,7 @@ class BarrioHomeSearchResults extends StatelessWidget {
           return _SearchResultRow(
             result: result,
             accent: barrioHomeAccentFor(result.destinationId),
-            onTap: () => onResultTap(result, destination),
+            onTap: () => widget.onResultTap(result, destination),
           );
         },
       ),
@@ -397,6 +466,10 @@ class _SearchResultRow extends StatelessWidget {
   }
 
   Widget _snippetText() {
+    // A3.3: reading `result.snippet` is what builds it. This runs
+    // inside the sliver's item builder, so only the handful of rows
+    // actually on screen ever compute a snippet window.
+    final snippet = result.snippet;
     final base = GoogleFonts.ibmPlexSans(
       fontSize: 12.5,
       height: 1.35,
@@ -407,7 +480,7 @@ class _SearchResultRow extends StatelessWidget {
       color: BarrioColors.textSecondary,
     );
     return Text.rich(
-      TextSpan(children: _snippetSpans(result.snippet, base, bold)),
+      TextSpan(children: _snippetSpans(snippet, base, bold)),
       maxLines: 3,
       overflow: TextOverflow.ellipsis,
     );

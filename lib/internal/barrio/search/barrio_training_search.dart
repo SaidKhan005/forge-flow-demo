@@ -7,7 +7,9 @@
 // `kBarrioTrainingDocs` (doc title, chapter titles, unit titles, unit
 // bodies) and answers substring queries that are case-insensitive AND
 // Latin-diacritic-insensitive ('jalapeno' matches 'jalapeño' and the
-// other way round).
+// other way round). The one package import is `package:meta`, for the
+// two `@visibleForTesting` seams below; it is annotations only, pure
+// Dart, and pulls in no framework.
 //
 // Offset-mapping approach (documented per the Wave B contract): the
 // fold in [BarrioTrainingSearch.fold] maps every UTF-16 code unit to
@@ -22,6 +24,27 @@
 // static (`_corpus`); a per-keystroke query only folds the short query
 // string and runs `indexOf` scans over the cached folded strings. No
 // per-keystroke re-folding of the ~110k-word corpus ever happens.
+//
+// Three costs the first search used to pay on the UI thread, and how
+// they are paid now (audit A3, 2026-07-31):
+//   1. Building the folded corpus at all. Folding every unit body in
+//      the registry (1,500+ cards, ~700 KB of text) in one go is a
+//      multi-hundred-millisecond stall, and it used to land on the
+//      FIRST keystroke. [warmUp] now folds it in small chunks off the
+//      first frame, yielding to the event loop between chunks so no
+//      single turn blocks a frame. A query that lands mid-warm
+//      finishes the fold in place (see [_corpus]), so correctness
+//      never depends on the warm having run at all.
+//   2. Running the scan on every rebuild. That is the caller's job:
+//      the home results widget memoizes on the query plus the visible
+//      destination set instead of scanning inside `build`.
+//   3. Materializing a snippet for every scored unit. A 2-character
+//      query can score hundreds of units to render about eight, so
+//      [BarrioTrainingSearchResult.snippet] is now built on FIRST
+//      ACCESS (in the list item builder) rather than up front. Same
+//      snippet, same spans, computed only for the rows that render.
+
+import 'package:meta/meta.dart';
 
 import '../content/company_handbook_content.dart';
 import '../content/training/barrio_training_doc.dart';
@@ -86,21 +109,62 @@ class BarrioTrainingSearchResult {
   /// deep-link the exact card, not just the section.
   final int unitIndex;
 
-  final BarrioSearchSnippet snippet;
-
   /// Total occurrences of all query words in this unit's searchable
   /// text (titles + body). Results are ranked by this, descending.
   final int hitCount;
 
-  const BarrioTrainingSearchResult({
+  /// Built snippet, or null while a service-produced result has not
+  /// had [snippet] read yet. See the deferred-snippet note on
+  /// [snippet].
+  BarrioSearchSnippet? _snippet;
+
+  /// Deferred snippet inputs. Both null on a caller-built result
+  /// (which supplies its snippet up front), both non-null on a
+  /// service-built one.
+  final _IndexedUnit? _entry;
+  final List<String>? _words;
+
+  BarrioTrainingSearchResult({
     required this.destinationId,
     required this.docTitle,
     required this.chapter,
     required this.unitTitle,
     required this.unitIndex,
-    required this.snippet,
+    required BarrioSearchSnippet snippet,
     required this.hitCount,
-  });
+  })  : _snippet = snippet,
+        _entry = null,
+        _words = null;
+
+  /// Service constructor: keeps the snippet inputs instead of the
+  /// snippet, so a scored unit that never renders never pays for one
+  /// (audit A3.3).
+  BarrioTrainingSearchResult._deferredSnippet({
+    required this.destinationId,
+    required this.docTitle,
+    required this.chapter,
+    required this.unitTitle,
+    required this.unitIndex,
+    required this.hitCount,
+    required _IndexedUnit entry,
+    required List<String> words,
+  })  : _snippet = null,
+        _entry = entry,
+        _words = words;
+
+  /// The display snippet, built on FIRST ACCESS and then cached on
+  /// this result.
+  ///
+  /// [BarrioTrainingSearch.search] returns EVERY scored unit (a
+  /// 2-character query can score hundreds), but a list view renders
+  /// about eight of them. Building a 90-character window with span
+  /// computation for all of them up front was pure waste, so the work
+  /// now happens in the item builder that actually shows the row. The
+  /// snippet itself is byte-for-byte what the eager path produced:
+  /// same inputs, same [BarrioTrainingSearch._buildSnippet] call, only
+  /// later.
+  BarrioSearchSnippet get snippet =>
+      _snippet ??= BarrioTrainingSearch._buildSnippet(_entry!, _words!);
 
   int get chapterIndex => chapter.index;
 
@@ -180,6 +244,86 @@ class BarrioTrainingSearch {
   /// process; queries only scan these strings.
   static List<_IndexedUnit>? _cachedCorpus;
 
+  /// Partially folded corpus and the generator still feeding it, while
+  /// [warmUp] is working through the registry in chunks. Both are
+  /// cleared the moment the corpus is complete.
+  static List<_IndexedUnit>? _partialCorpus;
+  static Iterator<_IndexedUnit>? _pendingEntries;
+
+  /// The warm currently running, so repeated [warmUp] calls (a second
+  /// home-screen mount, a hot reload) join it instead of starting a
+  /// second pass over the same generator.
+  static Future<void>? _warmInFlight;
+
+  /// Unit bodies folded per warm chunk. Sized so one chunk is a few
+  /// milliseconds of work: the warm gives the frame pipeline a turn
+  /// between chunks, so it costs elapsed time, never a dropped frame.
+  static const int _kWarmChunkUnits = 96;
+
+  /// Number of [search] calls this process has made. Bumped inside an
+  /// `assert`, so release builds carry no counter at all.
+  ///
+  /// Exists for the A3.2 regression guard: the home results widget
+  /// must memoize, so an unrelated rebuild of the home tree must not
+  /// move this number.
+  @visibleForTesting
+  static int debugSearchCallCount = 0;
+
+  /// True once the folded corpus is complete, whether it was warmed in
+  /// the background or built in place by a query that arrived first.
+  static bool get isCorpusWarm => _cachedCorpus != null;
+
+  /// Folds the corpus off the critical path, in chunks, so the first
+  /// keystroke never pays for it (audit A3.1).
+  ///
+  /// Call this once the first frame is up (the home search field does,
+  /// from a post-frame callback). Cheap and idempotent: it returns
+  /// immediately when the corpus is already built, and joins the
+  /// running warm when one is in flight. Nothing depends on it having
+  /// finished; a query that arrives mid-warm simply finishes the fold
+  /// itself.
+  static Future<void> warmUp() {
+    if (_cachedCorpus != null) return Future<void>.value();
+    return _warmInFlight ??= _warmCorpus();
+  }
+
+  static Future<void> _warmCorpus() async {
+    while (_cachedCorpus == null) {
+      final built = _partialCorpus ??= <_IndexedUnit>[];
+      final entries = _pendingEntries ??= _corpusEntries().iterator;
+      var folded = 0;
+      var exhausted = false;
+      while (folded < _kWarmChunkUnits) {
+        if (!entries.moveNext()) {
+          exhausted = true;
+          break;
+        }
+        built.add(entries.current);
+        folded++;
+      }
+      if (exhausted) {
+        _completeCorpus(built);
+        break;
+      }
+      // Yield the event loop between chunks. A frame due right now
+      // gets serviced before the next chunk starts, which is the whole
+      // point: total warm time stays short, but no single turn of it
+      // is long enough to drop a frame.
+      await Future<void>.delayed(Duration.zero);
+    }
+    _warmInFlight = null;
+  }
+
+  /// Drops the corpus so the next query (or [warmUp]) rebuilds it from
+  /// scratch. Test-only, and only safe when no warm is in flight.
+  @visibleForTesting
+  static void debugResetCorpus() {
+    _cachedCorpus = null;
+    _partialCorpus = null;
+    _pendingEntries = null;
+    _warmInFlight = null;
+  }
+
   /// Folds [input] to lowercase ASCII for the Latin diacritics set.
   /// One code unit in, one code unit out: the result has the same
   /// length as [input], which is what keeps fold-space offsets valid
@@ -210,6 +354,10 @@ class BarrioTrainingSearch {
     String query, {
     bool Function(String destinationId)? isDestinationAllowed,
   }) {
+    assert(() {
+      debugSearchCallCount++;
+      return true;
+    }());
     final trimmed = query.trim();
     if (trimmed.length < kMinQueryLength) {
       return const <BarrioTrainingSearchResult>[];
@@ -271,7 +419,7 @@ class BarrioTrainingSearch {
     int hitCount,
     List<String> words,
   ) {
-    return BarrioTrainingSearchResult(
+    return BarrioTrainingSearchResult._deferredSnippet(
       destinationId: entry.destinationId,
       docTitle: entry.doc.title,
       chapter: BarrioSearchChapterRef(
@@ -280,7 +428,8 @@ class BarrioTrainingSearch {
       ),
       unitTitle: entry.unit.title,
       unitIndex: entry.unitIndex,
-      snippet: _buildSnippet(entry, words),
+      entry: entry,
+      words: words,
       hitCount: hitCount,
     );
   }
@@ -407,34 +556,57 @@ class BarrioTrainingSearch {
     return merged;
   }
 
-  /// The cached folded corpus, built on first use. Iteration order of
-  /// `kBarrioTrainingDocs` (a const literal map, so insertion-ordered)
-  /// defines corpus order: registry order, then chapter, then unit.
+  /// The cached folded corpus, built on first use.
+  ///
+  /// A query that arrives while [warmUp] is still folding finishes the
+  /// remaining units in place, so a caller can never observe a partial
+  /// corpus: the warm is an optimization, never a precondition.
   static List<_IndexedUnit> _corpus() {
     final cached = _cachedCorpus;
     if (cached != null) return cached;
-    final built = <_IndexedUnit>[];
-    kBarrioTrainingDocs.forEach((destinationId, doc) {
+    final built = _partialCorpus ??= <_IndexedUnit>[];
+    final entries = _pendingEntries ??= _corpusEntries().iterator;
+    while (entries.moveNext()) {
+      built.add(entries.current);
+    }
+    return _completeCorpus(built);
+  }
+
+  /// Publishes [built] as the finished corpus and retires the warm
+  /// scratch state.
+  static List<_IndexedUnit> _completeCorpus(List<_IndexedUnit> built) {
+    _cachedCorpus = built;
+    _partialCorpus = null;
+    _pendingEntries = null;
+    return built;
+  }
+
+  /// Every corpus entry, folded on demand, in corpus order.
+  ///
+  /// Iteration order of `kBarrioTrainingDocs` (a const literal map, so
+  /// insertion-ordered) defines that order: registry order, then
+  /// chapter, then unit. Lazy so [warmUp] can fold a chunk at a time
+  /// and `_corpus` can drain whatever is left; both consume this same
+  /// sequence, so a warmed corpus and an in-place one are identical.
+  static Iterable<_IndexedUnit> _corpusEntries() sync* {
+    for (final registryEntry in kBarrioTrainingDocs.entries) {
+      final destinationId = registryEntry.key;
+      final doc = registryEntry.value;
       for (var c = 0; c < doc.chapters.length; c++) {
         final chapter = doc.chapters[c];
         for (var u = 0; u < chapter.units.length; u++) {
           final unit = chapter.units[u];
-          built.add(
-            _IndexedUnit(
-              destinationId: destinationId,
-              doc: doc,
-              chapterIndex: c,
-              unitIndex: u,
-              unit: unit,
-              foldedScope:
-                  fold('${doc.title}\n${chapter.title}\n${unit.title}'),
-              foldedBody: fold(unit.body),
-            ),
+          yield _IndexedUnit(
+            destinationId: destinationId,
+            doc: doc,
+            chapterIndex: c,
+            unitIndex: u,
+            unit: unit,
+            foldedScope: fold('${doc.title}\n${chapter.title}\n${unit.title}'),
+            foldedBody: fold(unit.body),
           );
         }
       }
-    });
-    _cachedCorpus = built;
-    return built;
+    }
   }
 }

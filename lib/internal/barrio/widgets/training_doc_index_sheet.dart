@@ -213,6 +213,41 @@ bool trainingDocHasPhotoBrowse(BarrioTrainingDoc doc) {
 /// The two ways to browse the index sheet.
 enum _IndexView { az, photos }
 
+/// One row of the flattened A-Z list: a letter header, or the term
+/// entry under it.
+///
+/// A DATA row, not a widget (audit A7). The list used to be built as a
+/// `List<Widget>` and then indexed from `itemBuilder`, which quietly
+/// defeated the builder: every letter header and every term row (each
+/// with its own tap closure) was constructed on every sheet build,
+/// whether or not it was on screen, and the largest glossary index
+/// runs to well over a hundred rows. Flattening to data and
+/// constructing in `itemBuilder` matches what the sibling photo grid
+/// below already does.
+class _IndexRow {
+  /// Set on a letter header; null on a term row.
+  final String? letter;
+
+  /// Set on a term row; null on a letter header.
+  final TrainingIndexEntry? entry;
+
+  const _IndexRow.header(String this.letter) : entry = null;
+
+  const _IndexRow.entry(TrainingIndexEntry this.entry) : letter = null;
+}
+
+/// Flattens [groups] into the header/entry row sequence the A-Z list
+/// scrolls, in the same order the eager widget list produced: each
+/// group's letter header, then that group's entries.
+List<_IndexRow> _flattenIndexRows(List<TrainingIndexGroup> groups) {
+  return <_IndexRow>[
+    for (final group in groups) ...[
+      _IndexRow.header(group.letter),
+      for (final entry in group.entries) _IndexRow.entry(entry),
+    ],
+  ];
+}
+
 /// The A-Z index bottom sheet for one glossary manual, with the Photos
 /// grid view on manuals whose cards carry bundled photos.
 class TrainingDocIndexSheet extends StatefulWidget {
@@ -238,6 +273,10 @@ class TrainingDocIndexSheet extends StatefulWidget {
 class _TrainingDocIndexSheetState extends State<TrainingDocIndexSheet> {
   late final List<TrainingIndexGroup> _groups =
       buildTrainingIndexGroups(widget.doc);
+
+  /// The A-Z list as flat header/entry data, built once (audit A7).
+  late final List<_IndexRow> _rows = _flattenIndexRows(_groups);
+
   late final List<TrainingIndexPhotoEntry> _photoEntries =
       buildTrainingIndexPhotoEntries(widget.doc);
 
@@ -290,20 +329,25 @@ class _TrainingDocIndexSheetState extends State<TrainingDocIndexSheet> {
   }
 
   Widget _buildList() {
-    // One flat builder list (headers + entries) so 92-term glossaries
-    // scroll smoothly with lazy row builds.
-    final rows = <Widget>[
-      for (final group in _groups) ...[
-        _LetterHeader(letter: group.letter, accent: widget.accent),
-        for (final entry in group.entries)
-          _EntryRow(entry: entry, onTap: () => widget.onEntryTap(entry.page)),
-      ],
-    ];
+    // One flat DATA list (headers + entries) walked once at mount; the
+    // widgets themselves build on demand, so a 100-plus-row glossary
+    // constructs only the rows near the viewport (audit A7).
     return ListView.builder(
       key: const ValueKey<String>('training_doc_index_list'),
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-      itemCount: rows.length,
-      itemBuilder: (context, index) => rows[index],
+      itemCount: _rows.length,
+      itemBuilder: (context, index) {
+        final row = _rows[index];
+        final letter = row.letter;
+        if (letter != null) {
+          return _LetterHeader(letter: letter, accent: widget.accent);
+        }
+        final entry = row.entry!;
+        return _EntryRow(
+          entry: entry,
+          onTap: () => widget.onEntryTap(entry.page),
+        );
+      },
     );
   }
 
