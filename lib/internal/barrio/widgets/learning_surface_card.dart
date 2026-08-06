@@ -102,24 +102,18 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
           margin: carousel ? EdgeInsets.zero : const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
             color: BarrioColors.glassFill, // premium white glass fill
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(BarrioRadii.card),
             border: Border.all(
               color: widget.badgeColor.withValues(alpha: 0.35),
             ),
-            boxShadow: [
-              // Inner accent glow
-              BoxShadow(
-                color: widget.badgeColor.withValues(alpha: _isPressed ? 0.22 : 0.10),
-                blurRadius: _isPressed ? 12 : 20,
-                spreadRadius: -4,
-              ),
-              // Outer soft lift (navy-tinted, light UI)
-              BoxShadow(
-                color: const Color(0x1416243B),
-                blurRadius: _isPressed ? 14 : 28,
-                spreadRadius: _isPressed ? -6 : -2,
-              ),
-            ],
+            // One neutral navy lift, no colored glow — identical to the twin
+            // [HandbookLessonCard] so the two cards share a shadow language
+            // (and one shadow pass instead of two).
+            boxShadow: barrioSoftShadow(
+              y: _isPressed ? 4 : 10,
+              blur: _isPressed ? 14 : 24,
+              opacity: _isPressed ? 0.14 : 0.10,
+            ),
           ),
           clipBehavior: Clip.antiAlias,
           child: Stack(

@@ -268,20 +268,9 @@ class _PodiumColumn extends StatelessWidget {
                 color: medalColor.withValues(alpha: 0.60),
                 width: 2.5,
               ),
-              boxShadow: [
-                // Inner medal glow
-                BoxShadow(
-                  color: medalColor.withValues(alpha: 0.25),
-                  blurRadius: 18,
-                  spreadRadius: 0,
-                ),
-                // Outer ambient
-                BoxShadow(
-                  color: medalColor.withValues(alpha: 0.10),
-                  blurRadius: 30,
-                  spreadRadius: 2,
-                ),
-              ],
+              // One neutral navy lift, no colored glow — the medal identity is
+              // carried by the 2.5 px medalColor ring, not a halo.
+              boxShadow: barrioSoftShadow(y: 6, blur: 20, opacity: 0.12),
             ),
             child: Center(
               child: Text(
@@ -444,26 +433,14 @@ class _RankTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: BarrioColors.glassFill,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(BarrioRadii.card),
         border: Border.all(
           color: isNegative
               ? const Color(0x1A16243B)
               : entry.avatarColor.withValues(alpha: 0.30),
         ),
-        boxShadow: [
-          // Inner accent glow
-          BoxShadow(
-            color: entry.avatarColor.withValues(alpha: isNegative ? 0.04 : 0.08),
-            blurRadius: 16,
-            spreadRadius: -4,
-          ),
-          // Outer soft lift (navy-tinted, light UI)
-          const BoxShadow(
-            color: Color(0x1416243B),
-            blurRadius: 20,
-            spreadRadius: -4,
-          ),
-        ],
+        // One neutral navy lift, no colored glow — the house card language.
+        boxShadow: barrioSoftShadow(y: 6, blur: 20, opacity: 0.08),
       ),
       child: Stack(
         children: [
