@@ -18,6 +18,8 @@ import '../services/barrio_term_links.dart';
 import '../services/barrio_training_deck.dart';
 import '../services/barrio_web_search.dart';
 import '../widgets/barrio_destination_scaffold.dart';
+import '../widgets/barrio_highlight_actions_sheet.dart';
+import '../widgets/barrio_highlight_note_sheet.dart';
 import '../widgets/barrio_quiz_checkpoint_card.dart';
 import '../widgets/barrio_streak_tracker.dart';
 import '../widgets/barrio_term_definition_sheet.dart';
@@ -144,8 +146,10 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
       const <String, List<BarrioHighlight>>{};
 
   /// The marker colour the reader used last, applied to the next mark
-  /// they make. Slice B has no picker yet, so this is the stored value
-  /// or the default; Slice D lets them change it.
+  /// they make. Seeded from the device store, and moved whenever they
+  /// repaint a mark in the actions sheet (Slice C): reaching for a
+  /// colour there is the same act of choosing a marker. Slice D adds the
+  /// picker to the selection toolbar itself.
   String _markerColor = kBarrioHighlightDefaultColor;
 
   /// True once the user moved the deck themselves (swipe or rail tap).
@@ -559,6 +563,156 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     await BarrioHighlightsService.setLastColor(highlight.color);
   }
 
+  /// The mark carrying [highlightId], or null when it is no longer on
+  /// this screen (removed in another sheet, or from a manual the reader
+  /// has since left).
+  BarrioHighlight? _highlightById(String highlightId) {
+    for (final marks in _highlightsByUnit.values) {
+      for (final mark in marks) {
+        if (mark.id == highlightId) return mark;
+      }
+    }
+    return null;
+  }
+
+  /// Publishes a changed set of marks for one card, so the deck repaints
+  /// on the next frame. The lesson card's span memo keys on the resolved
+  /// plan, so a recolour, a note, a removal and a restore each land
+  /// immediately instead of waiting for a cache eviction.
+  void _publishMarks(String unitId, List<BarrioHighlight> marks) {
+    setState(() {
+      final next = <String, List<BarrioHighlight>>{..._highlightsByUnit};
+      if (marks.isEmpty) {
+        next.remove(unitId);
+      } else {
+        next[unitId] = marks;
+      }
+      _highlightsByUnit = next;
+    });
+  }
+
+  /// Swaps one mark for an edited copy of itself, in place, so stored
+  /// order (oldest first) is preserved: it decides which of two marks
+  /// covering the same words paints on top.
+  void _replaceMark(BarrioHighlight updated) {
+    final marks = _highlightsByUnit[updated.unitId];
+    if (marks == null) return;
+    _publishMarks(updated.unitId, <BarrioHighlight>[
+      for (final mark in marks)
+        if (mark.id == updated.id) updated else mark,
+    ]);
+  }
+
+  /// Opens the manage sheet for one of the reader's own marks (Slice C),
+  /// reached by tapping the mark itself or its note glyph.
+  ///
+  /// The sheet stays open while the reader tries marker colours (each
+  /// one paints and persists as it is tapped) and closes itself before
+  /// handing off to the note editor or to removal, so those two never
+  /// run behind a sheet the reader can no longer see past.
+  Future<void> _openHighlightActions(String highlightId) async {
+    final highlight = _highlightById(highlightId);
+    if (highlight == null) return;
+    HapticFeedback.lightImpact();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => BarrioHighlightActionsSheet(
+        highlight: highlight,
+        accent: widget.accent,
+        onColorPicked: (token) => _recolourHighlight(highlight, token),
+        onNoteTap: () {
+          Navigator.of(sheetContext).pop();
+          _openNoteSheet(highlight.id);
+        },
+        onRemove: () {
+          Navigator.of(sheetContext).pop();
+          _removeHighlight(highlight);
+        },
+      ),
+    );
+  }
+
+  /// Repaints one mark in [token] and remembers the choice, so the next
+  /// mark the reader makes uses the marker they just reached for.
+  Future<void> _recolourHighlight(
+    BarrioHighlight highlight,
+    String token,
+  ) async {
+    if (token == highlight.color || !isBarrioHighlightColor(token)) return;
+    final current = _highlightById(highlight.id);
+    if (current == null) return;
+    _replaceMark(current.copyWith(color: token));
+    _markerColor = token;
+    await BarrioHighlightsService.setColor(widget.doc.id, highlight.id, token);
+    await BarrioHighlightsService.setLastColor(token);
+  }
+
+  /// Opens the note editor for one mark and saves what comes back.
+  /// A cancelled editor, a dismissed sheet, and a note the reader did
+  /// not actually change all write nothing.
+  Future<void> _openNoteSheet(String highlightId) async {
+    final highlight = _highlightById(highlightId);
+    if (highlight == null) return;
+    final written = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => BarrioHighlightNoteSheet(
+        highlight: highlight,
+        accent: widget.accent,
+      ),
+    );
+    if (written == null || !mounted) return;
+    final note = written.trim();
+    final current = _highlightById(highlightId);
+    if (current == null || note == current.note) return;
+    _replaceMark(current.copyWith(note: note));
+    await BarrioHighlightsService.setNote(widget.doc.id, highlightId, note);
+  }
+
+  /// Removes one mark, with the way back offered in the same breath.
+  ///
+  /// No confirm dialog: removal is one tap and the SnackBar's Undo puts
+  /// the very same record back, id, colour, note, words and all.
+  Future<void> _removeHighlight(BarrioHighlight highlight) async {
+    final marks = _highlightsByUnit[highlight.unitId];
+    if (marks == null) return;
+    _publishMarks(highlight.unitId, <BarrioHighlight>[
+      for (final mark in marks)
+        if (mark.id != highlight.id) mark,
+    ]);
+    await BarrioHighlightsService.remove(widget.doc.id, highlight.id);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: const Text('Highlight removed.'),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () => _restoreHighlight(highlight),
+          ),
+        ),
+      );
+  }
+
+  /// Puts a just-removed mark back, unchanged.
+  ///
+  /// It returns at the END of the doc's stored list rather than its old
+  /// position, which only matters where two marks cover the same words:
+  /// the restored one now paints on top. Everything a reader can see
+  /// about the mark itself, including its note, comes back untouched.
+  Future<void> _restoreHighlight(BarrioHighlight highlight) async {
+    if (!mounted) return;
+    _publishMarks(highlight.unitId, <BarrioHighlight>[
+      ...?_highlightsByUnit[highlight.unitId],
+      highlight,
+    ]);
+    await BarrioHighlightsService.add(widget.doc.id, highlight);
+  }
+
   /// Builds the reading text selection menu (select-any-word action,
   /// 2026-07-29 operator curation: no Copy/Select all). "Highlight"
   /// marks the selection in the reader's last marker colour, "Ask chat"
@@ -785,6 +939,8 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
       highlights: _highlightsByUnit[entry.unit!.id] ??
           const <BarrioHighlight>[],
       anchorRegistry: _anchors,
+      // Slice C: tapping a mark, or its note glyph, manages it.
+      onHighlightTap: _openHighlightActions,
     );
   }
 
