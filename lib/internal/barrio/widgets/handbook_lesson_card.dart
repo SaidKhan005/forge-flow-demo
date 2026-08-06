@@ -1228,7 +1228,9 @@ class _UnitBody extends StatelessWidget {
       final start = math.max(run.start, cursor);
       final end = math.min(run.end, to);
       if (start > cursor) {
-        spans.add(TextSpan(text: text.substring(cursor, start), style: runStyle));
+        spans.add(
+          TextSpan(text: text.substring(cursor, start), style: runStyle),
+        );
       }
       spans.add(TextSpan(
         text: text.substring(start, end),

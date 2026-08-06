@@ -330,8 +330,11 @@ void main() {
           BarrioHighlightPlan.resolve(highlights: hs, chunks: chunks);
       final base = planOf(<BarrioHighlight>[stored(0, 10, 15, 'guest')]);
 
-      expect(base, equals(planOf(<BarrioHighlight>[stored(0, 10, 15, 'guest')])),
-          reason: 'same marks must hit the span cache');
+      expect(
+        base,
+        equals(planOf(<BarrioHighlight>[stored(0, 10, 15, 'guest')])),
+        reason: 'same marks must hit the span cache',
+      );
       expect(base, isNot(equals(BarrioHighlightPlan.empty)),
           reason: 'a new mark must miss the cache');
       expect(
@@ -347,8 +350,9 @@ void main() {
       );
       expect(
         base,
-        isNot(equals(
-            planOf(<BarrioHighlight>[stored(0, 10, 15, 'guest', id: 'other')]))),
+        isNot(equals(planOf(
+          <BarrioHighlight>[stored(0, 10, 15, 'guest', id: 'other')],
+        ))),
         reason: 'a different mark id must miss the cache',
       );
     });
@@ -651,7 +655,8 @@ void main() {
       final washed = _runsWithin(_bodyRuns(tester), 'Chill the glass');
       expect(washed, isNotEmpty);
       expect(
-        washed.every((r) => r.$2?.backgroundColor == barrioHighlightWash('gold')),
+        washed
+            .every((r) => r.$2?.backgroundColor == barrioHighlightWash('gold')),
         isTrue,
         reason: 'the resolved highlight plan is part of the span cache key, '
             'so a mark made right now misses the warm entry and recomposes',
@@ -692,7 +697,8 @@ void main() {
       final washed = _runsWithin(_bodyRuns(tester), 'Chill the glass');
       expect(washed, isNotEmpty);
       expect(
-        washed.every((r) => r.$2?.backgroundColor == barrioHighlightWash('plum')),
+        washed
+            .every((r) => r.$2?.backgroundColor == barrioHighlightWash('plum')),
         isTrue,
         reason: 'the colour token is part of the cache key',
       );

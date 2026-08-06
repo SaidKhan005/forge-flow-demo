@@ -119,9 +119,15 @@ List<BarrioBodyBlock> barrioBodyBlocks(String body) {
   BarrioBodyChunk chunk(BarrioBodyChunkKind kind, String text) =>
       BarrioBodyChunk(index: nextIndex++, kind: kind, text: text);
 
-  BarrioBodyRow single(BarrioBodyChunkKind kind, String text,
-          {String? marker}) =>
-      BarrioBodyRow(marker: marker, cells: <BarrioBodyChunk>[chunk(kind, text)]);
+  BarrioBodyRow single(
+    BarrioBodyChunkKind kind,
+    String text, {
+    String? marker,
+  }) =>
+      BarrioBodyRow(
+        marker: marker,
+        cells: <BarrioBodyChunk>[chunk(kind, text)],
+      );
 
   for (final block in _parseBlocks(body.split('\n\n'))) {
     switch (block.kind) {
