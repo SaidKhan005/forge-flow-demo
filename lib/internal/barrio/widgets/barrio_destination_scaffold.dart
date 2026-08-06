@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -104,6 +106,189 @@ class BarrioRadii {
   static const double chip = 10; // pills, badges, small chips, thumbnails
   static const double card = 16; // cards, flashcards, search fields, rows
   static const double sheet = 24; // bottom sheets
+}
+
+/// Shared motion scale for a calm, deliberate feel (2026-08-06, audit B10).
+///
+/// Before this the module ran fifteen different durations (150, 180, 220,
+/// 250, 280, 300, 320, 350, 400, 500, 700, 800, 900 ms and up) against nine
+/// curves. Four rungs and two curves now cover everything:
+///
+///  * [fast] acknowledges a touch: press scale, chip highlight, a cue fading.
+///  * [base] moves content: option reveal, container morph, a page turn.
+///  * [slow] is a deliberate reveal the reader is meant to watch land.
+///  * [hero] is a one-shot screen entrance, never a response to a tap.
+///
+/// [curve] is the house curve. Overshoot curves (`easeOutBack`, `elasticOut`)
+/// are deliberately absent: a bounce reads playful, and this is a training
+/// tool for staff on shift. [curveEmphasis] is the one alternative, for a
+/// wordmark or crown that should land with a little more authority.
+///
+/// Timers that are not animation (input debounce, an auto-advance dwell) and
+/// the celebration overlay's own lifetime are NOT on this scale; they are
+/// wall-clock choices, documented where they live.
+class BarrioMotion {
+  BarrioMotion._();
+
+  /// Touch acknowledgement.
+  static const Duration fast = Duration(milliseconds: 150);
+
+  /// Content movement: the default for anything that is not a press or a
+  /// screen entrance.
+  static const Duration base = Duration(milliseconds: 250);
+
+  /// A deliberate reveal.
+  static const Duration slow = Duration(milliseconds: 400);
+
+  /// One-shot screen entrance.
+  static const Duration hero = Duration(milliseconds: 700);
+
+  /// The house curve: decelerate into place, never past it.
+  static const Curve curve = Curves.easeOutCubic;
+
+  /// Slightly sharper deceleration for a hero moment.
+  static const Curve curveEmphasis = Curves.easeOutQuart;
+
+  /// The one press-scale. 0.97 with [curve] instead of the old 0.95 with
+  /// `easeOutBack`: on a 350dp card the overshoot read as a cheap pop.
+  static const double pressScale = 0.97;
+
+  /// Wall-clock budget for a whole staggered entrance: first item starting
+  /// to last item settled. Capped so an eight-option card is never sluggish
+  /// (the old `100 * index` delay started the last option 800ms in).
+  static const Duration stagger = Duration(milliseconds: 300);
+
+  /// Longest gap between two neighbouring items in a cascade. A short list
+  /// gets the full step; a long one compresses so [stagger] still holds.
+  static const Duration staggerStep = Duration(milliseconds: 45);
+
+  /// Share of [stagger] one item's own fade + slide occupies (the rest is
+  /// the room the cascade offsets live in).
+  static const double _staggerWindow = 0.6;
+}
+
+/// The slice of a parent controller's 0..1 timeline that item [slot] of
+/// [count] animates over in a staggered entrance (audit B11).
+///
+/// [parent] is the owning controller's duration, so the result honours
+/// [BarrioMotion.staggerStep] and [BarrioMotion.stagger] in real
+/// milliseconds no matter how long that controller runs. [delay] pushes the
+/// whole cascade later inside the same timeline, which is how one controller
+/// can run a hero reveal and then a list cascade behind it.
+///
+/// Ticker-driven staggering replaced one `Future.delayed` per item. Those
+/// timers were not owned by any ticker, so they kept firing while the app was
+/// backgrounded, drifted under load, and ignored reduce-motion.
+Interval barrioStaggerInterval({
+  required int slot,
+  required int count,
+  Duration parent = BarrioMotion.stagger,
+  Duration delay = Duration.zero,
+}) {
+  final totalMs = parent.inMilliseconds.toDouble();
+  if (totalMs <= 0) return const Interval(0, 1, curve: BarrioMotion.curve);
+
+  final windowMs =
+      BarrioMotion.stagger.inMilliseconds * BarrioMotion._staggerWindow;
+  final spreadMs = BarrioMotion.stagger.inMilliseconds - windowMs;
+  final stepMs = count > 1
+      ? math.min(
+          BarrioMotion.staggerStep.inMilliseconds.toDouble(),
+          spreadMs / (count - 1),
+        )
+      : 0.0;
+
+  final startMs =
+      delay.inMilliseconds + (slot * stepMs).clamp(0.0, spreadMs);
+  var begin = (startMs / totalMs).clamp(0.0, 1.0);
+  final end = ((startMs + windowMs) / totalMs).clamp(0.0, 1.0);
+  // A cascade that would run past the parent controller collapses to a
+  // still-valid interval rather than asserting on begin > end.
+  if (begin >= end) begin = math.max(0.0, end - 0.001);
+  if (begin >= end) return const Interval(0, 1, curve: BarrioMotion.curve);
+  return Interval(begin, end, curve: BarrioMotion.curve);
+}
+
+/// One item of a ticker-driven staggered entrance: a fade plus a short slide
+/// over the slice of [parent] given by [interval].
+///
+/// Owning the [CurvedAnimation] (rather than rebuilding one per build, and
+/// rather than one [AnimationController] per item) means the whole cascade
+/// costs a single ticker and nothing leaks a listener onto the parent.
+///
+/// Reduce-motion is the caller's job and is one line: hold the parent
+/// controller at 1.0 and every item is present and settled on the first
+/// frame, with no timers pending.
+class BarrioStaggerReveal extends StatefulWidget {
+  /// The controller the whole cascade runs on.
+  final Animation<double> parent;
+
+  /// This item's slice of [parent], from [barrioStaggerInterval].
+  final Interval interval;
+
+  /// Where the item slides from, as a fraction of its own height.
+  final Offset slideFrom;
+
+  final Widget child;
+
+  const BarrioStaggerReveal({
+    super.key,
+    required this.parent,
+    required this.interval,
+    this.slideFrom = const Offset(0, 0.12),
+    required this.child,
+  });
+
+  @override
+  State<BarrioStaggerReveal> createState() => _BarrioStaggerRevealState();
+}
+
+class _BarrioStaggerRevealState extends State<BarrioStaggerReveal> {
+  late CurvedAnimation _curved;
+  late Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _attach();
+  }
+
+  void _attach() {
+    _curved = CurvedAnimation(parent: widget.parent, curve: widget.interval);
+    _slide = Tween<Offset>(begin: widget.slideFrom, end: Offset.zero)
+        .animate(_curved);
+  }
+
+  /// [Interval] does not implement `==`, so a fresh instance from an
+  /// otherwise identical rebuild would otherwise re-attach every time.
+  static bool _sameInterval(Interval a, Interval b) =>
+      a.begin == b.begin && a.end == b.end && a.curve == b.curve;
+
+  @override
+  void didUpdateWidget(covariant BarrioStaggerReveal oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.parent == widget.parent &&
+        oldWidget.slideFrom == widget.slideFrom &&
+        _sameInterval(oldWidget.interval, widget.interval)) {
+      return;
+    }
+    _curved.dispose();
+    _attach();
+  }
+
+  @override
+  void dispose() {
+    _curved.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _curved,
+      child: SlideTransition(position: _slide, child: widget.child),
+    );
+  }
 }
 
 /// The one soft neutral lift used by every premium surface (cards, flashcards,
