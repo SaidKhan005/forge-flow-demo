@@ -257,15 +257,33 @@ void main() {
     // adds the 89th group (2 slides, both uncaptioned, so neither is a
     // diagram). imaged 743 + 23 = 766, groups 88 + 1 = 89, slides
     // 200 + 2 = 202, single-picture 655 + 22 = 677.
-    test('forms exactly 89 slide groups across 89 cards', () {
-      expect(imagedUnits, 766);
-      expect(groups, hasLength(89));
-      expect(unitsWithSlideGroup, 89,
+    //
+    // The wine photograph pass (2026-08-06) then wired 66 approved
+    // openly-licensed photographs onto 62 wine cards. 56 of those cards
+    // had no picture at all: imaged 766 + 56 = 822.
+    //
+    // Groups move by +5 -1 = +4, to 93:
+    //   - 3 cards gained a second wired photograph and so a 2-slide
+    //     group (`c0_u1` table vs wine grapes, `c3_u6` Syrah vine plus
+    //     Cote Rotie, `c4_u6` the Calmont plus Riesling fruit).
+    //   - `c24_u1` (cork) held one uncaptioned source photograph and
+    //     gained two: a 3-slide group.
+    //   - `c34_u4` (pouring) held one and gained one: a 2-slide group.
+    //   - `c37_u0` (decanting) LOST its group. Its scanned closures
+    //     figure went to the removal manifest and the drawn how-to
+    //     figure now carries a 'Diagram: ' caption, so the wired
+    //     decanting photograph stacks on its own.
+    // Slides inside groups: 202 + 2 + 2 + 2 + 3 + 2 - 2 = 211.
+    // Single-picture cards: 677 + 56 - 5 + 1 = 729.
+    test('forms exactly 93 slide groups across 93 cards', () {
+      expect(imagedUnits, 822);
+      expect(groups, hasLength(93));
+      expect(unitsWithSlideGroup, 93,
           reason: 'no card carries two separate slide holders today');
       expect(
         groups.fold<int>(0, (sum, group) => sum + group.length),
-        202,
-        reason: '202 photographs now live inside a holder that slides',
+        211,
+        reason: '211 photographs now live inside a holder that slides',
       );
       expect(
         groups.map((group) => group.length).reduce((a, b) => a > b ? a : b),
@@ -274,11 +292,11 @@ void main() {
       );
     });
 
-    test('677 imaged cards keep the single-picture degrade path', () {
+    test('729 imaged cards keep the single-picture degrade path', () {
       // The degrade rule at corpus scale: the overwhelming majority of
       // imaged cards still render exactly today's tree, one picture per
       // holder, no chips, no dots, no counter.
-      expect(unitsWithNoSlideGroup, 677);
+      expect(unitsWithNoSlideGroup, 729);
       expect(unitsWithSlideGroup + unitsWithNoSlideGroup, imagedUnits);
     });
 
@@ -298,9 +316,9 @@ void main() {
               'photographs');
     });
 
-    test('all 65 wired second photographs land inside a slide group', () {
-      expect(wiredSecondPhotos, 65);
-      expect(wiredSecondPhotosInAGroup, 65,
+    test('all 69 wired second photographs land inside a slide group', () {
+      expect(wiredSecondPhotos, 69);
+      expect(wiredSecondPhotosInAGroup, 69,
           reason: 'a second photograph that does not slide is dead weight');
     });
 
@@ -314,12 +332,24 @@ void main() {
               reason: slide.assetPath);
           if (!slide.assetPath.endsWith('_2.webp')) continue;
           checked++;
+          // The credit line must be there, and exactly once. Earlier
+          // waves put nothing else on a second slide, so this used to
+          // read startsWith. The wine pass (2026-08-06) gives a second
+          // slide the same shape every LEAD photograph already has,
+          // '<what it teaches>. Photo: <creator>, <licence>', because a
+          // slide the reader has to swipe to deserves a sentence too.
+          // The bar is unchanged in substance: no wired photograph
+          // ships without naming its source.
           expect(slide.caption, isNotNull, reason: slide.assetPath);
-          expect(slide.caption!, startsWith('Photo: '),
+          expect(slide.caption!, contains('Photo: '),
               reason: '${slide.assetPath} must credit its source');
+          expect('${slide.caption!}|'.split('Photo: '), hasLength(2),
+              reason: '${slide.assetPath} carries exactly one credit');
+          expect(slide.caption!.split('Photo: ').last.trim(), isNotEmpty,
+              reason: '${slide.assetPath} credit line is not empty');
         }
       }
-      expect(checked, 65);
+      expect(checked, 69);
     });
   });
 
