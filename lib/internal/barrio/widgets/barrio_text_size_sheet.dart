@@ -127,7 +127,7 @@ class _SizeOptionRow extends StatelessWidget {
                 border: Border.all(
                   color: selected
                       ? accent.withValues(alpha: 0.55)
-                      : const Color(0x2216243B),
+                      : BarrioColors.hairline,
                 ),
               ),
               child: Row(
@@ -177,7 +177,7 @@ class _PreviewLine extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0x0A16243B),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0x2216243B)),
+        border: Border.all(color: BarrioColors.hairline),
       ),
       child: Text(
         'Card text will read like this.',

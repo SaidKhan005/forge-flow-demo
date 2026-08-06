@@ -82,6 +82,11 @@ class BarrioColors {
   // Only two rungs exist: [glassFill] for surfaces, this for fields.
   static const Color glassFillSoft = Color(0xCCFFFFFF); // 80% white glass
 
+  // The resting hairline border on white/cream surfaces: chips, option
+  // rows, rail buttons, close-chips. ~13% navy — visible as an edge, never
+  // as a line. Was copy-pasted at 11 sites across 8 files.
+  static const Color hairline = Color(0x2216243B);
+
   // The complementary navy bloom every destination background carries in
   // its opposite corner. Owned by [BarrioPremiumBackground]; screens get it
   // by using that widget, not by re-declaring the gradient stop.
@@ -349,13 +354,10 @@ class BarrioDestinationScaffold extends StatelessWidget {
                         border: Border.all(
                           color: accentColor.withValues(alpha: 0.35),
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: accentColor.withValues(alpha: 0.20),
-                            blurRadius: 14,
-                            spreadRadius: 0,
-                          ),
-                        ],
+                        // The house neutral lift. This file's own doc
+                        // comment forbids colored glow; the icon circle
+                        // used to ship one anyway.
+                        boxShadow: barrioSoftShadow(y: 4, blur: 14, opacity: 0.10),
                       ),
                       child: Icon(icon, color: accentColor, size: 24),
                     ),
@@ -442,8 +444,8 @@ class BarrioDestinationScaffold extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0x2216243B)),
+        borderRadius: BorderRadius.circular(BarrioRadii.chip),
+        border: Border.all(color: BarrioColors.hairline),
       ),
       child: Text(
         label,

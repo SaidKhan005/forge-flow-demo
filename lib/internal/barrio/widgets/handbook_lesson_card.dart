@@ -529,7 +529,7 @@ class _OptionTile extends StatelessWidget {
         BarrioColors.error.withValues(alpha: 0.10),
       );
     }
-    return (const Color(0x2216243B), const Color(0x0A16243B));
+    return (BarrioColors.hairline, const Color(0x0A16243B));
   }
 
   /// Merged screen-reader label (rec #12): one button per option, with
@@ -1954,7 +1954,7 @@ class _SlideChevron extends StatelessWidget {
             // The viewer close-chip recipe: soft cream on a hairline
             // navy border, so it stays legible over any photograph.
             color: BarrioColors.shellMid.withValues(alpha: 0.82),
-            border: Border.all(color: const Color(0x2216243B)),
+            border: Border.all(color: BarrioColors.hairline),
           ),
           child: Icon(
             forward ? Icons.chevron_right_rounded : Icons.chevron_left_rounded,
@@ -2002,7 +2002,7 @@ class _SlidePositionStrip extends StatelessWidget {
                         ? accent.withValues(alpha: 0.9)
                         // Hairline navy on the white card, the same
                         // resting weight as the card's own border.
-                        : const Color(0x2216243B),
+                        : BarrioColors.hairline,
                   ),
                 ),
             ],

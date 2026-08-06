@@ -254,7 +254,7 @@ class _ChapterRailTile extends StatelessWidget {
       border: Border.all(
         color: isActive
             ? activeAccent.withValues(alpha: 0.50)
-            : const Color(0x2216243B),
+            : BarrioColors.hairline,
       ),
       boxShadow: isActive
           ? [

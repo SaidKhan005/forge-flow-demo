@@ -348,7 +348,7 @@ class _QuizOptionRow extends StatelessWidget {
       borderColor = _kWrongRed.withValues(alpha: 0.40);
       bgColor = _kWrongRed.withValues(alpha: 0.07);
     } else {
-      borderColor = const Color(0x2216243B);
+      borderColor = BarrioColors.hairline;
       bgColor = const Color(0x0A16243B);
     }
     final labelColor = revealed && !isCorrect && !isPicked

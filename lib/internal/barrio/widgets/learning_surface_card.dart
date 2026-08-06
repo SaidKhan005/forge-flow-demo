@@ -294,7 +294,7 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
                     border = BarrioColors.error.withValues(alpha: 0.55);
                     bg = BarrioColors.error.withValues(alpha: 0.10);
                   } else {
-                    border = const Color(0x2216243B);
+                    border = BarrioColors.hairline;
                     bg = const Color(0x0A16243B);
                   }
 
@@ -564,7 +564,7 @@ class LearningSectionRail extends StatelessWidget {
                 border: Border.all(
                   color: isActive
                       ? activeAccent.withValues(alpha: 0.50)
-                      : const Color(0x2216243B),
+                      : BarrioColors.hairline,
                 ),
                 boxShadow: isActive
                     ? [

@@ -200,7 +200,7 @@ class _BarrioTrainingImageViewerState extends State<BarrioTrainingImageViewer> {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: BarrioColors.shellMid.withValues(alpha: 0.82),
-        border: Border.all(color: const Color(0x2216243B)),
+        border: Border.all(color: BarrioColors.hairline),
       ),
       child: IconButton(
         tooltip: 'Close',

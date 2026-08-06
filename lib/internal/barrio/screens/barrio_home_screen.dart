@@ -628,7 +628,7 @@ class _TextSizeButton extends StatelessWidget {
               decoration: BoxDecoration(
                 color: const Color(0x0D16243B),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0x2216243B)),
+                border: Border.all(color: BarrioColors.hairline),
               ),
               child: Text(
                 'Aa',
