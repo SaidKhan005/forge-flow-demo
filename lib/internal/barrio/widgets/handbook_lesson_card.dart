@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -703,26 +704,46 @@ class _UnitBody extends StatelessWidget {
   static const double _blockGap = 12;
   static const double _itemGap = 7;
 
-  TextStyle get _style => GoogleFonts.ibmPlexSans(
-        fontSize: 13.5,
-        height: 1.62,
-        color: BarrioColors.textSecondary,
+  /// The body font, resolved once per process (perf audit A4). This was a
+  /// getter, so every block and every list row allocated a fresh
+  /// [TextStyle] through a [GoogleFonts] map lookup on every rebuild.
+  static final TextStyle _kBodyStyle = GoogleFonts.ibmPlexSans(
+    fontSize: 13.5,
+    height: 1.62,
+    color: BarrioColors.textSecondary,
+  );
+
+  /// Everything that can change this card's composed spans (perf audit
+  /// A4). Every input the pipeline reads is here, so a cache hit can
+  /// never serve a stale span run.
+  _SpanCacheKey get _spanCacheKey => _SpanCacheKey(
+        unitId: unit.id,
+        body: unit.body,
+        accent: accent,
+        onTermTap: onTermTap,
+        highlightTerms: highlightTerms,
+        answerEvidence: answerEvidence,
+        keyTerms: keyTerms,
       );
 
   @override
   Widget build(BuildContext context) {
-    // First-occurrence-per-card term linking: one fresh set per build,
-    // threaded through every text chunk in reading order, so a term
-    // appearing many times on one card links only its first occurrence.
-    final linked = <String>{};
-    // First-occurrence-per-card + hard density cap for the key-term pilot:
-    // one fresh set per build threaded through every chunk in reading order,
-    // so a curated term emphasizes only its first occurrence on the card and
-    // the set size caps total emphasized spans at [kBarrioKeyTermCardCap].
-    final keyed = <String>{};
+    // Memoized span pass (perf audit A4). Composing this card's spans
+    // means a search fold, a registry sweep, two regex passes, an
+    // answer-evidence scan and a key-term scan PER CHUNK; it used to
+    // re-run in full on every rebuild. The pass records what it composes
+    // and an input-identical rebuild replays it instead.
+    final key = _spanCacheKey;
+    final pass = _SpanPass(_kBodySpanCache.get(key));
+    final body = _buildBody(pass);
+    if (pass.shouldStore) _kBodySpanCache.put(key, pass.recorded);
+    return body;
+  }
+
+  Widget _buildBody(_SpanPass pass) {
     final paragraphs = unit.body.split('\n\n');
     if (unit.images.isEmpty) {
-      return _renderRun(paragraphs, linked, keyed);
+      return _renderRun(paragraphs, pass);
     }
     // Picture-first for every imaged card (visual-first pass rec #1,
     // 2026-07-24; extended 2026-07-26 from TERM glossary cards to ALL
@@ -749,22 +770,22 @@ class _UnitBody extends StatelessWidget {
               cardTitle: unit.title,
               accent: accent,
             ),
-        _renderRun(paragraphs, linked, keyed),
+        _renderRun(paragraphs, pass),
       ],
     );
   }
 
   /// Renders a contiguous paragraph slice. A lone prose paragraph renders
   /// as a single Text; anything else stacks typed blocks with even gaps.
-  Widget _renderRun(List<String> paras, Set<String> linked, Set<String> keyed) {
+  Widget _renderRun(List<String> paras, _SpanPass pass) {
     final blocks = _parseBlocks(paras);
     if (blocks.length == 1 && blocks.first.kind == _BlockKind.prose) {
-      return _bodyText(blocks.first.items.first, _style, linked, keyed);
+      return _bodyText(blocks.first.items.first, _kBodyStyle, pass);
     }
     final children = <Widget>[];
     for (var b = 0; b < blocks.length; b++) {
       if (b > 0) children.add(const SizedBox(height: _blockGap));
-      children.add(_renderBlock(blocks[b], linked, keyed));
+      children.add(_renderBlock(blocks[b], pass));
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -772,22 +793,21 @@ class _UnitBody extends StatelessWidget {
     );
   }
 
-  Widget _renderBlock(_BodyBlock block, Set<String> linked, Set<String> keyed) {
+  Widget _renderBlock(_BodyBlock block, _SpanPass pass) {
     switch (block.kind) {
       case _BlockKind.prose:
-        return _bodyText(block.items.first, _style, linked, keyed);
+        return _bodyText(block.items.first, _kBodyStyle, pass);
       case _BlockKind.bullet:
         return _spacedColumn([
           for (final item in block.items)
-            _bulletRow(item.trimLeft().substring(2), linked, keyed),
+            _bulletRow(item.trimLeft().substring(2), pass),
         ]);
       case _BlockKind.numbered:
         return _spacedColumn([
-          for (final item in block.items)
-            _numberedRow(item.trimLeft(), linked, keyed),
+          for (final item in block.items) _numberedRow(item.trimLeft(), pass),
         ]);
       case _BlockKind.table:
-        return _table(block.items, linked, keyed);
+        return _table(block.items, pass);
     }
   }
 
@@ -804,7 +824,7 @@ class _UnitBody extends StatelessWidget {
     );
   }
 
-  Widget _bulletRow(String text, Set<String> linked, Set<String> keyed) {
+  Widget _bulletRow(String text, _SpanPass pass) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -817,12 +837,12 @@ class _UnitBody extends StatelessWidget {
             shape: BoxShape.circle,
           ),
         ),
-        Expanded(child: _bodyText(text, _style, linked, keyed)),
+        Expanded(child: _bodyText(text, _kBodyStyle, pass)),
       ],
     );
   }
 
-  Widget _numberedRow(String text, Set<String> linked, Set<String> keyed) {
+  Widget _numberedRow(String text, _SpanPass pass) {
     final match = _numberedItem.firstMatch(text);
     final marker = match != null ? '${match.group(1)}.' : '•';
     final body = match != null ? match.group(2)! : text;
@@ -841,15 +861,15 @@ class _UnitBody extends StatelessWidget {
             ),
           ),
         ),
-        Expanded(child: _bodyText(body, _style, linked, keyed)),
+        Expanded(child: _bodyText(body, _kBodyStyle, pass)),
       ],
     );
   }
 
-  Widget _table(List<String> rows, Set<String> linked, Set<String> keyed) {
+  Widget _table(List<String> rows, _SpanPass pass) {
     final children = <Widget>[];
     for (var r = 0; r < rows.length; r++) {
-      children.add(_tableRow(rows[r].split(' | '), r == 0, linked, keyed));
+      children.add(_tableRow(rows[r].split(' | '), r == 0, pass));
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -857,9 +877,8 @@ class _UnitBody extends StatelessWidget {
     );
   }
 
-  Widget _tableRow(
-      List<String> cells, bool header, Set<String> linked, Set<String> keyed) {
-    final cellStyle = _style.copyWith(
+  Widget _tableRow(List<String> cells, bool header, _SpanPass pass) {
+    final cellStyle = _kBodyStyle.copyWith(
       fontSize: 12.5,
       fontWeight: header ? FontWeight.w700 : FontWeight.w400,
       color: header ? BarrioColors.textPrimary : BarrioColors.textSecondary,
@@ -876,7 +895,7 @@ class _UnitBody extends StatelessWidget {
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.only(right: 8),
-                child: _bodyText(cell.trim(), cellStyle, linked, keyed),
+                child: _bodyText(cell.trim(), cellStyle, pass),
               ),
             ),
         ],
@@ -884,7 +903,17 @@ class _UnitBody extends StatelessWidget {
     );
   }
 
-  /// One text chunk: plain, search-highlighted, term-linked,
+  /// One rendered text chunk, styled through [pass] so an
+  /// input-identical rebuild reuses the spans instead of recomposing
+  /// them (perf audit A4). A null span run means the chunk carries no
+  /// styling at all and renders as a plain [Text], exactly as before.
+  Widget _bodyText(String text, TextStyle style, _SpanPass pass) {
+    final spans = pass.spansFor(text, () => _composeChunk(text, style, pass));
+    if (spans == null) return Text(text, style: style);
+    return Text.rich(TextSpan(style: style, children: spans));
+  }
+
+  /// Composes one text chunk: plain, search-highlighted, term-linked,
   /// number-popped, answer-evidence, and/or key-term-emphasized. The
   /// search fold is length-preserving per code unit, so fold-space match
   /// offsets index the original string directly. Precedence (highest
@@ -892,9 +921,10 @@ class _UnitBody extends StatelessWidget {
   /// then curated key terms. Each lower tier passes the higher tiers'
   /// ranges as [blockedRanges] and drops any overlap whole, so no span
   /// fights another. The text itself is NEVER altered: styling only
-  /// (verbatim law).
-  Widget _bodyText(
-      String text, TextStyle style, Set<String> linked, Set<String> keyed) {
+  /// (verbatim law). Returns null when nothing needs styling.
+  List<InlineSpan>? _composeChunk(String text, TextStyle style, _SpanPass pass) {
+    final linked = pass.linked;
+    final keyed = pass.keyed;
     final highlightRanges = highlightTerms.isEmpty
         ? const <List<int>>[]
         : _mergeRanges(_rawMatchRanges(BarrioTrainingSearch.fold(text)));
@@ -949,15 +979,10 @@ class _UnitBody extends StatelessWidget {
         numericMatches.isEmpty &&
         answerRanges.isEmpty &&
         keyTermMatches.isEmpty) {
-      return Text(text, style: style);
+      return null;
     }
-    return Text.rich(
-      TextSpan(
-        style: style,
-        children: _composeSpans(text, highlightRanges, termMatches,
-            numericMatches, answerRanges, keyTermMatches, style),
-      ),
-    );
+    return _composeSpans(text, highlightRanges, termMatches, numericMatches,
+        answerRanges, keyTermMatches, style);
   }
 
   /// Exact [start, end) ranges of every answer-evidence phrase in [text],
@@ -1127,6 +1152,165 @@ class _UnitBody extends StatelessWidget {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Body-span memoization (premium performance audit A4)
+// ---------------------------------------------------------------------------
+//
+// Composing a reading card's body spans is the single most expensive thing
+// the reader does per frame: per text chunk it runs a search fold, a
+// registry sweep for tap-to-define links, two regex passes for numeric fact
+// pops, an answer-evidence scan and a curated key-term scan. None of it was
+// memoized, so every rebuild of every live carousel page redid all of it.
+//
+// The output is a pure function of the inputs in [_SpanCacheKey], with one
+// wrinkle: the tiers thread two mutable sets (first-occurrence-per-card term
+// links and the capped key-term set) through the card's chunks in reading
+// order, so a chunk's spans depend on where it sits in the card, not just on
+// its own text. Caching a chunk in isolation would therefore be unsound.
+// Instead the WHOLE card's pass is recorded in traversal order and replayed
+// as a unit, which keeps that ordering exactly.
+
+/// One recorded chunk of a card's span pass. A null [spans] means the chunk
+/// needed no styling and renders as a plain [Text].
+class _ChunkSpans {
+  final String text;
+  final List<InlineSpan>? spans;
+  const _ChunkSpans(this.text, this.spans);
+}
+
+/// One card's body-span pass: record on a miss, replay on a hit.
+class _SpanPass {
+  _SpanPass(this._replay);
+
+  final List<_ChunkSpans>? _replay;
+
+  /// What this pass composed, in traversal order. Only meaningful (and
+  /// only stored) when the pass ran in record mode.
+  final List<_ChunkSpans> recorded = <_ChunkSpans>[];
+
+  /// First-occurrence-per-card term linking: threaded through every text
+  /// chunk in reading order, so a term appearing many times on one card
+  /// links only its first occurrence.
+  final Set<String> linked = <String>{};
+
+  /// First-occurrence-per-card + hard density cap for curated key terms:
+  /// the set size caps total emphasized spans at [kBarrioKeyTermCardCap].
+  final Set<String> keyed = <String>{};
+
+  int _cursor = 0;
+  bool _replaying = true;
+
+  /// True when nothing was replayed, so [recorded] is a complete pass.
+  bool get shouldStore => _replay == null;
+
+  /// The spans for the next chunk in traversal order: the recorded run
+  /// when replaying, otherwise whatever [compose] produces.
+  List<InlineSpan>? spansFor(
+    String text,
+    List<InlineSpan>? Function() compose,
+  ) {
+    final replay = _replay;
+    if (replay != null && _replaying) {
+      if (_cursor < replay.length && replay[_cursor].text == text) {
+        return replay[_cursor++].spans;
+      }
+      // Unreachable: the cache key pins the body, and the body alone
+      // decides the chunk sequence. Fail safe rather than serve a span
+      // run that belongs to a different chunk.
+      assert(false, 'body span replay drifted from the card traversal');
+      _replaying = false;
+    }
+    final spans = compose();
+    recorded.add(_ChunkSpans(text, spans));
+    return spans;
+  }
+}
+
+/// Everything that can change a card's composed spans. A cache hit means
+/// every one of these matched, so the spans cannot be stale.
+@immutable
+class _SpanCacheKey {
+  final String unitId;
+  final String body;
+  final Color accent;
+
+  /// The tap-to-define callback ITSELF, not just whether one exists: a
+  /// term-link span closes over it, so a second screen showing the same
+  /// card must compose its own spans rather than call the first screen's
+  /// handler.
+  final Object? onTermTap;
+
+  final List<String> highlightTerms;
+  final List<String> answerEvidence;
+  final List<String> keyTerms;
+
+  const _SpanCacheKey({
+    required this.unitId,
+    required this.body,
+    required this.accent,
+    required this.onTermTap,
+    required this.highlightTerms,
+    required this.answerEvidence,
+    required this.keyTerms,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is _SpanCacheKey &&
+        other.unitId == unitId &&
+        other.body == body &&
+        other.accent == accent &&
+        other.onTermTap == onTermTap &&
+        listEquals(other.highlightTerms, highlightTerms) &&
+        listEquals(other.answerEvidence, answerEvidence) &&
+        listEquals(other.keyTerms, keyTerms);
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        unitId,
+        body.length,
+        accent,
+        onTermTap,
+        Object.hashAll(highlightTerms),
+        Object.hashAll(answerEvidence),
+        Object.hashAll(keyTerms),
+      );
+}
+
+/// Bounded most-recently-used cache of composed card bodies.
+///
+/// Small on purpose: the reader keeps about three carousel pages live, and
+/// the entries hold widget spans. [_kBodySpanCacheSize] leaves room for a
+/// couple of page turns in each direction without pinning a whole manual.
+class _BodySpanCache {
+  _BodySpanCache(this._capacity);
+
+  final int _capacity;
+  final Map<_SpanCacheKey, List<_ChunkSpans>> _entries =
+      <_SpanCacheKey, List<_ChunkSpans>>{};
+
+  List<_ChunkSpans>? get(_SpanCacheKey key) {
+    final hit = _entries.remove(key);
+    if (hit == null) return null;
+    _entries[key] = hit; // re-insert: most recently used goes last
+    return hit;
+  }
+
+  void put(_SpanCacheKey key, List<_ChunkSpans> value) {
+    _entries
+      ..remove(key)
+      ..[key] = value;
+    while (_entries.length > _capacity) {
+      _entries.remove(_entries.keys.first);
+    }
+  }
+}
+
+const int _kBodySpanCacheSize = 12;
+final _BodySpanCache _kBodySpanCache = _BodySpanCache(_kBodySpanCacheSize);
+
 /// One styled segment inside a text chunk. [term] non-null renders a
 /// tappable term-link widget span; otherwise the segment renders as a
 /// styled TextSpan using [mark] (a search highlight, numeric fact pop,
@@ -1244,18 +1428,28 @@ class _UnitImage extends StatelessWidget {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.asset(
-                image.assetPath,
-                width: double.infinity,
-                fit: BoxFit.fitWidth,
-                errorBuilder: (context, error, stackTrace) => Container(
+              child: LayoutBuilder(
+                builder: (context, constraints) => Image.asset(
+                  image.assetPath,
                   width: double.infinity,
-                  height: 120,
-                  color: const Color(0x0F16243B),
-                  child: Icon(
-                    Icons.image_not_supported_outlined,
-                    size: 28,
-                    color: BarrioColors.textMuted.withValues(alpha: 0.6),
+                  fit: BoxFit.fitWidth,
+                  // Perf (premium audit A1): decode at the on-screen pixel
+                  // width, not the 1400px source. This is the reader's
+                  // main picture, so a full-size decode on every card
+                  // filled the image cache after ~20 cards and thrashed it
+                  // for the rest of a long deck.
+                  cacheWidth: constraints.hasBoundedWidth
+                      ? barrioCacheWidth(context, constraints.maxWidth)
+                      : null,
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    width: double.infinity,
+                    height: 120,
+                    color: const Color(0x0F16243B),
+                    child: Icon(
+                      Icons.image_not_supported_outlined,
+                      size: 28,
+                      color: BarrioColors.textMuted.withValues(alpha: 0.6),
+                    ),
                   ),
                 ),
               ),
@@ -1456,9 +1650,7 @@ class _UnitPhotoSlidesState extends State<_UnitPhotoSlides> {
         // a 1400px webp costs megabytes, and a slide group multiplies
         // that by the number of slides.
         final cacheWidth = constraints.hasBoundedWidth
-            ? (constraints.maxWidth * MediaQuery.devicePixelRatioOf(context))
-                .round()
-                .clamp(1, 4096)
+            ? barrioCacheWidth(context, constraints.maxWidth)
             : null;
         return Image.asset(
           _slide.assetPath,

@@ -67,7 +67,15 @@ class LearningCarouselState extends State<LearningCarousel>
   static const double _edgeTapZoneFraction = 0.22;
 
   late final PageController _pageController;
-  int _currentPage = 0;
+
+  /// The settled page.
+  ///
+  /// A [ValueNotifier], not plain state (perf audit A8): a page settle
+  /// used to `setState` the whole carousel, which re-invoked
+  /// [LearningCarousel.cardBuilder] for every live page (and with it the
+  /// reader's entire text-styling pipeline) purely to toggle two
+  /// chevrons. Only the chevrons and the position label listen.
+  final ValueNotifier<int> _currentPage = ValueNotifier<int>(0);
   Timer? _autoAdvanceTimer;
   Drag? _pagerDrag;
 
@@ -81,7 +89,7 @@ class LearningCarouselState extends State<LearningCarousel>
   @override
   void initState() {
     super.initState();
-    _currentPage = widget.initialPage;
+    _currentPage.value = widget.initialPage;
     _pageController = PageController(
       viewportFraction: _viewportFraction,
       initialPage: widget.initialPage,
@@ -120,6 +128,7 @@ class LearningCarouselState extends State<LearningCarousel>
     _autoAdvanceTimer?.cancel();
     _pageController.dispose();
     _entranceCtrl.dispose();
+    _currentPage.dispose();
     super.dispose();
   }
 
@@ -128,7 +137,7 @@ class LearningCarouselState extends State<LearningCarousel>
     _cancelAutoAdvance();
     _autoAdvanceTimer = Timer(const Duration(milliseconds: 1500), () {
       if (!mounted) return;
-      if (_currentPage < widget.cardCount - 1) {
+      if (_currentPage.value < widget.cardCount - 1) {
         _pageController.nextPage(
           duration: const Duration(milliseconds: 500),
           curve: Curves.easeInOutCubic,
@@ -147,7 +156,7 @@ class LearningCarouselState extends State<LearningCarousel>
     _cancelAutoAdvance();
     if (widget.cardCount == 0 || !_pageController.hasClients) return;
     final target = page.clamp(0, widget.cardCount - 1);
-    if ((target - _currentPage).abs() <= 3) {
+    if ((target - _currentPage.value).abs() <= 3) {
       _pageController.animateToPage(
         target,
         duration: const Duration(milliseconds: 350),
@@ -166,7 +175,7 @@ class LearningCarouselState extends State<LearningCarousel>
   /// Animated single-page turn from the tap zones and chevrons.
   void _turnPage(int delta) {
     _cancelAutoAdvance();
-    final target = _currentPage + delta;
+    final target = _currentPage.value + delta;
     if (target < 0 || target >= widget.cardCount) return;
     _pageController.animateToPage(
       target,
@@ -222,11 +231,16 @@ class LearningCarouselState extends State<LearningCarousel>
           children: [
             Expanded(child: _buildPager(context)),
             const SizedBox(height: 6),
-            _CarouselPositionIndicator(
-              count: widget.cardCount,
-              accent: widget.accent,
-              pageController: _pageController,
-              fallbackPage: _currentPage,
+            // Scoped rebuild (perf audit A8): the label follows the
+            // settled page without dragging the deck along with it.
+            ValueListenableBuilder<int>(
+              valueListenable: _currentPage,
+              builder: (context, currentPage, _) => _CarouselPositionIndicator(
+                count: widget.cardCount,
+                accent: widget.accent,
+                pageController: _pageController,
+                fallbackPage: currentPage,
+              ),
             ),
             const SizedBox(height: 8),
           ],
@@ -257,7 +271,7 @@ class LearningCarouselState extends State<LearningCarousel>
             itemCount: widget.cardCount,
             onPageChanged: (page) {
               _cancelAutoAdvance();
-              setState(() => _currentPage = page);
+              _currentPage.value = page;
               widget.onPageChanged?.call(page);
             },
             itemBuilder: _buildPageItem,
@@ -265,10 +279,24 @@ class LearningCarouselState extends State<LearningCarousel>
         ),
         // Small visible page-turn chevrons in the side gutters (over
         // the card's padding strip, never over content or image taps).
-        if (_currentPage > 0)
-          _EdgeChevron(alignLeft: true, onTap: () => _turnPage(-1)),
-        if (_currentPage < widget.cardCount - 1)
-          _EdgeChevron(alignLeft: false, onTap: () => _turnPage(1)),
+        // Scoped rebuild (perf audit A8): only this pair reacts to a
+        // page settle, so the deck underneath is left alone. The inner
+        // stack fills the pager area, so each chevron keeps the exact
+        // gutter geometry (and the untouched middle still falls through
+        // to the pager's own tap zones).
+        Positioned.fill(
+          child: ValueListenableBuilder<int>(
+            valueListenable: _currentPage,
+            builder: (context, currentPage, _) => Stack(
+              children: [
+                if (currentPage > 0)
+                  _EdgeChevron(alignLeft: true, onTap: () => _turnPage(-1)),
+                if (currentPage < widget.cardCount - 1)
+                  _EdgeChevron(alignLeft: false, onTap: () => _turnPage(1)),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -487,8 +515,22 @@ class _CarouselPositionIndicator extends StatelessWidget {
     this.fallbackPage = 0,
   });
 
+  /// The label's font, resolved once per process (perf audit A8).
+  ///
+  /// This builder runs on every [PageController] tick, so the
+  /// [GoogleFonts] map lookup and the [TextStyle] it allocates used to
+  /// run at 60 to 120 Hz for the whole length of a drag. Only the accent
+  /// color varies, and that is folded in once per build below, outside
+  /// the animated builder.
+  static final TextStyle _kLabelFont = GoogleFonts.ibmPlexMono(
+    fontSize: 11,
+    fontWeight: FontWeight.w500,
+    letterSpacing: 0.5,
+  );
+
   @override
   Widget build(BuildContext context) {
+    final style = _kLabelFont.copyWith(color: accent.withValues(alpha: 0.6));
     return AnimatedBuilder(
       animation: pageController,
       builder: (context, _) {
@@ -498,15 +540,7 @@ class _CarouselPositionIndicator extends StatelessWidget {
             : fallbackPage.toDouble();
         final currentPage = page.round();
 
-        return Text(
-          '${currentPage + 1} of $count',
-          style: GoogleFonts.ibmPlexMono(
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            letterSpacing: 0.5,
-            color: accent.withValues(alpha: 0.6),
-          ),
-        );
+        return Text('${currentPage + 1} of $count', style: style);
       },
     );
   }

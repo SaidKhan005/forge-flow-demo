@@ -69,12 +69,54 @@ class TrainingDocScreen extends StatefulWidget {
 
 class _TrainingDocScreenState extends State<TrainingDocScreen>
     with TickerProviderStateMixin {
-  int _activeChapter = 0;
+  /// The section the visible card belongs to.
+  ///
+  /// Held in a [ValueNotifier], not plain state (perf audit A2): a card
+  /// settling used to `setState` the whole screen, which re-ran
+  /// [LearningCarousel]'s `cardBuilder` for every live page and with it
+  /// the entire text-styling pipeline. Only the hero and the chapter
+  /// rail depend on this value, so only they listen.
+  final ValueNotifier<int> _activeChapter = ValueNotifier<int>(0);
 
   /// Cards read on THIS device, persisted across sessions ("the app
   /// remembers you", 2026-07-22). A card counts as read when it settles
   /// on screen: a fact, not a mastery claim (Metric Honesty).
-  final Set<String> _readUnitIds = {};
+  ///
+  /// Same [ValueNotifier] reason as [_activeChapter]: only the rail's
+  /// check marks depend on it. Each write publishes a NEW set, so
+  /// listeners see a real value change; never mutate the current value
+  /// in place. Writes go through [_markUnitsRead].
+  final ValueNotifier<Set<String>> _readUnitIds =
+      ValueNotifier<Set<String>>(const <String>{});
+
+  /// Every content unit id of this manual, mapped to the chapters that
+  /// contain it. Built once so read marks can be counted instead of
+  /// re-walked. A list, not a single index, because two chapters sharing
+  /// a unit id must both complete when that id is read: exactly what the
+  /// old per-chapter `units.every(read)` walk did.
+  late final Map<String, List<int>> _chaptersOfUnitId;
+
+  /// Content cards of each chapter still unread, and of the whole doc.
+  /// Counting down as marks land replaces the two full-document walks
+  /// the old code ran on every card settle and every build (perf audit
+  /// A2): finish tracking and the rail's check marks.
+  late final List<int> _chapterUnread;
+  late int _docUnread;
+
+  /// Chapters whose EVERY card has been read: only these show the rail
+  /// check mark (persisted, honest; replaces the session-only "viewed"
+  /// check that died with the screen). Derived when [_readUnitIds]
+  /// changes, never in `build`. A chapter with no units is never
+  /// complete, so it never enters this set.
+  Set<String> _fullyReadChapterIds = const <String>{};
+
+  /// Write-once guard for finish tracking: the service write is already
+  /// write-once, and this keeps the screen from asking again.
+  bool _finishedRecorded = false;
+
+  /// Per-chapter reading-time estimates for the rail. Fixed for the life
+  /// of the screen, so it is built once instead of on every build.
+  late final List<int> _chapterMinutes;
 
   /// Saved cards of THIS doc as 'chapter:unit' content-coordinate keys
   /// (rec #8, 2026-07-23). Loaded with the persisted state; toggles
@@ -156,6 +198,11 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     final chapters = widget.doc.chapters;
     _deck = buildTrainingDeck(widget.doc);
     _chapterStarts = _deck.chapterStarts;
+    _indexUnits(chapters);
+    _chapterMinutes = <int>[
+      for (var i = 0; i < chapters.length; i++)
+        BarrioReadingTime.chapterMinutes(widget.doc, i),
+    ];
     if (chapters.isNotEmpty && _hasDeepLink) {
       _applyPosition(
         widget.initialChapterIndex ?? 0,
@@ -167,6 +214,25 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     // Honest streak (rec #10): opening a manual is the activity fact
     // the streak counts. Idempotent per day; fire and forget.
     BarrioStreakService.recordActivity();
+  }
+
+  /// Builds the unit-id index and the unread counters the rail check
+  /// marks and finish tracking read (perf audit A2). One pass at open,
+  /// instead of a full-document walk on every settle and every build.
+  void _indexUnits(List<HandbookChapter> chapters) {
+    _chaptersOfUnitId = <String, List<int>>{};
+    _chapterUnread = List<int>.filled(chapters.length, 0);
+    for (var c = 0; c < chapters.length; c++) {
+      final seen = <String>{};
+      for (final unit in chapters[c].units) {
+        // A repeated id inside one chapter is one card's worth of
+        // coverage, matching the old `units.every(read)` test.
+        if (!seen.add(unit.id)) continue;
+        (_chaptersOfUnitId[unit.id] ??= <int>[]).add(c);
+        _chapterUnread[c]++;
+      }
+    }
+    _docUnread = _chaptersOfUnitId.length;
   }
 
   /// Folds a raw query into the per-word highlight terms the lesson
@@ -185,10 +251,11 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   void _applyPosition(int chapterIndex, int unitInChapter) {
     final chapters = widget.doc.chapters;
     if (chapters.isEmpty) return;
-    _activeChapter = chapterIndex.clamp(0, chapters.length - 1);
-    final unitCount = chapters[_activeChapter].units.length;
+    final active = chapterIndex.clamp(0, chapters.length - 1);
+    _activeChapter.value = active;
+    final unitCount = chapters[active].units.length;
     final unit = unitCount == 0 ? 0 : unitInChapter.clamp(0, unitCount - 1);
-    _initialPage = _chapterStarts[_activeChapter] + unit;
+    _initialPage = _chapterStarts[active] + unit;
   }
 
   /// Loads the saved read marks (always) and, when the caller supplied
@@ -208,8 +275,8 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     final savedKeys = await BarrioBookmarksService.localKeysFor(docId);
     if (!mounted) return;
     final restore = position != null && !_pageTouched;
+    _markUnitsRead(readIds);
     setState(() {
-      _readUnitIds.addAll(readIds);
       _bookmarkKeys.addAll(savedKeys);
       if (restore) {
         _applyPosition(position.chapterIndex, position.unitInChapter);
@@ -243,8 +310,8 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     final unit = _deck.entries[page].unit;
     if (unit == null) return; // Quick-check quiz card: never recorded.
     final chapter = _chapterOf(page);
-    if (!_readUnitIds.contains(unit.id)) {
-      setState(() => _readUnitIds.add(unit.id));
+    if (!_readUnitIds.value.contains(unit.id)) {
+      _markUnitsRead(<String>[unit.id]);
       BarrioReadingProgressService.markCardRead(widget.doc.id, unit.id);
     }
     BarrioReadingProgressService.savePosition(
@@ -255,33 +322,45 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     _maybeRecordFinished();
   }
 
-  /// Finish tracking (spaced refresher, rec #11): once the read-mark
-  /// set covers EVERY content card of this manual, record finishedAt.
-  /// The service write is write-once, so calling this on every settle
-  /// is safe: re-reading never resets the recorded fact. Quiz cards
-  /// are not content cards and play no part in coverage.
-  void _maybeRecordFinished() {
-    var hasUnits = false;
-    for (final chapter in widget.doc.chapters) {
-      for (final unit in chapter.units) {
-        hasUnits = true;
-        if (!_readUnitIds.contains(unit.id)) return;
+  /// Records [ids] as read and republishes [_readUnitIds].
+  ///
+  /// Ids that are not content cards of THIS manual are ignored: they can
+  /// only come from a persisted mark whose card no longer exists, and
+  /// they never counted toward completion before either. Everything the
+  /// rail and finish tracking need is updated here, BEFORE the notifier
+  /// publishes, so a listener always reads a consistent pair.
+  void _markUnitsRead(Iterable<String> ids) {
+    final current = _readUnitIds.value;
+    final completed = <String>{};
+    Set<String>? next;
+    for (final id in ids) {
+      final chapters = _chaptersOfUnitId[id];
+      if (chapters == null || current.contains(id)) continue;
+      next ??= <String>{...current};
+      if (!next.add(id)) continue;
+      _docUnread--;
+      for (final c in chapters) {
+        if (--_chapterUnread[c] == 0) completed.add(widget.doc.chapters[c].id);
       }
     }
-    if (!hasUnits) return;
-    BarrioReadingProgressService.recordFinished(widget.doc.id);
+    if (next == null) return;
+    if (completed.isNotEmpty) {
+      _fullyReadChapterIds = <String>{..._fullyReadChapterIds, ...completed};
+    }
+    _readUnitIds.value = next;
   }
 
-  /// Chapters whose EVERY card has been read: only these show the rail
-  /// check mark (persisted, honest; replaces the session-only "viewed"
-  /// check that died with the screen).
-  Set<String> _fullyReadChapterIds() {
-    return {
-      for (final chapter in widget.doc.chapters)
-        if (chapter.units.isNotEmpty &&
-            chapter.units.every((u) => _readUnitIds.contains(u.id)))
-          chapter.id,
-    };
+  /// Finish tracking (spaced refresher, rec #11): once the read-mark
+  /// set covers EVERY content card of this manual, record finishedAt.
+  /// The service write is write-once; this guard keeps the screen from
+  /// asking again, and the unread counter replaces the old
+  /// whole-document walk that ran on every card settle (perf audit A2).
+  /// Quiz cards are not content cards and play no part in coverage.
+  void _maybeRecordFinished() {
+    if (_finishedRecorded) return;
+    if (_chaptersOfUnitId.isEmpty || _docUnread > 0) return;
+    _finishedRecorded = true;
+    BarrioReadingProgressService.recordFinished(widget.doc.id);
   }
 
   /// Section that owns the card at flat-deck [page]. A chapter's quiz
@@ -292,9 +371,7 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   void _onCardPageChanged(int page) {
     _pageTouched = true;
     _recordCardOnScreen(page);
-    final chapter = _chapterOf(page);
-    if (chapter == _activeChapter) return;
-    setState(() => _activeChapter = chapter);
+    _activeChapter.value = _chapterOf(page);
   }
 
   /// Jumps the deck IN PLACE to flat-deck [page] (no remount: same
@@ -306,7 +383,7 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     final target = page.clamp(0, _deck.length - 1);
     HapticFeedback.lightImpact();
     _pageTouched = true;
-    setState(() => _activeChapter = _chapterOf(target));
+    _activeChapter.value = _chapterOf(target);
     _carouselKey.currentState?.moveToPage(target);
   }
 
@@ -544,6 +621,8 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   @override
   void dispose() {
     _heroController.dispose();
+    _activeChapter.dispose();
+    _readUnitIds.dispose();
     super.dispose();
   }
 
@@ -635,10 +714,65 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     );
   }
 
+  /// The hero, rebuilt only when the active section changes (perf audit
+  /// A2): it listens to [_activeChapter] instead of riding the screen's
+  /// own build, so a card settling never touches the carousel subtree.
+  Widget _buildHero(List<HandbookChapter> chapters, Color accent) {
+    return ValueListenableBuilder<int>(
+      valueListenable: _activeChapter,
+      builder: (context, activeChapter, _) => _TrainingHero(
+        chapter: chapters[activeChapter],
+        accent: accent,
+        sectionIndex: activeChapter,
+        sectionCount: chapters.length,
+        // Structure pass: the doc-level depth-framing badge word
+        // (e.g. 'DEEPER DIVE') rides the hero eyebrow so the reader
+        // sees the manual's framing in its header. Null for every
+        // manual without one.
+        depthBadge: widget.doc.depthBadge,
+        // Glossary manuals only: the flashcard chip rides the hero's
+        // eyebrow row (no new persistent chrome).
+        onFlashcardsTap: kBarrioFlashcardManualIds.contains(widget.doc.id)
+            ? _openFlashcards
+            : null,
+      ),
+    );
+  }
+
+  /// The chapter rail, rebuilt only when the active section or the read
+  /// marks change (perf audit A2). Both are notifiers, so neither a
+  /// swipe nor a new read mark rebuilds the deck below.
+  Widget _buildChapterRail(List<HandbookChapter> chapters, Color accent) {
+    return ValueListenableBuilder<int>(
+      valueListenable: _activeChapter,
+      builder: (context, activeChapter, _) =>
+          ValueListenableBuilder<Set<String>>(
+        valueListenable: _readUnitIds,
+        builder: (context, _, __) => HandbookChapterRail(
+          chapters: chapters,
+          activeIndex: activeChapter,
+          completedChapterIds: _fullyReadChapterIds,
+          activeAccent: accent,
+          chapterMinutes: _chapterMinutes,
+          onChapterTap: _onChapterTap,
+        ),
+      ),
+    );
+  }
+
+  void _onChapterTap(int index) {
+    HapticFeedback.lightImpact();
+    _pageTouched = true;
+    _activeChapter.value = index;
+    // Move the deck in place to the section's first card (no remount:
+    // scroll offsets and the entrance animation survive). onPageChanged
+    // records the settled card exactly as it does for swipes.
+    _carouselKey.currentState?.moveToPage(_chapterStarts[index]);
+  }
+
   @override
   Widget build(BuildContext context) {
     final chapters = widget.doc.chapters;
-    final chapter = chapters[_activeChapter];
     final accent = widget.accent;
 
     return Scaffold(
@@ -667,45 +801,10 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
             children: [
               FadeTransition(
                 opacity: _heroFade,
-                child: _TrainingHero(
-                  chapter: chapter,
-                  accent: accent,
-                  sectionIndex: _activeChapter,
-                  sectionCount: chapters.length,
-                  // Structure pass: the doc-level depth-framing badge word
-                  // (e.g. 'DEEPER DIVE') rides the hero eyebrow so the
-                  // reader sees the manual's framing in its header. Null
-                  // for every manual without one.
-                  depthBadge: widget.doc.depthBadge,
-                  // Glossary manuals only: the flashcard chip rides the
-                  // hero's eyebrow row (no new persistent chrome).
-                  onFlashcardsTap:
-                      kBarrioFlashcardManualIds.contains(widget.doc.id)
-                          ? _openFlashcards
-                          : null,
-                ),
+                child: _buildHero(chapters, accent),
               ),
               const SizedBox(height: 8),
-              HandbookChapterRail(
-                chapters: chapters,
-                activeIndex: _activeChapter,
-                completedChapterIds: _fullyReadChapterIds(),
-                activeAccent: accent,
-                chapterMinutes: [
-                  for (var i = 0; i < chapters.length; i++)
-                    BarrioReadingTime.chapterMinutes(widget.doc, i),
-                ],
-                onChapterTap: (i) {
-                  HapticFeedback.lightImpact();
-                  _pageTouched = true;
-                  setState(() => _activeChapter = i);
-                  // Move the deck in place to the section's first card
-                  // (no remount: scroll offsets and the entrance
-                  // animation survive). onPageChanged records the
-                  // settled card exactly as it does for swipes.
-                  _carouselKey.currentState?.moveToPage(_chapterStarts[i]);
-                },
-              ),
+              _buildChapterRail(chapters, accent),
               const SizedBox(height: 8),
               Expanded(child: _buildSelectableDeck(accent)),
             ],
@@ -1025,9 +1124,6 @@ class _TrainingDocBackground extends StatelessWidget {
     if (photo == null) {
       return BarrioPremiumBackground(accentColor: accent, child: child);
     }
-    final dpr = MediaQuery.devicePixelRatioOf(context);
-    final width = MediaQuery.sizeOf(context).width;
-    final cacheWidth = (width * dpr).round();
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -1035,7 +1131,8 @@ class _TrainingDocBackground extends StatelessWidget {
           child: Image.asset(
             photo,
             fit: BoxFit.cover,
-            cacheWidth: cacheWidth > 0 ? cacheWidth : null,
+            cacheWidth:
+                barrioCacheWidth(context, MediaQuery.sizeOf(context).width),
             errorBuilder: (_, __, ___) => const ColoredBox(
               color: BarrioColors.shellDeep,
             ),

@@ -107,6 +107,23 @@ List<BoxShadow> barrioSoftShadow({
   ];
 }
 
+/// Decode width, in device pixels, for an [Image.asset] that renders at
+/// [logicalWidth] logical pixels wide (premium performance audit A1).
+///
+/// The training corpus is authored at 1400x900, so a full-resolution decode
+/// costs about 5 MB of raster cache per picture and a long deck thrashes
+/// Flutter's 100 MB image cache. Passing this as `cacheWidth` decodes at the
+/// size actually painted instead. Returns null when the width is not usable
+/// yet (zero or unbounded), which leaves the decode at source resolution
+/// exactly as before, and clamps to 4096 so a freak constraint can never ask
+/// for an absurd bitmap.
+int? barrioCacheWidth(BuildContext context, double logicalWidth) {
+  if (!logicalWidth.isFinite || logicalWidth <= 0) return null;
+  final pixels = logicalWidth * MediaQuery.devicePixelRatioOf(context);
+  if (!pixels.isFinite || pixels < 1) return null;
+  return pixels.round().clamp(1, 4096);
+}
+
 // ---------------------------------------------------------------------------
 // Premium ambient background — used by all Barrio destination screens
 // ---------------------------------------------------------------------------
