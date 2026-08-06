@@ -62,13 +62,13 @@ class BarrioHomeTopicCard extends StatelessWidget {
     final accent = barrioHomeAccentFor(destination.id);
     final comingSoon = destination.comingSoon;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(BarrioRadii.card),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
           decoration: BoxDecoration(
             color: const Color(0x30000000),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(BarrioRadii.card),
             border: Border.all(color: const Color(0x22FFFFFF), width: 1.0),
           ),
           child: Column(

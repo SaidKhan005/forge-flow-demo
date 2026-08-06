@@ -521,7 +521,7 @@ class _TogglePill extends StatelessWidget {
             color: selected
                 ? accent.withValues(alpha: 0.14)
                 : Colors.transparent,
-            borderRadius: BorderRadius.circular(13),
+            borderRadius: BorderRadius.circular(BarrioRadii.chip),
             border: Border.all(
               color: selected
                   ? accent.withValues(alpha: 0.55)
@@ -571,7 +571,7 @@ class _PhotoTile extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: ExcludeSemantics(
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(BarrioRadii.card),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

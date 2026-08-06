@@ -98,7 +98,7 @@ class BarrioTermDefinitionSheet extends StatelessWidget {
   /// (no bundled assets) from throwing, same as the lesson cards.
   Widget _termImage(String assetPath) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(BarrioRadii.chip),
       child: LayoutBuilder(
         builder: (context, constraints) => Image.asset(
           assetPath,
@@ -147,7 +147,7 @@ class _OpenInManualLink extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 11),
         decoration: BoxDecoration(
           color: accent.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(BarrioRadii.card),
           border: Border.all(color: accent.withValues(alpha: 0.45)),
         ),
         child: Row(

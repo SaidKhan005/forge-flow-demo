@@ -109,7 +109,7 @@ class _ModuleCompleteBannerState extends State<_ModuleCompleteBanner>
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
         decoration: BoxDecoration(
           color: BarrioColors.shellMid,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(BarrioRadii.card),
           border: Border.all(
             color: widget.accentColor.withValues(alpha: 0.45),
           ),

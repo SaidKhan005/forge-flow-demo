@@ -275,7 +275,7 @@ class _QuickCheckBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: _kQuizAccent,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(BarrioRadii.chip),
         boxShadow: [
           BoxShadow(
             color: _kQuizAccent.withValues(alpha: 0.28),
@@ -373,7 +373,7 @@ class _QuizOptionRow extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: bgColor,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(BarrioRadii.chip),
               border: Border.all(color: borderColor),
             ),
             child: Row(
@@ -433,7 +433,7 @@ class _WhyLine extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: _kCorrectGreen.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(BarrioRadii.chip),
         border: Border.all(color: _kCorrectGreen.withValues(alpha: 0.22)),
       ),
       child: Text(

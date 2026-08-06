@@ -308,7 +308,7 @@ class _ReviewButton extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 14),
             decoration: BoxDecoration(
               color: filled ? accent : Colors.transparent,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(BarrioRadii.card),
               border: filled
                   ? null
                   : Border.all(color: accent.withValues(alpha: 0.40)),

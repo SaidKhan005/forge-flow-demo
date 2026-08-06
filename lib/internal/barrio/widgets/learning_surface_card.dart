@@ -310,7 +310,7 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
                               horizontal: 14, vertical: 12),
                           decoration: BoxDecoration(
                             color: bg,
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(BarrioRadii.chip),
                             border: Border.all(color: border),
                           ),
                           child: Column(
@@ -429,7 +429,7 @@ class _PremiumBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(BarrioRadii.chip),
         boxShadow: [
           BoxShadow(
             color: color.withValues(alpha: 0.28),
@@ -560,7 +560,7 @@ class LearningSectionRail extends StatelessWidget {
                 color: isActive
                     ? activeAccent.withValues(alpha: 0.15)
                     : const Color(0x0A16243B),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(BarrioRadii.chip),
                 border: Border.all(
                   color: isActive
                       ? activeAccent.withValues(alpha: 0.50)

@@ -250,7 +250,7 @@ class _ChapterRailTile extends StatelessWidget {
       color: isActive
           ? activeAccent.withValues(alpha: 0.15)
           : const Color(0x0A16243B),
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(BarrioRadii.chip),
       border: Border.all(
         color: isActive
             ? activeAccent.withValues(alpha: 0.50)

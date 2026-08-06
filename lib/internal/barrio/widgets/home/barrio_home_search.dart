@@ -338,7 +338,7 @@ class _EmptyState extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
         decoration: BoxDecoration(
           color: BarrioColors.glassFill,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(BarrioRadii.card),
           border: Border.all(color: const Color(0x1416243B)),
         ),
         child: Column(
@@ -395,7 +395,7 @@ class _SearchResultRow extends StatelessWidget {
                 // Near-opaque white card with a hairline navy edge so
                 // each result row reads cleanly on the cream backdrop.
                 color: BarrioColors.glassFill,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(BarrioRadii.card),
                 border: Border.all(color: const Color(0x1416243B)),
               ),
               child: Row(
@@ -419,7 +419,7 @@ class _SearchResultRow extends StatelessWidget {
       height: 44,
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.13),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(BarrioRadii.chip),
         border: Border.all(color: accent.withValues(alpha: 0.40)),
       ),
       child: Center(

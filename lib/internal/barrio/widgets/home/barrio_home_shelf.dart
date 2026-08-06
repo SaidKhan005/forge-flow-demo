@@ -795,7 +795,7 @@ class _ContinueReadingCard extends StatelessWidget {
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: BarrioColors.glassFill,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(BarrioRadii.card),
                 border: Border.all(color: accent.withValues(alpha: 0.40)),
               ),
               child: Row(
@@ -824,7 +824,7 @@ class _ContinueReadingCard extends StatelessWidget {
       height: 44,
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.13),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(BarrioRadii.chip),
         border: Border.all(color: accent.withValues(alpha: 0.40)),
       ),
       child: Center(
@@ -921,7 +921,7 @@ class _QuickRefresherCard extends StatelessWidget {
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: BarrioColors.glassFill,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(BarrioRadii.card),
                 border: Border.all(color: accent.withValues(alpha: 0.40)),
               ),
               child: Row(
@@ -954,7 +954,7 @@ class _QuickRefresherCard extends StatelessWidget {
       height: 44,
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.13),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(BarrioRadii.chip),
         border: Border.all(color: accent.withValues(alpha: 0.40)),
       ),
       child: Icon(
@@ -1095,7 +1095,7 @@ class _SavedRow extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
             decoration: BoxDecoration(
               color: BarrioColors.glassFill,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(BarrioRadii.card),
               border: Border.all(color: accent.withValues(alpha: 0.28)),
             ),
             child: Row(
@@ -1346,7 +1346,7 @@ class _FlashcardPill extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: accent,
-              borderRadius: BorderRadius.circular(13),
+              borderRadius: BorderRadius.circular(BarrioRadii.chip),
               boxShadow: [
                 BoxShadow(
                   color: accent.withValues(alpha: 0.42),

@@ -472,7 +472,7 @@ class _TypeBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(BarrioRadii.chip),
         boxShadow: [
           BoxShadow(
             color: color.withValues(alpha: 0.28),
@@ -570,7 +570,7 @@ class _OptionTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             color: bgColor,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(BarrioRadii.chip),
             border: Border.all(color: borderColor),
           ),
           child: Column(
@@ -1680,7 +1680,7 @@ class _UnitImage extends StatelessWidget {
               ],
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(BarrioRadii.chip),
               child: LayoutBuilder(
                 builder: (context, constraints) => Image.asset(
                   image.assetPath,
@@ -1865,7 +1865,7 @@ class _UnitPhotoSlidesState extends State<_UnitPhotoSlides> {
               initialIndex: _index,
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(BarrioRadii.chip),
               child: AnimatedSwitcher(
                 duration: swapDuration,
                 child: _buildSlideImage(context),

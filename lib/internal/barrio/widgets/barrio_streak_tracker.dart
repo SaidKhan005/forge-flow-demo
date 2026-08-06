@@ -255,7 +255,7 @@ class _BarrioStreakChipState extends State<BarrioStreakChip> {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
           color: chipColor.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(BarrioRadii.chip),
           border: Border.all(color: chipColor.withValues(alpha: 0.25)),
         ),
         child: Row(

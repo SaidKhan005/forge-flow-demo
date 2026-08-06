@@ -180,7 +180,7 @@ class _BarrioTrainingImageViewerState extends State<BarrioTrainingImageViewer> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: BarrioColors.shellMid.withValues(alpha: 0.85),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(BarrioRadii.chip),
             ),
             child: Text(
               caption,

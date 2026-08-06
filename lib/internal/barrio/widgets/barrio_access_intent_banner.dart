@@ -40,7 +40,7 @@ class BarrioAccessIntentBanner extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: const Color(0x0D16243B),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(BarrioRadii.card),
         border: Border.all(color: borderColor, width: 1),
         boxShadow: [
           BoxShadow(

@@ -123,7 +123,7 @@ class _SizeOptionRow extends StatelessWidget {
                 color: selected
                     ? accent.withValues(alpha: 0.10)
                     : const Color(0x0A16243B),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(BarrioRadii.card),
                 border: Border.all(
                   color: selected
                       ? accent.withValues(alpha: 0.55)
@@ -176,7 +176,7 @@ class _PreviewLine extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: const Color(0x0A16243B),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(BarrioRadii.card),
         border: Border.all(color: BarrioColors.hairline),
       ),
       child: Text(
