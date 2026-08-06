@@ -22,9 +22,16 @@
 //      bookkeeping.
 //   5. A1 (decode size): a reader picture decodes at its on-screen width,
 //      not at the 1400px source width.
+//   6. A4 (cache lifetime): a cached span run closes over the composing
+//      screen's onTermTap, and the cache is process-lifetime, so popping a
+//      reader must drop the entries keyed on that screen. Proved through a
+//      real route push/pop, plus a structural guard so a screen added later
+//      cannot wire onTermTap and forget to clear.
 //
 // All widget tests at a 390x844 phone viewport; takeException() asserted
 // null.
+
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -85,6 +92,32 @@ final _fixtureDoc = BarrioTrainingDoc(
           type: HandbookUnitType.explainer,
           title: 'Card Three',
           body: 'Fixture body three.',
+        ),
+      ],
+    ),
+  ],
+);
+
+/// A one-card manual under a CULINARY host id, so the reader wires
+/// `onTermTap` and the body composes a real tappable term-link span
+/// ('ceviche' is a card in the Latin dishes glossary). That is the only
+/// shape that puts a screen callback inside the body-span cache.
+const BarrioTrainingDoc _hostManualDoc = BarrioTrainingDoc(
+  id: 'training_menu_concept',
+  title: 'Span Release Fixture',
+  sourcePath: 'test://span-release',
+  chapters: [
+    HandbookChapter(
+      id: 'sr_host_ch1',
+      title: 'Only Section',
+      subtitle: 'fixture section',
+      iconCodePoint: 0xe533,
+      units: [
+        HandbookUnit(
+          id: 'sr_host_c1_u1',
+          type: HandbookUnitType.explainer,
+          title: 'Fixture Card',
+          body: 'Our kitchen loves ceviche in the summer.',
         ),
       ],
     ),
@@ -272,6 +305,104 @@ void main() {
     expect(resize.width!, lessThan(1400),
         reason: 'a display-size decode must be smaller than the source');
     expect(tester.takeException(), isNull);
+  });
+
+  group('body span cache is released with the screen', () {
+    testWidgets('popping the reader drops the cache entries keyed on that '
+        "screen's callback", (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      tester.view.physicalSize = _phoneSize;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      // A real route, pushed and popped, so this exercises the dispose
+      // wiring end to end rather than just calling the clear function.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const TrainingDocScreen(doc: _hostManualDoc),
+                  ),
+                ),
+                child: const Text('open reader'),
+              ),
+            ),
+          ),
+        ),
+      );
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+
+      await tester.tap(find.text('open reader'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pumpAndSettle();
+      expect(find.byType(TrainingDocScreen), findsOneWidget);
+
+      // The screen's own tear-off, taken from the card it built. This is
+      // the exact object the cache key holds and the term-link span closes
+      // over, so it is the right thing to hunt for afterwards.
+      final owner = tester
+          .widget<HandbookLessonCard>(find.byType(HandbookLessonCard).first)
+          .onTermTap;
+      expect(owner, isNotNull,
+          reason: 'a culinary host manual wires tap-to-define, which is what '
+              'puts a screen callback into the span cache');
+      expect(
+        find.byWidgetPredicate((w) =>
+            w.key is ValueKey<String> &&
+            (w.key! as ValueKey<String>).value.startsWith('barrio_term_link_')),
+        findsWidgets,
+        reason: 'the body really did compose a tappable term-link span, so a '
+            'cached span run closes over this screen',
+      );
+      expect(barrioDebugBodySpanCacheOwners(), contains(owner),
+          reason: 'the composed spans are memoized under this screen; without '
+              'this the pop assertion below would pass vacuously');
+
+      navigator.pop();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TrainingDocScreen), findsNothing);
+      expect(barrioDebugBodySpanCacheOwners(), isNot(contains(owner)),
+          reason: 'a popped reader must not stay reachable from the '
+              'process-lifetime span cache');
+      expect(barrioDebugBodySpanCacheOwners(), isEmpty,
+          reason: 'no screen callback survives in the cache at all');
+      expect(tester.takeException(), isNull);
+    });
+
+    test('every reader screen that wires onTermTap also clears the cache '
+        'on dispose', () {
+      // Structural guard, not a style rule: a cached span run closes over
+      // the `onTermTap` it was composed with, so a screen that hands one to
+      // a lesson card owns the job of dropping those entries when it goes
+      // away. The next slice on this file adds more state behind those
+      // closures, so the rule has to outlive this PR.
+      final screens = Directory('lib/internal/barrio/screens')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.dart'));
+      final offenders = <String>[];
+      var checked = 0;
+      for (final screen in screens) {
+        final source = screen.readAsStringSync();
+        if (!source.contains('onTermTap:')) continue;
+        checked++;
+        if (!source.contains('barrioClearBodySpanCache()')) {
+          offenders.add(screen.path);
+        }
+      }
+      expect(checked, greaterThan(0),
+          reason: 'sanity: at least one screen wires tap-to-define, so this '
+              'guard is actually looking at something');
+      expect(offenders, isEmpty,
+          reason: 'these screens pass onTermTap into a lesson card but never '
+              'call barrioClearBodySpanCache(), so a popped route stays '
+              'reachable from the span cache');
+    });
   });
 
   group('body span cache', () {

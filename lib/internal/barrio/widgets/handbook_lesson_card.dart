@@ -1306,10 +1306,52 @@ class _BodySpanCache {
       _entries.remove(_entries.keys.first);
     }
   }
+
+  void clear() => _entries.clear();
+
+  /// The distinct non-null `onTermTap` handlers currently referenced by
+  /// cached entries. Each one is a screen's tear-off, so a non-empty
+  /// result names exactly which screens the cache is holding alive.
+  Set<Object> owners() => <Object>{
+        for (final key in _entries.keys)
+          if (key.onTermTap != null) key.onTermTap!,
+      };
 }
 
 const int _kBodySpanCacheSize = 12;
 final _BodySpanCache _kBodySpanCache = _BodySpanCache(_kBodySpanCacheSize);
+
+/// Drops every memoized body-span run.
+///
+/// WHY THIS EXISTS. A cached span run can hold [WidgetSpan]s whose tap
+/// handler closes over the composing screen's `onTermTap`, and the cache
+/// KEY holds that same handler. The cache is process-lifetime, so without
+/// this the screen that owns those callbacks stays reachable from a global
+/// after its route is popped, and with it (through `State.context`) the
+/// popped element tree. The eviction policy alone is not an answer: it
+/// bounds the retention at [_kBodySpanCacheSize] entries but never closes
+/// it, because nothing guarantees another 12 cards are ever composed.
+///
+/// So the rule is: **every screen that hands an `onTermTap` to a
+/// [HandbookLessonCard] calls this from its `dispose`.** Today that is
+/// `TrainingDocScreen` only; `barrio_reader_scoped_rebuild_test.dart` holds
+/// the rule for any screen added later.
+///
+/// It sweeps the WHOLE cache rather than only the disposing screen's
+/// entries, deliberately: a sweep cannot miss an entry, and the only cost
+/// is that a reader stacked underneath (the rare "open in manual" case)
+/// recomposes its spans on its next rebuild, which is exactly what every
+/// reader did before this cache existed.
+void barrioClearBodySpanCache() => _kBodySpanCache.clear();
+
+/// The screen callbacks currently referenced by memoized body spans.
+///
+/// Test-only window into the cache. It exists so a test can prove that
+/// popping a reader really does drop the entries keyed on THAT screen's
+/// callback: asserting only that [barrioClearBodySpanCache] empties a map
+/// would not prove the `dispose` wiring, which is the part that can rot.
+@visibleForTesting
+Set<Object> barrioDebugBodySpanCacheOwners() => _kBodySpanCache.owners();
 
 /// One styled segment inside a text chunk. [term] non-null renders a
 /// tappable term-link widget span; otherwise the segment renders as a

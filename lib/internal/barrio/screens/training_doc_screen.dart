@@ -623,6 +623,12 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     _heroController.dispose();
     _activeChapter.dispose();
     _readUnitIds.dispose();
+    // On the culinary manuals this screen hands `_openTermSheet` to every
+    // lesson card, and the memoized body spans key on that callback and
+    // close over it. Dropping them here is what keeps a popped reader (and
+    // its element tree) from staying reachable through a process-lifetime
+    // cache. See [barrioClearBodySpanCache].
+    barrioClearBodySpanCache();
     super.dispose();
   }
 
