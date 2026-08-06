@@ -349,5 +349,340 @@ const BarrioQuizBank kBarrioQuizWine = BarrioQuizBank(
       sourceUnitId: 'training_wine_c6_u8',
       answerEvidence: 'the Tank Method or Charmat Method',
     ),
+    // ---- c7: Argentinian Wine -----------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c7_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c7',
+      prompt: 'Where does Argentina rank among the world\'s wine producers?',
+      options: <String>[
+        'The fifth largest wine producer in the world',
+        'The largest wine producer in the world',
+        'Outside the top twenty producers',
+        'The second largest, behind France',
+      ],
+      correctIndex: 0,
+      whyLine: 'Argentina is the fifth largest wine producer in the world.',
+      sourceUnitId: 'training_wine_c7_u0',
+      answerEvidence: 'the fifth-largest wine producer globally',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c7_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c7',
+      prompt: 'Which two Argentine regions show the spread from warm to cool '
+          'growing conditions?',
+      options: <String>[
+        'The sun-drenched vineyards of Mendoza and the cooler climates of Patagonia',
+        'The tropical north coast and the rainforest interior',
+        'Bordeaux and the Loire Valley',
+        'Penedes and Rioja',
+      ],
+      correctIndex: 0,
+      whyLine: 'Argentina runs from the sun-drenched vineyards of Mendoza to the '
+          'cooler climates of Patagonia.',
+      sourceUnitId: 'training_wine_c7_u0',
+      answerEvidence: 'From the sun-drenched vineyards of Mendoza to the cooler '
+          'climates of Patagonia',
+    ),
+    // ---- c8: History of Argentinian Wine ------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c8_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c8',
+      prompt: 'Which immigrant group brought the advanced techniques that '
+          'revolutionised Argentine winemaking?',
+      options: <String>[
+        'Italian immigrants',
+        'Portuguese immigrants',
+        'Greek immigrants',
+        'Dutch immigrants',
+      ],
+      correctIndex: 0,
+      whyLine: 'Italian immigrants brought advanced viticultural techniques and '
+          'traditions that revolutionised the industry.',
+      sourceUnitId: 'training_wine_c8_u0',
+      answerEvidence: 'Italian immigrants brought advanced viticultural '
+          'techniques and traditions',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c8_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c8',
+      prompt: 'What was the Malbec boom?',
+      options: <String>[
+        'A surge in global demand for Argentina\'s signature Malbec',
+        'A season when hail destroyed most of the Malbec crop',
+        'A law requiring every Argentine winery to plant Malbec',
+        'A price collapse that pushed Malbec out of export markets',
+      ],
+      correctIndex: 0,
+      whyLine: 'The Malbec boom was a surge in global demand for Argentina\'s '
+          'signature Malbec varietal.',
+      sourceUnitId: 'training_wine_c8_u1',
+      answerEvidence: 'a surge in global demand for its signature Malbec '
+          'varietal',
+    ),
+    // ---- c9: Argentina Terroir ----------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c9_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c9',
+      prompt: 'Argentina\'s wine regions span a huge range of latitude. Why do '
+          'their climates stay so similar?',
+      options: <String>[
+        'Altitude compensates for latitude',
+        'Every region uses the same irrigation schedule',
+        'The Atlantic keeps the whole country at one temperature',
+        'All the vineyards sit on identical soil',
+      ],
+      correctIndex: 0,
+      whyLine: 'Vineyards sit progressively higher as you travel north, so '
+          'altitude cancels out the change in latitude.',
+      sourceUnitId: 'training_wine_c9_u0',
+      answerEvidence: 'the decisive role of altitude, which effectively '
+          'compensates for latitude',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c9_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c9',
+      prompt: 'Why do Argentine producers deliberately limit irrigation?',
+      options: <String>[
+        'To concentrate flavors and improve grape quality',
+        'To keep the vineyard soil permanently wet',
+        'Because the Andes supply no water at all',
+        'To raise yields as high as possible',
+      ],
+      correctIndex: 0,
+      whyLine: 'Too much water dilutes the grapes, so producers restrict it to '
+          'concentrate flavour and lift quality.',
+      sourceUnitId: 'training_wine_c9_u1',
+      answerEvidence: 'concentrate flavors and improve the overall quality of '
+          'their grapes',
+    ),
+    // ---- c10: Argentina's Wine Growing Regions ------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c10_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c10',
+      prompt: 'Mendoza is the historic birthplace of which Argentine flagship '
+          'grape?',
+      options: <String>[
+        'Malbec',
+        'Tempranillo',
+        'Bonarda',
+        'Torrontés',
+      ],
+      correctIndex: 0,
+      whyLine: 'Mendoza is the historic birthplace of Argentina\'s flagship '
+          'grape, Malbec.',
+      sourceUnitId: 'training_wine_c10_u0',
+      answerEvidence: 'the historic birthplace of Argentina\'s flagship grape, '
+          'Malbec',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c10_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c10',
+      prompt: 'A guest asks what Patagonia does best. Which wine do you point '
+          'to?',
+      options: <String>[
+        'Pinot Noir, prized for delicate red fruit',
+        'Full-bodied Cabernet Sauvignon',
+        'Sweet dessert Muscat',
+        'Heavily oaked Chardonnay',
+      ],
+      correctIndex: 0,
+      whyLine: 'Cool Atlantic winds make Patagonia\'s Pinot Noir prized for '
+          'delicate cherry, plum, and raspberry notes.',
+      sourceUnitId: 'training_wine_c10_u4',
+      answerEvidence: 'The region\'s Pinot Noir is especially prized for its '
+          'delicate red fruit notes',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c10_q2',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c10',
+      prompt: 'What is Salta known for?',
+      options: <String>[
+        'Crisp Torrontés whites and bold reds like Malbec and Tannat',
+        'Sweet fortified wines and brandy',
+        'Light sparkling wines made in tanks',
+        'Sea-level vineyards on the Atlantic coast',
+      ],
+      correctIndex: 0,
+      whyLine: 'Salta is known for crisp Torrontés whites and bold reds like '
+          'Malbec, Cabernet Sauvignon, and Tannat.',
+      sourceUnitId: 'training_wine_c10_u6',
+      answerEvidence: 'producing crisp Torrontés whites and bold reds like '
+          'Malbec, Cabernet Sauvignon, and Tannat',
+    ),
+    // ---- c11: Argentina's Wine Varietals ------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c11_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c11',
+      prompt: 'A guest orders a Mendoza Malbec. Which dishes do you suggest '
+          'alongside it?',
+      options: <String>[
+        'Grilled meats and rich sauces',
+        'Raw oysters and citrus salad',
+        'Light green salad with vinaigrette',
+        'Fresh fruit and sorbet',
+      ],
+      correctIndex: 0,
+      whyLine: 'Mendoza Malbec\'s plum, black cherry, and spice make it a perfect '
+          'companion for grilled meats and rich sauces.',
+      sourceUnitId: 'training_wine_c11_u0',
+      answerEvidence: 'a perfect companion for grilled meats and rich sauces',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c11_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c11',
+      prompt: 'Which dishes suit an Argentine Syrah?',
+      options: <String>[
+        'Barbecued ribs, charcuterie, aged cheeses, and game meats',
+        'Steamed white fish and lemon',
+        'Vanilla ice cream and berries',
+        'Cucumber sandwiches and mint tea',
+      ],
+      correctIndex: 0,
+      whyLine: 'Argentine Syrah\'s bold black fruit and smoked meat notes suit '
+          'barbecued ribs, charcuterie, aged cheeses, and game.',
+      sourceUnitId: 'training_wine_c11_u4',
+      answerEvidence: 'barbecued ribs, charcuterie, aged cheeses, and game meats',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c11_q2',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c11',
+      prompt: 'How would you describe Torrontés to a guest?',
+      options: <String>[
+        'Floral and fruity notes of peach, apricot, and orange blossom',
+        'Earthy, tannic, and full of black pepper',
+        'Nutty and oxidised with a dry finish',
+        'Smoky and toasty from long oak aging',
+      ],
+      correctIndex: 0,
+      whyLine: 'Torrontés is intensely aromatic, with floral and fruity notes of '
+          'peach, apricot, and orange blossom.',
+      sourceUnitId: 'training_wine_c11_u6',
+      answerEvidence: 'floral and fruity notes of peach, apricot, and orange '
+          'blossom',
+    ),
+    // ---- c12: Chilean Wine --------------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c12_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c12',
+      prompt: 'Why are Chilean wines so consistent from vintage to vintage?',
+      options: <String>[
+        'A reliable climate of abundant sun, cool nights, and minimal rainfall',
+        'Every bottle is blended from ten different years',
+        'The wines are all made in one single winery',
+        'Heavy rainfall every spring evens out the crop',
+      ],
+      correctIndex: 0,
+      whyLine: 'Chile\'s reliable climate plus controlled irrigation keeps '
+          'quality steady from one vintage to the next.',
+      sourceUnitId: 'training_wine_c12_u0',
+      answerEvidence: 'a reliable climate of abundant sun, cool nights, and '
+          'minimal rainfall',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c12_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c12',
+      prompt: 'Chile does not permit chaptalization. What does that mean for its '
+          'lower-priced wines?',
+      options: <String>[
+        'They avoid synthetic sweetness',
+        'They must be aged for ten years',
+        'They are always fortified with spirit',
+        'They can only be sold within Chile',
+      ],
+      correctIndex: 0,
+      whyLine: 'Because chaptalization is banned, cheaper Chilean wines avoid '
+          'synthetic sweetness and stay fruit-forward.',
+      sourceUnitId: 'training_wine_c12_u1',
+      answerEvidence: 'chaptalization is not permitted, so lower-priced wines '
+          'avoid synthetic sweetness',
+    ),
+    // ---- c13: Chilean Wine History ------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c13_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c13',
+      prompt: 'What did Chile first become known for internationally?',
+      options: <String>[
+        'Inexpensive, approachable Cabernets and Merlots',
+        'Expensive traditional method sparkling wine',
+        'Sweet fortified dessert wines',
+        'Orange wines made in clay amphorae',
+      ],
+      correctIndex: 0,
+      whyLine: 'Chile\'s first international reputation was built on inexpensive, '
+          'approachable Cabernets and Merlots.',
+      sourceUnitId: 'training_wine_c13_u0',
+      answerEvidence: 'its inexpensive, approachable Cabernets and Merlots',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c13_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c13',
+      prompt: 'What makes Chile\'s vineyards unusual compared with almost every '
+          'other wine region?',
+      options: <String>[
+        'They remained untouched by the phylloxera blight',
+        'They are all planted below sea level',
+        'They are watered only by rainfall',
+        'They use no rootstock selection at all',
+      ],
+      correctIndex: 0,
+      whyLine: 'Chile\'s vineyards never suffered phylloxera, so its wines can '
+          'show old-world vines the Old World no longer has.',
+      sourceUnitId: 'training_wine_c13_u1',
+      answerEvidence: 'Chile\'s vineyards remained untouched by the phylloxera '
+          'blight',
+    ),
+    // ---- c14: Chilean Terroir -----------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c14_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c14',
+      prompt: 'What let Chile plant vineyards on cooler, less fertile slopes?',
+      options: <String>[
+        'The advent of drip irrigation',
+        'A shift back to flood irrigation',
+        'Removing all rootstock diversity',
+        'Planting only in the Central Valley',
+      ],
+      correctIndex: 0,
+      whyLine: 'Drip irrigation opened up cooler, less fertile south-facing '
+          'slopes that flood irrigation could never reach.',
+      sourceUnitId: 'training_wine_c14_u0',
+      answerEvidence: 'the advent of drip irrigation transformed the industry',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c14_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c14',
+      prompt: 'Which soils on the Maipo River terraces suit late-ripening '
+          'Cabernet Sauvignon?',
+      options: <String>[
+        'Warm, well-drained gravelly soils',
+        'Cold, waterlogged clay',
+        'Pure sand with no drainage',
+        'Deep peat bog',
+      ],
+      correctIndex: 0,
+      whyLine: 'The Maipo River\'s alluvial terraces give warm, well-drained '
+          'gravelly soils ideal for late-ripening Cabernet Sauvignon.',
+      sourceUnitId: 'training_wine_c14_u1',
+      answerEvidence: 'warm, well-drained gravelly soils ideal for late-ripening '
+          'cabernet sauvignon',
+    ),
   ],
 );
