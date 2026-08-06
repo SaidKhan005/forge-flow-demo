@@ -203,5 +203,151 @@ const BarrioQuizBank kBarrioQuizWine = BarrioQuizBank(
       sourceUnitId: 'training_wine_c3_u6',
       answerEvidence: 'known as Shiraz in Australia',
     ),
+    // ---- c4: Common White Wine Grape Varietals ------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c4_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c4',
+      prompt: 'A guest asks what a Marlborough Sauvignon Blanc tastes like. What '
+          'do you describe?',
+      options: <String>[
+        'Bursting with tropical fruit notes like passionfruit and lime',
+        'Rich vanilla and toasted oak with a buttery finish',
+        'Dark plum, leather, and cedar',
+        'Nutty and oxidised, like a dry sherry',
+      ],
+      correctIndex: 0,
+      whyLine: 'New Zealand\'s Marlborough Sauvignon Blanc is famous for its bold '
+          'tropical fruit and intense passionfruit and lime aromas.',
+      sourceUnitId: 'training_wine_c4_u0',
+      answerEvidence: 'bursting with tropical fruit notes and intense aromas '
+          'like passionfruit and lime',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c4_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c4',
+      prompt: 'Which two traits are the hallmark of Riesling?',
+      options: <String>[
+        'High acidity and low alcohol',
+        'Low acidity and high alcohol',
+        'High tannin and full body',
+        'No acidity and heavy oak',
+      ],
+      correctIndex: 0,
+      whyLine: 'Riesling keeps its hallmark high acidity and low alcohol '
+          'wherever it is grown.',
+      sourceUnitId: 'training_wine_c4_u6',
+      answerEvidence: 'hallmark high acidity and low alcohol content',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c4_q2',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c4',
+      prompt: 'A guest wants a highly aromatic white. Which notes would you '
+          'promise from Gewurztraminer?',
+      options: <String>[
+        'Passion fruit, rose, orange peel, and tropical spices',
+        'Green apple, wet stone, and grassy herbs',
+        'Blackcurrant, cedar, and dark spice',
+        'Toasted bread, hazelnut, and cream',
+      ],
+      correctIndex: 0,
+      whyLine: 'Gewurztraminer is prized for aromatic notes of passion fruit, '
+          'rose, orange peel, and tropical spices.',
+      sourceUnitId: 'training_wine_c4_u8',
+      answerEvidence: 'hints of passion fruit, rose, orange peel, and tropical '
+          'spices',
+    ),
+    // ---- c5: Other Notable Grape Varietals ----------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c5_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c5',
+      prompt: 'A guest wants a bold Italian red with high tannins and tar and '
+          'rose aromas. Which grape fits?',
+      options: <String>[
+        'Nebbiolo',
+        'Albarino',
+        'Vermentino',
+        'Trebbiano',
+      ],
+      correctIndex: 0,
+      whyLine: 'Nebbiolo is the bold Piedmont red known for high tannins and tar '
+          'and rose aromas.',
+      sourceUnitId: 'training_wine_c5_u0',
+      answerEvidence: 'A bold Italian red from Piedmont',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c5_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c5',
+      prompt: 'Which grape is Argentina\'s signature white?',
+      options: <String>[
+        'Torrontes',
+        'Assyrtiko',
+        'Viognier',
+        'Pinotage',
+      ],
+      correctIndex: 0,
+      whyLine: 'Torrontes is Argentina\'s signature white grape, floral and '
+          'aromatic with citrus and peach.',
+      sourceUnitId: 'training_wine_c5_u1',
+      answerEvidence: 'Argentina\'s signature white grape',
+    ),
+    // ---- c6: Sparkling Wine -------------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c6_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c6',
+      prompt: 'Which three grapes make up the usual Champagne blend?',
+      options: <String>[
+        'Chardonnay, Pinot Noir, and Pinot Meunier',
+        'Chardonnay, Riesling, and Gewurztraminer',
+        'Glera, Macabeo, and Parellada',
+        'Pinot Noir, Merlot, and Syrah',
+      ],
+      correctIndex: 0,
+      whyLine: 'Champagne is blended from Chardonnay, Pinot Noir, and Pinot '
+          'Meunier.',
+      sourceUnitId: 'training_wine_c6_u0',
+      answerEvidence: 'a blend of Chardonnay, Pinot Noir, and Pinot Meunier',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c6_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c6',
+      prompt: 'What is a Champagne made entirely from Chardonnay called?',
+      options: <String>[
+        'Blanc de blancs',
+        'Blanc de noirs',
+        'Rose Champagne',
+        'Prestige cuvee',
+      ],
+      correctIndex: 0,
+      whyLine: 'A Champagne made only from Chardonnay is a blanc de blancs, '
+          'white of whites.',
+      sourceUnitId: 'training_wine_c6_u1',
+      answerEvidence: 'it is called a blanc de blancs',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c6_q2',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c6',
+      prompt: 'How does Prosecco get its bubbles, and why does that matter to '
+          'the taste?',
+      options: <String>[
+        'The Tank or Charmat Method, in large pressurized tanks',
+        'A second fermentation in each individual bottle',
+        'Carbon dioxide injected just before corking',
+        'Long aging on the lees in oak barrels',
+      ],
+      correctIndex: 0,
+      whyLine: 'Prosecco ferments a second time in large pressurized tanks, '
+          'which keeps fresh fruit flavours instead of Champagne\'s bready '
+          'notes.',
+      sourceUnitId: 'training_wine_c6_u8',
+      answerEvidence: 'the Tank Method or Charmat Method',
+    ),
   ],
 );
