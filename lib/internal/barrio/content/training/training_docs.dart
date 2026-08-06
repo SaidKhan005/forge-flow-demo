@@ -30,6 +30,7 @@ import 'training_suggestive_selling_content.dart';
 import 'training_table_manicuring_content.dart';
 import 'training_tequila_content.dart';
 import 'training_three_pillars_content.dart';
+import 'training_wine_content.dart';
 
 /// All verbatim training docs, keyed by destination id.
 ///
@@ -49,6 +50,8 @@ final Map<String, BarrioTrainingDoc> kBarrioTrainingDocs = {
   'training_three_pillars': kTrainingThreePillars,
   'training_suggestive_selling': kTrainingSuggestiveSelling,
   'training_tequila': kTrainingTequila,
+  // Manual-drop slice (2026-08-06): the wine manual sits with Tequila.
+  'training_wine': kTrainingWine,
   'training_coffee': kTrainingCoffee,
   'training_latin_dishes': kTrainingLatinDishes,
   'training_latin_ingredients': kTrainingLatinIngredients,
@@ -86,6 +89,10 @@ const Map<String, Color> kBarrioTrainingAccents = {
   'training_three_pillars': BarrioColors.accentPlum,
   'training_suggestive_selling': BarrioColors.accentPlaybook, // emerald
   'training_tequila': BarrioColors.gold,
+  // Manual-drop slice (2026-08-06): plum reads as wine and is unused by any
+  // other Food & Drink bubble (Tequila gold, Coffee roasted brown, Drink
+  // Specs herb green, Latin Dishes brick red, Menu warm teal).
+  'training_wine': BarrioColors.accentPlum, // plum
   'training_coffee': BarrioColors.accentCoffee,
   'training_latin_dishes': BarrioColors.accentHandbook, // brick red
   'training_latin_ingredients': BarrioColors.accentHerb,

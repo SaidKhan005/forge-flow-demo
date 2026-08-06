@@ -5,7 +5,7 @@
 // directions), single-word and multi-word AND matching, ranking (hit
 // count desc, corpus-order ties), the minimum query length, snippet
 // span correctness, the visibility filter hook, supervisor_content
-// absence, and 23-doc coverage for a universal word.
+// absence, and 24-doc coverage for a universal word.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/internal/barrio/content/training/training_docs.dart';
@@ -143,11 +143,11 @@ void main() {
       }
     });
 
-    test('a universal word reaches all 23 docs', () {
+    test('a universal word reaches all 24 docs', () {
       final ids = BarrioTrainingSearch.search('the')
           .map((r) => r.destinationId)
           .toSet();
-      expect(kBarrioTrainingDocs.length, 23);
+      expect(kBarrioTrainingDocs.length, 24);
       expect(ids, kBarrioTrainingDocs.keys.toSet(),
           reason: 'every registered doc must be searchable');
     });

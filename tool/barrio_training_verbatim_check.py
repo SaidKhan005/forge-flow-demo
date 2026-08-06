@@ -52,6 +52,30 @@ def contains_contiguous(haystack, needle):
     return any(haystack[i:i + n] == needle for i in range(len(haystack) - n + 1))
 
 
+def carries_every_source_word(md_words, dart_words):
+    """Exact 'no source word was dropped' proof for one doc.
+
+    The generator only ever ADDS words (chapter and card titles) around a
+    verbatim body, so a faithful conversion leaves the md word sequence as
+    an in-order subsequence of the dart word sequence. Greedy leftmost
+    matching is provably optimal for subsequence testing, so True proves
+    every source word survived in order and False proves one did not.
+
+    This exists because the SequenceMatcher opcode walk below is only a
+    heuristic: when a source doc REPEATS a long passage (Wine Training
+    reproduces two paragraphs twice, once on page 59 and again on page 60,
+    exactly as the operator PDF does), the matcher can pair md copy 1 with
+    dart copy 2 and then report the surrounding text as deleted even though
+    the dart carries every word. The windowed `contains_contiguous` carve-out
+    cannot rescue that case because the generator injects a card title in the
+    middle of the run, so the run is nowhere contiguous in the dart. This
+    test does not widen the guard: it is the guarantee itself, stated
+    exactly, and a real drop still fails it.
+    """
+    it = iter(dart_words)
+    return all(word in it for word in md_words)
+
+
 PAIRS = [
     ('company_handbook_verbatim', 'Barrio_company_handbook.md'),
     ('interview_playbook_verbatim', 'Barrio_interview_playbook.md'),
@@ -62,6 +86,7 @@ PAIRS = [
     ('training_suggestive_selling', 'OE Leveraging Suggestive Selling Techniques.md'),
     ('training_tequila', 'Tequila Training.md'),
     ('training_coffee', 'Coffee Training.md'),
+    ('training_wine', 'Barrio Wine Training.md'),
     ('training_latin_dishes', 'Latin American Dishes.md'),
     ('training_latin_ingredients', 'Latin American Ingredients.md'),
     ('training_labour_cost', 'Labour Cost - understanding the levers.md'),
@@ -83,6 +108,11 @@ for doc_id, md_name in PAIRS:
     dart = norm(dart_titles_and_bodies(f'lib/internal/barrio/content/training/{doc_id}_content.dart'))
     md = norm(open(f'docs/Knowledge_graph_docs/{md_name}', encoding='utf-8').read(), is_md=True)
     sm = difflib.SequenceMatcher(None, md, dart, autojunk=False)
+    # Exact proof, computed once per doc: when the md word sequence is an
+    # in-order subsequence of the dart word sequence, nothing was dropped and
+    # every delete/replace opcode below is an alignment artifact. See
+    # carries_every_source_word.
+    intact = carries_every_source_word(md, dart)
     lost, gained = [], []
     moved = []
     for tag, i1, i2, j1, j2 in sm.get_opcodes():
@@ -91,9 +121,10 @@ for doc_id, md_name in PAIRS:
             # appear contiguously in the dart within a tight window around
             # the deletion point (e.g. the doc H1 rendered on the hero above
             # a preface line the source puts first). A real drop leaves the
-            # window without them; distant duplicates stay counted as lost.
+            # window without them; distant duplicates are rescued only by the
+            # exact `intact` proof, never by the window.
             window = dart[max(0, j1 - 60):j2 + 60]
-            if contains_contiguous(window, md[i1:i2]):
+            if intact or contains_contiguous(window, md[i1:i2]):
                 moved.append(' '.join(md[i1:i2]))
                 if tag == 'replace' and j2 > j1:
                     gained.append(' '.join(dart[j1:j2]))

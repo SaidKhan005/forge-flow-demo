@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'barrio_chapter_icons.dart';
 import 'barrio_destination_scaffold.dart';
 import '../barrio_surface_flags.dart';
 import '../routes/barrio_destination_visibility_resolver.dart';
@@ -193,52 +194,19 @@ Widget _iconWidgetFor(
       return Icon(Icons.assignment_outlined, size: size, color: color);
     case 'preston_lee_model':
       return Icon(Icons.lightbulb_outline, size: size, color: color);
-    // Verbatim training bubbles (2026-07-11 training-drop slice)
-    case 'training_strong_foundation':
-      return Icon(Icons.foundation, size: size, color: color);
-    case 'training_table_manicuring':
-      return Icon(Icons.table_restaurant_outlined, size: size, color: color);
-    case 'training_three_pillars':
-      return Icon(Icons.account_balance_outlined, size: size, color: color);
-    case 'training_suggestive_selling':
-      return Icon(Icons.trending_up_rounded, size: size, color: color);
-    case 'training_tequila':
-      return Icon(Icons.local_bar_rounded, size: size, color: color);
-    case 'training_coffee':
-      return Icon(Icons.local_cafe_rounded, size: size, color: color);
-    case 'training_latin_dishes':
-      return Icon(Icons.restaurant_rounded, size: size, color: color);
-    case 'training_latin_ingredients':
-      return Icon(Icons.eco_rounded, size: size, color: color);
-    case 'training_labour_cost':
-      return Icon(Icons.insights_rounded, size: size, color: color);
-    case 'training_menu_concept':
-      return Icon(Icons.restaurant_menu_rounded, size: size, color: color);
-    // Corpus-complete training bubbles (2026-07-11 slice)
-    case 'training_bold_by_design':
-      return Icon(Icons.auto_stories_rounded, size: size, color: color);
-    case 'training_food_safety':
-      return Icon(Icons.health_and_safety_rounded, size: size, color: color);
-    case 'training_cheers_responsibility':
-      return Icon(Icons.wine_bar_rounded, size: size, color: color);
-    case 'training_mastering_metrics':
-      return Icon(Icons.query_stats_rounded, size: size, color: color);
-    case 'training_general_words':
-      return Icon(Icons.translate_rounded, size: size, color: color);
-    // SOP training bubbles (Scribe-format system SOPs)
-    case 'training_clover_sop':
-      return Icon(Icons.point_of_sale, size: size, color: color);
-    case 'training_push_sop':
-      return Icon(Icons.calendar_month, size: size, color: color);
-    // Manual-drop bubbles (2026-07-28 operator manuals)
-    case 'training_host_manual':
-      return Icon(Icons.support_agent, size: size, color: color);
-    case 'training_bar_manual':
-      return Icon(Icons.local_bar, size: size, color: color);
-    case 'training_drink_specs':
-      return Icon(Icons.wine_bar, size: size, color: color);
+    // Every verbatim training bubble resolves through the shared manual
+    // identity map instead of its own case here. The 21 cases this
+    // replaced were byte-identical to kBarrioManualIcons (the map's own
+    // doc comment says it mirrors these bubbles one for one, and
+    // barrio_chapter_icons_test.dart asserts the mirror for every routed
+    // doc), so this is a pure de-duplication, not a behavior change.
+    // It also unblocks the next manual drop: this function sat exactly at
+    // the 80-SLOC engineering bar, so one more case tripped
+    // tool/metrics_ratchet_check.dart (2026-08-06 wine manual).
     default:
-      return Icon(Icons.circle_outlined, size: size, color: color);
+      final manualIcon = kBarrioManualIcons[id];
+      return Icon(manualIcon ?? Icons.circle_outlined,
+          size: size, color: color);
   }
 }
 

@@ -138,6 +138,10 @@ SOURCES = [
     dict(src='Barrio Drink Specs Combined.pdf',
          doc_id='drink_specs',
          md='Barrio Drink Specs.md'),
+    # Manual-drop slice (2026-08-06): the operator wine manual.
+    dict(src='Barrio Wine Training.pdf',
+         doc_id='wine_training',
+         md='Barrio Wine Training.md'),
 ]
 
 

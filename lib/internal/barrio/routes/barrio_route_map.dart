@@ -36,6 +36,7 @@ class BarrioRouteMap {
     'training_three_pillars': '/barrio/training/three-pillars',
     'training_suggestive_selling': '/barrio/training/suggestive-selling',
     'training_tequila': '/barrio/training/tequila',
+    'training_wine': '/barrio/training/wine',
     'training_coffee': '/barrio/training/coffee',
     'training_latin_dishes': '/barrio/training/latin-dishes',
     'training_latin_ingredients': '/barrio/training/latin-ingredients',
