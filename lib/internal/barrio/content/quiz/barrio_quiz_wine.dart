@@ -791,5 +791,277 @@ const BarrioQuizBank kBarrioQuizWine = BarrioQuizBank(
       sourceUnitId: 'training_wine_c16_u3',
       answerEvidence: 'an exceptional pairing for ceviche',
     ),
+    // ---- c17: Spanish Wine --------------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c17_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c17',
+      prompt: 'A guest asks what goes into Sangria. What do you tell them?',
+      options: <String>[
+        'Red wine, fresh fruit, and often a splash of brandy',
+        'White wine, soda water, and mint',
+        'Sparkling wine and orange juice',
+        'Sherry, sugar, and cream',
+      ],
+      correctIndex: 0,
+      whyLine: 'Sangria is made with red wine, fresh fruit, and often a splash '
+          'of brandy.',
+      sourceUnitId: 'training_wine_c17_u0',
+      answerEvidence: 'Made with red wine, fresh fruit, and often a splash of '
+          'brandy',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c17_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c17',
+      prompt: 'What are Spain\'s three aging categories on a wine label?',
+      options: <String>[
+        'Crianza, Reserva, and Gran Reserva',
+        'Brut, Sec, and Doux',
+        'Joven, Fino, and Oloroso',
+        'Alta, Alavesa, and Oriental',
+      ],
+      correctIndex: 0,
+      whyLine: 'Spanish wines are graded by aging into Crianza, Reserva, and '
+          'Gran Reserva.',
+      sourceUnitId: 'training_wine_c17_u1',
+      answerEvidence: 'Crianza, Reserva, and Gran Reserva',
+    ),
+    // ---- c18: Spanish Wine History ------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c18_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c18',
+      prompt: 'Where does Spain rank among the world\'s wine producers today?',
+      options: <String>[
+        'The third largest wine producer in the world',
+        'The largest wine producer in the world',
+        'Tenth, behind most of Europe',
+        'It no longer exports wine at all',
+      ],
+      correctIndex: 0,
+      whyLine: 'Spain is the world\'s third largest wine producer.',
+      sourceUnitId: 'training_wine_c18_u0',
+      answerEvidence: 'the world\'s third-largest wine producer',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c18_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c18',
+      prompt: 'What are tinajas, and why did Spanish winemakers use them?',
+      options: <String>[
+        'Clay vessels with narrow openings that minimize oxygen exposure',
+        'Oak barrels that add vanilla and spice',
+        'Steel tanks that hold a second fermentation',
+        'Glass bottles sealed with pine resin',
+      ],
+      correctIndex: 0,
+      whyLine: 'Tinajas are clay vessels whose narrow openings minimize oxygen '
+          'exposure and slow oxidation.',
+      sourceUnitId: 'training_wine_c18_u1',
+      answerEvidence: 'clay vessels with narrow openings that minimized oxygen '
+          'exposure',
+    ),
+    // ---- c19: Spanish Terroir -----------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c19_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c19',
+      prompt: 'How are Spanish winemakers adapting to water scarcity and '
+          'drought?',
+      options: <String>[
+        'Water-efficient irrigation and drought-resistant grape varieties',
+        'Flooding the vineyards more often',
+        'Harvesting every crop several months early',
+        'Moving all production indoors',
+      ],
+      correctIndex: 0,
+      whyLine: 'Spain is fitting water-efficient irrigation, planting '
+          'drought-resistant varieties, and going sustainable.',
+      sourceUnitId: 'training_wine_c19_u0',
+      answerEvidence: 'water-efficient irrigation systems, planting '
+          'drought-resistant grape varieties',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c19_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c19',
+      prompt: 'What is la Meseta?',
+      options: <String>[
+        'Spain\'s vast central plateau',
+        'A river that runs through Rioja',
+        'The Atlantic coastal strip of Galicia',
+        'A sherry aging method',
+      ],
+      correctIndex: 0,
+      whyLine: 'La Meseta is Spain\'s vast central plateau, where altitude '
+          'matters as much as latitude.',
+      sourceUnitId: 'training_wine_c19_u1',
+      answerEvidence: 'the vast central plateau known as la Meseta',
+    ),
+    // ---- c20: Spanish Wine Regions ------------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c20_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c20',
+      prompt: 'Which grape is the backbone of Rioja\'s reds?',
+      options: <String>[
+        'Tempranillo',
+        'Garnacha',
+        'Mencia',
+        'Monastrell',
+      ],
+      correctIndex: 0,
+      whyLine: 'Rioja\'s elegant, age-worthy reds are built on a robust backbone '
+          'of Tempranillo.',
+      sourceUnitId: 'training_wine_c20_u0',
+      answerEvidence: 'a robust backbone of Tempranillo grapes',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c20_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c20',
+      prompt: 'A guest wants a crisp Atlantic white from Galicia. Which grape '
+          'and region?',
+      options: <String>[
+        'Albariño from Rías Baixas',
+        'Verdejo from Rueda',
+        'Palomino from Jerez',
+        'Airen from La Mancha',
+      ],
+      correctIndex: 0,
+      whyLine: 'Rías Baixas in Galicia makes crisp, aromatic Albariño shaped by '
+          'the cool Atlantic.',
+      sourceUnitId: 'training_wine_c20_u3',
+      answerEvidence: 'the region\'s crisp, aromatic Albariño white wines',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c20_q2',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c20',
+      prompt: 'Jerez is the sherry capital. Which wines does it make, and from '
+          'which grape?',
+      options: <String>[
+        'Fino, Manzanilla, and Oloroso, made from Palomino grapes',
+        'Cava and Crianza, made from Macabeo',
+        'Port and Madeira, made from Touriga Nacional',
+        'Txakoli and Albariño, made from Hondarrabi Zuri',
+      ],
+      correctIndex: 0,
+      whyLine: 'Jerez makes Fino, Manzanilla, and Oloroso from Palomino grapes, '
+          'aged through the solera system.',
+      sourceUnitId: 'training_wine_c20_u5',
+      answerEvidence: 'its iconic fortified wines like Fino, Manzanilla, and '
+          'Oloroso from Palomino grapes',
+    ),
+    // ---- c21: Spanish Red Wine Varietals ------------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c21_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c21',
+      prompt: 'How would you describe a Tempranillo to a guest?',
+      options: <String>[
+        'Cherry and raspberry with hints of tobacco and leather',
+        'Green apple, lime, and sea salt',
+        'Rose, lychee, and orange peel',
+        'Banana and pineapple with no tannin',
+      ],
+      correctIndex: 0,
+      whyLine: 'Tempranillo shows bright cherry and raspberry with tobacco and '
+          'leather, over smooth tannins.',
+      sourceUnitId: 'training_wine_c21_u0',
+      answerEvidence: 'bright red fruit flavors like cherry and raspberry mingle '
+          'with hints of tobacco and leather',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c21_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c21',
+      prompt: 'Why was Garnacha neglected by Spanish producers for so long?',
+      options: <String>[
+        'It oxidizes more readily than Tempranillo',
+        'It has no colour at all',
+        'It cannot be blended with other grapes',
+        'It ripens far too early to harvest',
+      ],
+      correctIndex: 0,
+      whyLine: 'Garnacha oxidizes more readily than Tempranillo and needs a '
+          'longer ripening window, so producers avoided it.',
+      sourceUnitId: 'training_wine_c21_u1',
+      answerEvidence: 'it oxidizes more readily than Tempranillo',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c21_q2',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c21',
+      prompt: 'Monastrell is known by which other name?',
+      options: <String>[
+        'Mourvèdre',
+        'Mencia',
+        'Bobal',
+        'Cariñena',
+      ],
+      correctIndex: 0,
+      whyLine: 'Monastrell is the Spanish name for Mourvèdre.',
+      sourceUnitId: 'training_wine_c21_u2',
+      answerEvidence: 'Also known as Mourvèdre',
+    ),
+    // ---- c22: Spanish White Wine Varietals ----------------------------
+    BarrioQuizQuestion(
+      id: 'training_wine_c22_q0',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c22',
+      prompt: 'Albariño from Rías Baixas is the time-honoured match for which '
+          'food?',
+      options: <String>[
+        'The region\'s celebrated seafood',
+        'Slow-roasted lamb',
+        'Strong blue cheese',
+        'Dark chocolate desserts',
+      ],
+      correctIndex: 0,
+      whyLine: 'Albariño\'s mineral-driven, never cloying style is the classic '
+          'match for Galician seafood.',
+      sourceUnitId: 'training_wine_c22_u1',
+      answerEvidence: 'a perfect, time-honored match for the region\'s celebrated '
+          'seafood',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c22_q1',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c22',
+      prompt: 'What does the Palomino grape contribute that makes Fino sherry '
+          'possible?',
+      options: <String>[
+        'A Flor yeast coat that drives the solera aging process',
+        'A very high tannin level',
+        'Deep purple colour from thick skins',
+        'Natural sparkle from a second fermentation',
+      ],
+      correctIndex: 0,
+      whyLine: 'In Jerez\'s chalky soils, Palomino develops the prized Flor yeast '
+          'coat that drives solera aging.',
+      sourceUnitId: 'training_wine_c22_u5',
+      answerEvidence: 'its prized Flor yeast coat emerges to drive the intricate '
+          'solera aging process',
+    ),
+    BarrioQuizQuestion(
+      id: 'training_wine_c22_q2',
+      docId: 'training_wine',
+      chapterId: 'training_wine_c22',
+      prompt: 'Which Spanish grape is the most planted grape variety in the '
+          'world?',
+      options: <String>[
+        'Airen',
+        'Verdejo',
+        'Godello',
+        'Parellada',
+      ],
+      correctIndex: 0,
+      whyLine: 'Airen, grown across La Mancha, is the world\'s most planted grape '
+          'variety.',
+      sourceUnitId: 'training_wine_c22_u8',
+      answerEvidence: 'the world\'s most planted grape variety',
+    ),
   ],
 );
