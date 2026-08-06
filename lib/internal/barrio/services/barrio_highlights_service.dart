@@ -211,24 +211,14 @@ class BarrioHighlight {
   static BarrioHighlight? decode(Object? raw) {
     if (raw is! Map) return null;
     if (raw['v'] != kCurrentVersion) return null;
-    final id = raw['id'];
-    final unitId = raw['unitId'];
-    final color = raw['color'];
+    final id = _text(raw['id']);
+    final unitId = _text(raw['unitId']);
+    final color = _text(raw['color']);
     final createdAt = raw['createdAt'];
-    final rawSegments = raw['segments'];
-    if (id is! String || id.isEmpty) return null;
-    if (unitId is! String || unitId.isEmpty) return null;
-    if (color is! String || color.isEmpty) return null;
+    final segments = _decodeSegments(raw['segments']);
+    if (id == null || unitId == null || color == null) return null;
     if (createdAt is! int || createdAt <= 0) return null;
-    if (rawSegments is! List || rawSegments.isEmpty) return null;
-    final segments = <BarrioHighlightSegment>[];
-    for (final rawSegment in rawSegments) {
-      final segment = BarrioHighlightSegment.decode(rawSegment);
-      // One bad segment makes the whole entry unreadable: a partly
-      // painted highlight would be a wrong claim about the words.
-      if (segment == null) return null;
-      segments.add(segment);
-    }
+    if (segments == null) return null;
     final note = raw['note'];
     return BarrioHighlight(
       version: kCurrentVersion,
@@ -239,6 +229,25 @@ class BarrioHighlight {
       createdAt: DateTime.fromMillisecondsSinceEpoch(createdAt),
       segments: segments,
     );
+  }
+
+  /// [value] when it is a non-empty string, else null.
+  static String? _text(Object? value) =>
+      value is String && value.isNotEmpty ? value : null;
+
+  /// The stored segment list, or null when it is missing, empty, or
+  /// carries even one unreadable segment. One bad segment makes the
+  /// WHOLE entry unreadable on purpose: a partly painted highlight
+  /// would be a wrong claim about which words the reader marked.
+  static List<BarrioHighlightSegment>? _decodeSegments(Object? raw) {
+    if (raw is! List || raw.isEmpty) return null;
+    final segments = <BarrioHighlightSegment>[];
+    for (final rawSegment in raw) {
+      final segment = BarrioHighlightSegment.decode(rawSegment);
+      if (segment == null) return null;
+      segments.add(segment);
+    }
+    return segments;
   }
 }
 
