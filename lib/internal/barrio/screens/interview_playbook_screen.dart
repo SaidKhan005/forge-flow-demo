@@ -349,39 +349,13 @@ class _PlaybookPremiumBackground extends StatelessWidget {
           ),
         ),
 
-        // Layer 3: Emerald accent bloom — top-right
+        // Layers 3 + 4: the shared emerald accent bloom (top-right) and
+        // complementary navy bloom, from BarrioPremiumBackground.
         Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: const Alignment(0.85, -0.8),
-                  radius: 1.05,
-                  colors: [
-                    accent.withValues(alpha: 0.16),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-
-        // Layer 4: Complementary navy bloom — opposite corner
-        Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(-0.85, 0.95),
-                  radius: 0.75,
-                  colors: [
-                    Color(0x1A1A2456),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
+          child: BarrioPremiumBackground(
+            accentColor: accent,
+            accentOpacity: 0.16,
+            bloomAlignment: const Alignment(0.85, -0.8),
           ),
         ),
 

@@ -666,39 +666,13 @@ class _ElPodioPremiumBackground extends StatelessWidget {
           ),
         ),
 
-        // Layer 3: Gold accent bloom — top center
-        Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: const Alignment(0.0, -0.85),
-                  radius: 1.05,
-                  colors: [
-                    _ElPodioScreenState._gold.withValues(alpha: 0.16),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-
-        // Layer 4: Navy bloom — bottom
-        Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(-0.85, 0.95),
-                  radius: 0.75,
-                  colors: [
-                    Color(0x1A1A2456),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
+        // Layers 3 + 4: the shared gold accent bloom (top centre) and
+        // complementary navy bloom, from BarrioPremiumBackground.
+        const Positioned.fill(
+          child: BarrioPremiumBackground(
+            accentColor: _ElPodioScreenState._gold,
+            accentOpacity: 0.16,
+            bloomAlignment: Alignment(0.0, -0.85),
           ),
         ),
 

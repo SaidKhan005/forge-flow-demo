@@ -82,6 +82,11 @@ class BarrioColors {
   // Only two rungs exist: [glassFill] for surfaces, this for fields.
   static const Color glassFillSoft = Color(0xCCFFFFFF); // 80% white glass
 
+  // The complementary navy bloom every destination background carries in
+  // its opposite corner. Owned by [BarrioPremiumBackground]; screens get it
+  // by using that widget, not by re-declaring the gradient stop.
+  static const Color navyBloom = Color(0x1A1A2456);
+
   // Trophy gold for El Podio — deliberately distinct from brand [gold].
   static const Color trophyGold = Color(0xFFD4AF37);
 }
@@ -152,8 +157,16 @@ int? barrioCacheWidth(BuildContext context, double logicalWidth) {
 /// premium light feel is consistent.
 ///
 /// The bloom is atmospheric only — no interaction.
+///
+/// The photo-backed destination screens compose this as one layer of a
+/// larger stack (photo, veil, blooms, vignette, content). They pass
+/// [child] as null and rely on the caller for sizing, so this widget MUST
+/// be given bounded constraints in that mode — put it in a
+/// [Positioned.fill].
 class BarrioPremiumBackground extends StatelessWidget {
-  final Widget child;
+  /// The screen body painted above the blooms. Null when this widget is
+  /// used purely as a bloom layer inside a caller's own [Stack].
+  final Widget? child;
 
   /// The accent color for the top-corner bloom. Use one of the
   /// [BarrioColors.accent*] constants per destination.
@@ -162,11 +175,17 @@ class BarrioPremiumBackground extends StatelessWidget {
   /// Where to position the primary bloom. Defaults to top-right.
   final AlignmentGeometry bloomAlignment;
 
+  /// Peak alpha of the accent bloom. The default is the calm wash used by
+  /// the plain destination scaffold; the photo-backed screens run a little
+  /// stronger (0.16) so the accent still reads through the cream veil.
+  final double accentOpacity;
+
   const BarrioPremiumBackground({
     super.key,
-    required this.child,
+    this.child,
     this.accentColor = BarrioColors.tealWarm,
     this.bloomAlignment = const Alignment(0.75, -0.9),
+    this.accentOpacity = 0.10,
   });
 
   @override
@@ -183,7 +202,7 @@ class BarrioPremiumBackground extends StatelessWidget {
                   radius: 1.05,
                   colors: [
                     // Soft, low-alpha wash on cream — calm, not saturated.
-                    accentColor.withValues(alpha: 0.10),
+                    accentColor.withValues(alpha: accentOpacity),
                     Colors.transparent,
                   ],
                 ),
@@ -191,7 +210,9 @@ class BarrioPremiumBackground extends StatelessWidget {
             ),
           ),
         ),
-        // Complementary navy bloom — opposite corner, subtle depth
+        // Complementary navy bloom — opposite corner, subtle depth.
+        // The one definition: five destination screens used to copy this
+        // gradient verbatim.
         Positioned.fill(
           child: IgnorePointer(
             child: Container(
@@ -200,7 +221,7 @@ class BarrioPremiumBackground extends StatelessWidget {
                   center: Alignment(-0.85, 0.95),
                   radius: 0.75,
                   colors: [
-                    Color(0x1A1A2456),
+                    BarrioColors.navyBloom,
                     Colors.transparent,
                   ],
                 ),
@@ -208,7 +229,7 @@ class BarrioPremiumBackground extends StatelessWidget {
             ),
           ),
         ),
-        child,
+        if (child != null) child!,
       ],
     );
   }
