@@ -83,7 +83,9 @@ import 'barrio_card_keys_jim_taylor_labor_model.dart';
 import 'barrio_card_keys_training_bar_manual.dart';
 import 'barrio_card_keys_training_bold_by_design.dart';
 import 'barrio_card_keys_training_cheers_responsibility.dart';
+import 'barrio_card_keys_training_clover_sop.dart';
 import 'barrio_card_keys_training_food_safety.dart';
+import 'barrio_card_keys_training_general_words.dart';
 import 'barrio_card_keys_training_host_manual.dart';
 import 'barrio_card_keys_training_labour_cost.dart';
 import 'barrio_card_keys_training_mastering_metrics.dart';
@@ -126,7 +128,9 @@ const Map<String, List<String>> kBarrioCardKeysByUnit = <String, List<String>>{
   ...kBarrioCardKeysTrainingBarManual,
   ...kBarrioCardKeysTrainingBoldByDesign,
   ...kBarrioCardKeysTrainingCheersResponsibility,
+  ...kBarrioCardKeysTrainingCloverSop,
   ...kBarrioCardKeysTrainingFoodSafety,
+  ...kBarrioCardKeysTrainingGeneralWords,
   ...kBarrioCardKeysTrainingHostManual,
   ...kBarrioCardKeysTrainingLabourCost,
   ...kBarrioCardKeysTrainingMasteringMetrics,
