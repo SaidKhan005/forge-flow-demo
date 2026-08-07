@@ -85,6 +85,7 @@ import 'barrio_card_keys_training_bold_by_design.dart';
 import 'barrio_card_keys_training_cheers_responsibility.dart';
 import 'barrio_card_keys_training_clover_sop.dart';
 import 'barrio_card_keys_training_coffee.dart';
+import 'barrio_card_keys_training_drink_specs.dart';
 import 'barrio_card_keys_training_food_safety.dart';
 import 'barrio_card_keys_training_general_words.dart';
 import 'barrio_card_keys_training_host_manual.dart';
@@ -136,6 +137,7 @@ const Map<String, List<String>> kBarrioCardKeysByUnit = <String, List<String>>{
   ...kBarrioCardKeysTrainingCheersResponsibility,
   ...kBarrioCardKeysTrainingCloverSop,
   ...kBarrioCardKeysTrainingCoffee,
+  ...kBarrioCardKeysTrainingDrinkSpecs,
   ...kBarrioCardKeysTrainingFoodSafety,
   ...kBarrioCardKeysTrainingGeneralWords,
   ...kBarrioCardKeysTrainingHostManual,
