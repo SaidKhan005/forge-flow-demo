@@ -36,6 +36,16 @@
 // decorative: on those same real cards, a deliberately rule-breaking
 // phrase renders NOTHING.
 //
+// THE EXHAUSTIVE SWEEP (first group) is the other half. The phrases were
+// authored with a throwaway Python port of the render-time matchers, and
+// a port is not evidence: it can drift, and it lived in a scratchpad
+// shared with two sibling lanes. So the sweep re-derives the same claim
+// for all 552 phrases from the SHIPPED matchers only. It carries one
+// check the corpus-wide contract test cannot: a phrase with NO DIGITS in
+// it can still overlap a numeric-pop span, because the token swallows
+// its unit word ('15 to 25 minutes'), and the blunt no-digits rule waves
+// that through.
+//
 // RED-PROOFED 2026-08-07, one mutation at a time on this branch:
 //   * unregister `kBarrioCardKeysTrainingLatinDishes` in the index and
 //     the dishes probe fails alone (same for ingredients, same for the
@@ -43,7 +53,12 @@
 //   * author the Pay Stubs card and its fallback probe fails;
 //   * make [_wouldRender] pass empty `blockedRanges` and both the
 //     'renders NOTHING' assertions that depend on an outranking tier
-//     fail, so those two are about blocking and not about a typo.
+//     fail, so those two are about blocking and not about a typo;
+//   * prefix AGUACHILE's 'to ensure the seafood remains firm' with the
+//     word 'minutes' so it reaches into '15 to 25 minutes' while still
+//     carrying no digit: the sweep fails two tests and
+//     `barrio_card_key_sets_test.dart` stays fully green, which is the
+//     concrete reason the sweep exists.
 // One honest non-result: removing the chunk filter in [_emphasized]
 // changed nothing, because no chrome on these cards happens to carry
 // tealInk + w700 today. The filter stays as defence in depth; it is not
@@ -54,8 +69,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/internal/barrio/content/barrio_body_chunks.dart';
 import 'package:forge_and_flow/internal/barrio/content/company_handbook_content.dart';
 import 'package:forge_and_flow/internal/barrio/content/highlight/barrio_key_terms.dart';
+import 'package:forge_and_flow/internal/barrio/content/highlight/cards/barrio_card_keys_index.dart';
 import 'package:forge_and_flow/internal/barrio/content/quiz/barrio_quiz_models.dart';
 import 'package:forge_and_flow/internal/barrio/content/training/training_docs.dart';
+import 'package:forge_and_flow/internal/barrio/search/barrio_training_search.dart';
 import 'package:forge_and_flow/internal/barrio/services/barrio_numeric_highlight.dart';
 import 'package:forge_and_flow/internal/barrio/services/barrio_term_links.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/barrio_destination_scaffold.dart';
@@ -204,9 +221,11 @@ Future<void> _pumpCard(WidgetTester tester, HandbookUnit unit) async {
 /// both handed in as `blockedRanges`, threading one `alreadyUsed` set
 /// across the card's chunks in reading order.
 ///
-/// Used ONLY by the last group, to show a rule-breaking phrase produces
-/// nothing. The render probes above go through the real widget instead,
-/// so this mirror is never what proves the shipped data works.
+/// Every matcher it calls is the SHIPPED one ([chunksForBody],
+/// [BarrioNumericHighlight], [barrioAnswerEvidenceForUnit],
+/// [BarrioKeyTermHighlight]); the only thing written here is the wiring
+/// between them, and 'the mirror agrees with the widget' below pins that
+/// wiring against the real card on all three probes.
 List<String> _wouldRender(HandbookUnit unit, List<String> phrases) {
   final evidence = barrioAnswerEvidenceForUnit(unit.id);
   final used = <String>{};
@@ -239,7 +258,139 @@ List<String> _wouldRender(HandbookUnit unit, List<String> phrases) {
   return out;
 }
 
+/// Whole-word occurrences of [phrase] across [unit]'s rendered chunks.
+///
+/// The fold is the shipped one. The boundary rule restates the two lines
+/// of `barrio_key_terms.dart` `_isWordChar` because the matcher only
+/// exposes the FIRST occurrence and uniqueness needs the count. That
+/// restatement is the one place in this file that is not a call into
+/// shipped code, and it is called out rather than left implicit.
+int _wholeWordCount(HandbookUnit unit, String phrase) {
+  bool isWordChar(int u) =>
+      (u >= 0x61 && u <= 0x7A) || (u >= 0x30 && u <= 0x39);
+  final needle = BarrioTrainingSearch.fold(phrase.trim());
+  if (needle.isEmpty) return 0;
+  var count = 0;
+  for (final chunk in chunksForBody(unit.body)) {
+    final hay = BarrioTrainingSearch.fold(chunk.text);
+    var from = 0;
+    while (true) {
+      final idx = hay.indexOf(needle, from);
+      if (idx < 0) break;
+      final after = idx + needle.length;
+      final beforeOk = idx == 0 || !isWordChar(hay.codeUnitAt(idx - 1));
+      final afterOk =
+          after >= hay.length || !isWordChar(hay.codeUnitAt(after));
+      if (beforeOk && afterOk) count++;
+      from = idx + 1;
+    }
+  }
+  return count;
+}
+
+/// Every authored card of [docId], as (unit, phrases).
+List<MapEntry<HandbookUnit, List<String>>> _authoredCardsOf(String docId) {
+  final out = <MapEntry<HandbookUnit, List<String>>>[];
+  for (final chapter in kBarrioTrainingDocs[docId]!.chapters) {
+    for (final unit in chapter.units) {
+      final phrases = kBarrioCardKeysByUnit[unit.id];
+      if (phrases == null || phrases.isEmpty) continue;
+      out.add(MapEntry(unit, phrases));
+    }
+  }
+  return out;
+}
+
+const _docIds = <String>[
+  'training_latin_dishes',
+  'training_latin_ingredients',
+  'training_push_sop',
+];
+
 void main() {
+  group('every authored phrase in these three docs survives the real '
+      'render pipeline (exhaustive sweep, shipped matchers only)', () {
+    // WHY THIS EXISTS. The phrases were authored with the help of a
+    // throwaway Python port of the render-time matchers. A port is not
+    // evidence: it can drift from the Dart, and a shared scratchpad can
+    // hand you someone else's copy of it. This sweep re-derives the same
+    // claim from the SHIPPED source over all 552 phrases, so nothing
+    // about the data rests on the port.
+    //
+    // It is scoped to these three docs on purpose. The corpus-wide
+    // contract test uses the naive `body.split('\n\n')` chunking and the
+    // blunt no-digits rule; widening the stricter checks below to the
+    // other 1,070 already-landed phrases is a different slice.
+
+    for (final docId in _docIds) {
+      test('$docId: every card renders exactly its authored phrases, in '
+          'order, through chunksForBody + the numeric and answer tiers',
+          () {
+        final cards = _authoredCardsOf(docId);
+        expect(cards, isNotEmpty, reason: '$docId has no authored cards');
+        for (final entry in cards) {
+          expect(_wouldRender(entry.key, entry.value), entry.value,
+              reason: '${entry.key.id}: a phrase would render nothing, or '
+                  'out of order, in the REAL chunk space');
+        }
+      });
+
+      test('$docId: no phrase overlaps a real numeric-pop span (the '
+          'no-digits rule alone does not cover this)', () {
+        for (final entry in _authoredCardsOf(docId)) {
+          for (final chunk in chunksForBody(entry.key.body)) {
+            final numerics =
+                BarrioNumericHighlight.matchesIn(chunk.text);
+            if (numerics.isEmpty) continue;
+            // A digit-free phrase can still reach into a numeric token,
+            // because the token swallows its unit word ('15 to 25
+            // minutes'). Compare unblocked key-term spans against the
+            // numeric spans directly.
+            final spans = BarrioKeyTermHighlight.matchesIn(
+              chunk.text,
+              entry.value,
+              alreadyUsed: <String>{},
+              maxPerCard: entry.value.length + 1,
+            );
+            for (final s in spans) {
+              for (final n in numerics) {
+                expect(s.start < n.end && s.end > n.start, isFalse,
+                    reason: '${entry.key.id}: '
+                        '"${chunk.text.substring(s.start, s.end)}" reaches '
+                        'into the numeric token '
+                        '"${chunk.text.substring(n.start, n.end)}"');
+              }
+            }
+          }
+        }
+      });
+
+      test('$docId: every phrase is unique in its own card', () {
+        for (final entry in _authoredCardsOf(docId)) {
+          for (final phrase in entry.value) {
+            expect(_wholeWordCount(entry.key, phrase), 1,
+                reason: '${entry.key.id}: "$phrase" is not a unique '
+                    'whole-word substring of the card');
+          }
+        }
+      });
+    }
+
+    test('the sweep really covers 552 phrases on 119 cards (a silently '
+        'empty sweep would prove nothing)', () {
+      var cards = 0;
+      var phrases = 0;
+      for (final docId in _docIds) {
+        for (final entry in _authoredCardsOf(docId)) {
+          cards++;
+          phrases += entry.value.length;
+        }
+      }
+      expect(cards, 119);
+      expect(phrases, 552);
+    });
+  });
+
   group('render proof: the authored phrases really light up', () {
     testWidgets('Latin American Dishes, PICO DE GALLO: exactly its own six '
         'phrases render emphasized, alongside the quiz answer span',
