@@ -84,6 +84,8 @@ import 'barrio_card_keys_training_bar_manual.dart';
 import 'barrio_card_keys_training_bold_by_design.dart';
 import 'barrio_card_keys_training_cheers_responsibility.dart';
 import 'barrio_card_keys_training_clover_sop.dart';
+import 'barrio_card_keys_training_coffee.dart';
+import 'barrio_card_keys_training_drink_specs.dart';
 import 'barrio_card_keys_training_food_safety.dart';
 import 'barrio_card_keys_training_general_words.dart';
 import 'barrio_card_keys_training_host_manual.dart';
@@ -91,10 +93,12 @@ import 'barrio_card_keys_training_labour_cost.dart';
 import 'barrio_card_keys_training_latin_dishes.dart';
 import 'barrio_card_keys_training_latin_ingredients.dart';
 import 'barrio_card_keys_training_mastering_metrics.dart';
+import 'barrio_card_keys_training_menu.dart';
 import 'barrio_card_keys_training_push_sop.dart';
 import 'barrio_card_keys_training_strong_foundation.dart';
 import 'barrio_card_keys_training_suggestive_selling.dart';
 import 'barrio_card_keys_training_table_manicuring.dart';
+import 'barrio_card_keys_training_tequila.dart';
 import 'barrio_card_keys_training_three_pillars.dart';
 import 'barrio_card_keys_training_wine.dart';
 
@@ -132,6 +136,8 @@ const Map<String, List<String>> kBarrioCardKeysByUnit = <String, List<String>>{
   ...kBarrioCardKeysTrainingBoldByDesign,
   ...kBarrioCardKeysTrainingCheersResponsibility,
   ...kBarrioCardKeysTrainingCloverSop,
+  ...kBarrioCardKeysTrainingCoffee,
+  ...kBarrioCardKeysTrainingDrinkSpecs,
   ...kBarrioCardKeysTrainingFoodSafety,
   ...kBarrioCardKeysTrainingGeneralWords,
   ...kBarrioCardKeysTrainingHostManual,
@@ -139,10 +145,12 @@ const Map<String, List<String>> kBarrioCardKeysByUnit = <String, List<String>>{
   ...kBarrioCardKeysTrainingLatinDishes,
   ...kBarrioCardKeysTrainingLatinIngredients,
   ...kBarrioCardKeysTrainingMasteringMetrics,
+  ...kBarrioCardKeysTrainingMenu,
   ...kBarrioCardKeysTrainingPushSop,
   ...kBarrioCardKeysTrainingStrongFoundation,
   ...kBarrioCardKeysTrainingSuggestiveSelling,
   ...kBarrioCardKeysTrainingTableManicuring,
+  ...kBarrioCardKeysTrainingTequila,
   ...kBarrioCardKeysTrainingThreePillars,
   ...kBarrioCardKeysTrainingWine,
 };

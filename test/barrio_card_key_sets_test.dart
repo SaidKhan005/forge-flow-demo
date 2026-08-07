@@ -211,14 +211,27 @@ void main() {
       final curated = cards.values.firstWhere(
           (c) => barrioKeyTermsForUnit(c.unit.id).isNotEmpty,
           orElse: () => throw StateError('no curated doc in the corpus'));
+      // Uncurated AND unauthored. The no-op guarantee this samples is
+      // "a card with no source of phrases stays dark", so the sample has to
+      // be a card with NEITHER a per-manual list NOR an authored set. Once a
+      // doc that has no per-manual list carries authored per-card phrases
+      // (wine first, then the four culinary manuals), 'uncurated' on its own
+      // stops implying 'unhighlighted' - that is the authoring slice
+      // working, not the fallback regressing. The permanent per-card law is
+      // the first test in this group; this one keeps sampling the same law
+      // rather than drifting into asserting that authoring never happened.
       final uncurated = cards.values.firstWhere(
-          (c) => barrioKeyTermsForUnit(c.unit.id).isEmpty,
-          orElse: () => throw StateError('no uncurated doc in the corpus'));
+          (c) =>
+              barrioKeyTermsForUnit(c.unit.id).isEmpty &&
+              (kBarrioCardKeysByUnit[c.unit.id] ?? const <String>[]).isEmpty,
+          orElse: () =>
+              throw StateError('no uncurated, unauthored doc in the corpus'));
 
       expect(barrioCardKeysForUnit(curated.unit.id), isNotEmpty,
           reason: '${curated.docId} is curated: it must still get terms');
       expect(barrioCardKeysForUnit(uncurated.unit.id), isEmpty,
-          reason: '${uncurated.docId} is uncurated: it must stay unhighlighted');
+          reason: '${uncurated.docId} has no per-manual list and no authored '
+              'set: it must stay unhighlighted');
     });
 
     test('unknown and empty unit ids stay empty (no crash, no highlight)',
