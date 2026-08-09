@@ -139,12 +139,16 @@ class _BarrioHomeSearchFieldState extends State<BarrioHomeSearchField> {
               GestureDetector(
                 onTap: _clear,
                 behavior: HitTestBehavior.opaque,
-                child: const Padding(
-                  padding: EdgeInsets.all(10),
-                  child: Icon(
-                    Icons.close_rounded,
-                    size: 18,
-                    color: BarrioColors.textMuted,
+                // 44x44 minimum tap target for this frequently-used control.
+                child: const SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: Center(
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: BarrioColors.textMuted,
+                    ),
                   ),
                 ),
               )

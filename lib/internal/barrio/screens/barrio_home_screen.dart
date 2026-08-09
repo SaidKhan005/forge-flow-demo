@@ -450,6 +450,11 @@ class _ViewportAssetFill extends StatelessWidget {
           cacheHeight: cacheHeight != null && cacheHeight > 0
               ? cacheHeight
               : null,
+          // Degrade to the deep shell colour instead of Flutter's gray
+          // broken-image box if the asset ever fails to decode.
+          errorBuilder: (_, __, ___) => const ColoredBox(
+            color: BarrioColors.shellDeep,
+          ),
         );
       },
     );

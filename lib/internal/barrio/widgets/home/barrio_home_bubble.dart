@@ -527,37 +527,43 @@ class _BarrioHomeOrbitBubbleState extends State<BarrioHomeOrbitBubble> {
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            barrioHomeIconWidgetFor(
-              context,
-              widget.destination.id,
-              diameter * 0.30,
-              accent,
-              widget.dimmed,
-            ),
-            SizedBox(height: diameter * 0.05),
-            _label(),
-            if (widget.destination.comingSoon) ...[
-              SizedBox(height: diameter * 0.03),
-              // Hub fix kept: scale down instead of wrapping so the tag
-              // stays a single line at any bubble diameter.
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  'Coming Soon',
-                  maxLines: 1,
-                  style: GoogleFonts.ibmPlexMono(
-                    fontSize: max(diameter * 0.080, 11),
-                    color: BarrioColors.gold,
-                    letterSpacing: 0.5,
+        // Scale the whole icon+label stack down together so it never
+        // overflows the fixed 100px disc at elevated accessibility text
+        // scale (same idiom the Coming Soon tag already uses below).
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              barrioHomeIconWidgetFor(
+                context,
+                widget.destination.id,
+                diameter * 0.30,
+                accent,
+                widget.dimmed,
+              ),
+              SizedBox(height: diameter * 0.05),
+              _label(),
+              if (widget.destination.comingSoon) ...[
+                SizedBox(height: diameter * 0.03),
+                // Hub fix kept: scale down instead of wrapping so the tag
+                // stays a single line at any bubble diameter.
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Coming Soon',
+                    maxLines: 1,
+                    style: GoogleFonts.ibmPlexMono(
+                      fontSize: max(diameter * 0.080, 11),
+                      color: BarrioColors.gold,
+                      letterSpacing: 0.5,
+                    ),
                   ),
                 ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

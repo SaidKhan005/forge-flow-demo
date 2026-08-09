@@ -103,9 +103,9 @@ class PrestonLeeModelComingSoonScreen extends StatelessWidget {
 
                 // Body
                 Text(
-                  'The Preston Lee Model is a future destination that is not '
-                  'yet available.\n\n'
-                  'Content and structure will be defined in a later phase.',
+                  'The Preston Lee Model is not ready yet.\n\n'
+                  'We are still putting it together and will add it here as '
+                  'soon as it is ready.',
                   style: GoogleFonts.ibmPlexSans(
                     fontSize: 14,
                     height: 1.75,

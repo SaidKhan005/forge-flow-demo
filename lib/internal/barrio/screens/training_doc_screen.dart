@@ -71,9 +71,10 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   late final AnimationController _heroController = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 700),
-  )..forward();
+  );
   late final Animation<double> _heroFade =
       CurvedAnimation(parent: _heroController, curve: Curves.easeOutCubic);
+  bool _heroStarted = false;
 
   @override
   void initState() {
@@ -103,6 +104,20 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
             .split(_whitespace)
             .where((w) => w.isNotEmpty)
             .toList();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Respect reduce-motion: land the hero fade fully in place instead of
+    // playing it, mirroring the home shell and shelf. Runs once.
+    if (_heroStarted) return;
+    _heroStarted = true;
+    if (MediaQuery.of(context).disableAnimations) {
+      _heroController.value = 1.0;
+    } else {
+      _heroController.forward();
+    }
   }
 
   /// Section that owns the card at flat-deck [page].
@@ -339,6 +354,8 @@ class _TrainingHero extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             chapter.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: GoogleFonts.playfairDisplay(
               fontSize: 26,
               fontWeight: FontWeight.w700,

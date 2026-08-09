@@ -53,6 +53,7 @@ class LearningCarouselState extends State<LearningCarousel>
   late final AnimationController _entranceCtrl;
   late final Animation<double> _entranceFade;
   late final Animation<Offset> _entranceSlide;
+  bool _entranceStarted = false;
 
   @override
   void initState() {
@@ -66,7 +67,7 @@ class LearningCarouselState extends State<LearningCarousel>
     _entranceCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
-    )..forward();
+    );
     _entranceFade = CurvedAnimation(
       parent: _entranceCtrl,
       curve: Curves.easeOutCubic,
@@ -78,12 +79,17 @@ class LearningCarouselState extends State<LearningCarousel>
   }
 
   @override
-  void didUpdateWidget(covariant LearningCarousel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.key != widget.key) {
-      _currentPage = 0;
-      _cancelAutoAdvance();
-      _entranceCtrl.forward(from: 0);
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Respect reduce-motion: skip the entrance and land settled instead of
+    // sliding in. A rail tap re-mounts this widget (key change), so this
+    // one-shot guard re-runs and covers the re-mount path too.
+    if (_entranceStarted) return;
+    _entranceStarted = true;
+    if (MediaQuery.of(context).disableAnimations) {
+      _entranceCtrl.value = 1.0;
+    } else {
+      _entranceCtrl.forward();
     }
   }
 
