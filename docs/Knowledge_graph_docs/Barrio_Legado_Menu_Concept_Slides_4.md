@@ -18,14 +18,10 @@ conversion_notes: Text extracted from the PowerPoint slide XML in slide order; e
 - THE CIVILIZATIONS
 - The INCA:
 
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/01.webp)
-
 ## Slide 3
 
 - THE CIVILIZATIONS
 - The Maya:
-
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/02.webp)
 
 ## Slide 4
 
@@ -34,8 +30,6 @@ conversion_notes: Text extracted from the PowerPoint slide XML in slide order; e
 - CHIPS GUAC AND SALSA
 - Shrimp Cocktail - Tomato, Mint, Salsa Inglesa, Saltine Crackers -> Mexican Style Ceviche
 - -> Salsa Inglesa = Worchestire Sauce:
-
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/03.webp)
 
 ## Slide 5
 
@@ -46,23 +40,17 @@ conversion_notes: Text extracted from the PowerPoint slide XML in slide order; e
 - -> Cancha = Premium Peruvian Snack. It's a Toasted Corn Kernel from Andean.
 - The Andes is the longest Continental Mountain Range across Chile Peru Bolivia Argentina
 
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/04.webp)
-
 ## Slide 6
 
 - CEVICHES · CONTINUED
 - Scallop Ceviche
 - -> Lava Salt = In Latin called Salnegra: This is an Ancestral Mayan Salt cooked for hours in clay pots over wood fire from Volcanic fed Saline Springs
 
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/05.webp)
-
 ## Slide 7
 
 - CEVICHES
 - Cod Aguachile
 - Cod Aguachile - Red Onion, Cucumber, Jalapeño, Lime -> Mexican. Translates to Chili Water: Differs from Ceviche by featuring quicker marinated fish for a more firm texture. See Latin dishes to know for deeper dive: This dish is from Sinoaloa Mexico
-
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/06.webp)
 
 ## Slide 8
 
@@ -85,8 +73,6 @@ conversion_notes: Text extracted from the PowerPoint slide XML in slide order; e
 - Tetelas - Mushroom, Carrot. Mole, Crema? Find a substitute for the mole?
 - -> Made from Masa: Masa is Corn Dough; These are Traditionally from the Mixtera region in Mexico
 - Belongs to the Masa family of foods; Same Family as a Quesedilla
-
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/07.webp)
 
 ## Slide 10
 
@@ -128,8 +114,6 @@ conversion_notes: Text extracted from the PowerPoint slide XML in slide order; e
 - Tagliatelle translates to one precise ribbon
 - Fun fact: It comes from Emilia-Romagna, the region around Bologna, Italy where it's taken so seriously that a golden ruler defining the official ribbon width is kept at the city's Chamber of Commerce.
 
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/09.webp)
-
 ## Slide 14
 
 - MAINS · CONTINUED
@@ -155,8 +139,6 @@ conversion_notes: Text extracted from the PowerPoint slide XML in slide order; e
 - Asado: The traditional open-fire grilling culture of Argentina's Pampas region.
 - Fun Fact: Asador means "grill master." An Asador's most valued skill is patience slowly tending the fire. Likewise, chimichurri tastes even better after resting, allowing its flavors to fully develop.
 
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/10.webp)
-
 ## Slide 17
 
 - MAINS
@@ -174,8 +156,6 @@ conversion_notes: Text extracted from the PowerPoint slide XML in slide order; e
 - Gallo Pinto
 - Gallo Pinto The national breakfast of both Costa Rica and Nicaragua.
 - Meaning: Gallo Pinto translates to "Spotted Rooster," named for the speckled appearance created by mixing rice and black beans.
-
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/11.webp)
 
 ## Slide 19
 
@@ -198,15 +178,11 @@ conversion_notes: Text extracted from the PowerPoint slide XML in slide order; e
 - Chivito translates to 'little goat' even though there is no goat in the Sandwich
 - Background: In the 1940s, at a restaurant in the beach town of Punta del Este, during Luch a traveller asked for chivito, the roast kid goat she'd eaten in the Argentine hills. The owner had no goat, so he improvised: thin grilled beef and ham stacked in a bun, and he served it under the name she'd asked for. The improvisation outlived the request and became the country's signature.
 
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/12.webp)
-
 ## Slide 21
 
 - LUNCH / BRUNCH
 - Huevos Rancheros???
 - Huevos rancheros means "ranch-style eggs," and it's the hearty mid-morning meal of Mexican farm life, the almuerzo, eaten after several hours of work rather than before.
-
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/13.webp)
 
 ## Slide 22
 

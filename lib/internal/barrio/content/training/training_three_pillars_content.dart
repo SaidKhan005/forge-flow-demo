@@ -86,13 +86,6 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'the senses. Proper lighting not only sets the mood but a '
               'thoughtfully lit restaurant also enhances the overall dining '
               'experience.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_three_pillars_photos/training_three_pillars_c1_u1.webp',
-              caption: 'Warm restaurant lighting',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_three_pillars_c1_u2',
@@ -139,13 +132,6 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'establishment. Thus, investing in thoughtful decor is not just '
               'about aesthetics; it is a strategic approach to enhancing '
               'guest satisfaction and driving business success.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_three_pillars_photos/training_three_pillars_c1_u3.webp',
-              caption: 'Restaurant decor',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_three_pillars_c1_u4',
@@ -390,13 +376,6 @@ const BarrioTrainingDoc kTrainingThreePillars = BarrioTrainingDoc(
               'a treat but also as a celebration of culture and creativity, '
               'enhancing the enjoyment of shared moments and enriching the '
               'fabric of everyday life.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_three_pillars_photos/training_three_pillars_c3_u0.webp',
-              caption: 'Plated dish',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_three_pillars_c3_u1',

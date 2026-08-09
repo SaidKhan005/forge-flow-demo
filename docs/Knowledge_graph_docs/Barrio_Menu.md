@@ -83,14 +83,10 @@ Salad - Grilled Pineapple, Grilled Jalapeño , Cactus *, Vegan Green Goddess
 - THE CIVILIZATIONS
 - The INCA:
 
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/01.webp)
-
 ### Slide 3
 
 - THE CIVILIZATIONS
 - The Maya:
-
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/02.webp)
 
 ## Ceviches: The Story
 
@@ -102,8 +98,6 @@ Salad - Grilled Pineapple, Grilled Jalapeño , Cactus *, Vegan Green Goddess
 - Shrimp Cocktail - Tomato, Mint, Salsa Inglesa, Saltine Crackers -> Mexican Style Ceviche
 - -> Salsa Inglesa = Worchestire Sauce:
 
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/03.webp)
-
 ### Slide 5
 
 - CEVICHES
@@ -113,23 +107,17 @@ Salad - Grilled Pineapple, Grilled Jalapeño , Cactus *, Vegan Green Goddess
 - -> Cancha = Premium Peruvian Snack. It's a Toasted Corn Kernel from Andean.
 - The Andes is the longest Continental Mountain Range across Chile Peru Bolivia Argentina
 
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/04.webp)
-
 ### Slide 6
 
 - CEVICHES · CONTINUED
 - Scallop Ceviche
 - -> Lava Salt = In Latin called Salnegra: This is an Ancestral Mayan Salt cooked for hours in clay pots over wood fire from Volcanic fed Saline Springs
 
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/05.webp)
-
 ### Slide 7
 
 - CEVICHES
 - Cod Aguachile
 - Cod Aguachile - Red Onion, Cucumber, Jalapeño, Lime -> Mexican. Translates to Chili Water: Differs from Ceviche by featuring quicker marinated fish for a more firm texture. See Latin dishes to know for deeper dive: This dish is from Sinoaloa Mexico
-
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/06.webp)
 
 ## Shareables: The Story
 
@@ -154,8 +142,6 @@ Salad - Grilled Pineapple, Grilled Jalapeño , Cactus *, Vegan Green Goddess
 - Tetelas - Mushroom, Carrot. Mole, Crema? Find a substitute for the mole?
 - -> Made from Masa: Masa is Corn Dough; These are Traditionally from the Mixtera region in Mexico
 - Belongs to the Masa family of foods; Same Family as a Quesedilla
-
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/07.webp)
 
 ### Slide 10
 
@@ -199,8 +185,6 @@ Salad - Grilled Pineapple, Grilled Jalapeño , Cactus *, Vegan Green Goddess
 - Tagliatelle translates to one precise ribbon
 - Fun fact: It comes from Emilia-Romagna, the region around Bologna, Italy where it's taken so seriously that a golden ruler defining the official ribbon width is kept at the city's Chamber of Commerce.
 
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/09.webp)
-
 ### Slide 14
 
 - MAINS · CONTINUED
@@ -226,8 +210,6 @@ Salad - Grilled Pineapple, Grilled Jalapeño , Cactus *, Vegan Green Goddess
 - Asado: The traditional open-fire grilling culture of Argentina's Pampas region.
 - Fun Fact: Asador means "grill master." An Asador's most valued skill is patience slowly tending the fire. Likewise, chimichurri tastes even better after resting, allowing its flavors to fully develop.
 
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/10.webp)
-
 ### Slide 17
 
 - MAINS
@@ -247,8 +229,6 @@ Salad - Grilled Pineapple, Grilled Jalapeño , Cactus *, Vegan Green Goddess
 - Gallo Pinto
 - Gallo Pinto The national breakfast of both Costa Rica and Nicaragua.
 - Meaning: Gallo Pinto translates to "Spotted Rooster," named for the speckled appearance created by mixing rice and black beans.
-
-![](assets/internal/barrio/training/barrio_legado_menu_concept_slides/11.webp)
 
 ## Legacy
 

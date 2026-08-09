@@ -223,13 +223,6 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'guests savour the nuances of each dish.',
           runIndex: 1,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_strong_foundation_photos/training_strong_foundation_c4_u1.webp',
-              caption: 'Plated dish',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_strong_foundation_c4_u2',
@@ -252,13 +245,6 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'meals without fear of disappointment.',
           runIndex: 2,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_strong_foundation_photos/training_strong_foundation_c4_u2.webp',
-              caption: 'Plated dish',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_strong_foundation_c4_u3',

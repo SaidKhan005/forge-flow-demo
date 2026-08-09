@@ -325,11 +325,14 @@ class _JtPremiumBackground extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Layer 1: Full-bleed book photo. Decoded at screen width (perf
-        // audit A1), not the source resolution.
+        // Layer 1: Full-bleed backdrop photo. Decoded at screen width (perf
+        // audit A1), not the source resolution. The original jim_taylor_bg.jpg
+        // book mockup was AI-generated (garbled spine text) and is banned
+        // under the no-AI-images law; the real handbook building photo
+        // stands in.
         Positioned.fill(
           child: Image.asset(
-            'assets/internal/barrio/jim_taylor_bg.jpg',
+            'assets/internal/barrio/handbook_bg.jpg',
             fit: BoxFit.cover,
             alignment: const Alignment(0.0, -0.2),
             cacheWidth:

@@ -320,13 +320,6 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               '\n'
               'It is essential that food be protected from contamination, '
               'especially ready-to-eat items.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c2_u3.webp',
-              caption: 'Kitchen tongs',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c2_u4',
@@ -881,12 +874,6 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               '"When in doubt, throw it out!"',
           runIndex: 6,
           runLength: 6,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/food_safety_manual/03.webp',
-              afterParagraph: 1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u7',

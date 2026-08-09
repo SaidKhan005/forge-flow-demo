@@ -196,13 +196,6 @@
       "caption": "Diagram: HEALTH AND SAFETY BOARD"
     }
   ],
-  "company_handbook_c16_u16": [
-    {
-      "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c16_u16.webp",
-      "caption": "First aid kit"
-    }
-  ],
   "company_handbook_c16_u19": [
     {
       "afterParagraph": -1,
@@ -217,13 +210,6 @@
       "caption": "Diagram: IN CASE OF FIRE"
     }
   ],
-  "company_handbook_c16_u23": [
-    {
-      "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c16_u23.webp",
-      "caption": "Fire alarm pull station"
-    }
-  ],
   "company_handbook_c16_u24": [
     {
       "afterParagraph": -1,
@@ -234,13 +220,6 @@
       "afterParagraph": -1,
       "assetPath": "assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c16_u24_2.webp",
       "caption": "Photo: vgroiwwo96, CC BY 2.0"
-    }
-  ],
-  "company_handbook_c16_u25": [
-    {
-      "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c16_u25.webp",
-      "caption": "Kitchen exhaust hood"
     }
   ],
   "company_handbook_c16_u28": [
@@ -398,13 +377,6 @@
       "afterParagraph": -1,
       "assetPath": "assets/internal/barrio/training/barrio_company_handbook_diagrams/company_handbook_c7_u4.webp",
       "caption": "Diagram: PROBATIONARY PERIOD"
-    }
-  ],
-  "company_handbook_c7_u7": [
-    {
-      "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c7_u7.webp",
-      "caption": "Staff communication board"
     }
   ],
   "company_handbook_c8_u0": [
@@ -925,41 +897,6 @@
       "afterParagraph": -1,
       "assetPath": "assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c4_u8.webp",
       "caption": "Chits on the service pass. Photo: Visitor7, CC BY-SA 3.0"
-    }
-  ],
-  "training_bar_manual_c5_u10": [
-    {
-      "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c5_u10.webp",
-      "caption": "Pint of beer"
-    }
-  ],
-  "training_bar_manual_c5_u6": [
-    {
-      "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c5_u6.webp",
-      "caption": "Classic cocktail"
-    }
-  ],
-  "training_bar_manual_c5_u7": [
-    {
-      "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c5_u7.webp",
-      "caption": "Craft cocktail"
-    }
-  ],
-  "training_bar_manual_c5_u9": [
-    {
-      "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c5_u9.webp",
-      "caption": "Draft beer"
-    }
-  ],
-  "training_bar_manual_c6_u10": [
-    {
-      "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c6_u10.webp",
-      "caption": "Wine cellar"
     }
   ],
   "training_bar_manual_c6_u12": [
@@ -1777,13 +1714,6 @@
       "caption": "Photo: Colin and Sarah Northway, CC BY 2.0"
     }
   ],
-  "training_bold_by_design_c8_u2": [
-    {
-      "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_bold_by_design_photos/training_bold_by_design_c8_u2.webp",
-      "caption": "Restaurant menu"
-    }
-  ],
   "training_bold_by_design_c8_u3": [
     {
       "afterParagraph": -1,
@@ -2153,13 +2083,6 @@
       "afterParagraph": -1,
       "assetPath": "assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c2_u2_2.webp",
       "caption": "Photo: Rawpixel, CC0 1.0"
-    }
-  ],
-  "training_food_safety_c2_u3": [
-    {
-      "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/food_safety_manual_photos/training_food_safety_c2_u3.webp",
-      "caption": "Kitchen tongs"
     }
   ],
   "training_food_safety_c5_u0": [
@@ -3683,13 +3606,6 @@
       "caption": "Photo: Ix kimiaranda, CC BY-SA 4.0"
     }
   ],
-  "training_menu_concept_c4_u1": [
-    {
-      "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_menu_concept_photos/training_menu_concept_c4_u1.webp",
-      "caption": "Lomo Saltado"
-    }
-  ],
   "training_strong_foundation_c0_u0": [
     {
       "afterParagraph": -1,
@@ -3709,20 +3625,6 @@
       "afterParagraph": -1,
       "assetPath": "assets/internal/barrio/training/training_strong_foundation_diagrams/training_strong_foundation_c2_u1.webp",
       "caption": "Diagram: Brand Strength"
-    }
-  ],
-  "training_strong_foundation_c4_u1": [
-    {
-      "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_strong_foundation_photos/training_strong_foundation_c4_u1.webp",
-      "caption": "Plated dish"
-    }
-  ],
-  "training_strong_foundation_c4_u2": [
-    {
-      "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_strong_foundation_photos/training_strong_foundation_c4_u2.webp",
-      "caption": "Plated dish"
     }
   ],
   "training_strong_foundation_c4_u3": [
@@ -3985,25 +3887,11 @@
       "caption": "Diagram: The Three Pillars Of Hospitality"
     }
   ],
-  "training_three_pillars_c1_u1": [
-    {
-      "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_three_pillars_photos/training_three_pillars_c1_u1.webp",
-      "caption": "Warm restaurant lighting"
-    }
-  ],
   "training_three_pillars_c1_u2": [
     {
       "afterParagraph": -1,
       "assetPath": "assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c1_u2.webp",
       "caption": "Diagram: Music"
-    }
-  ],
-  "training_three_pillars_c1_u3": [
-    {
-      "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_three_pillars_photos/training_three_pillars_c1_u3.webp",
-      "caption": "Restaurant decor"
     }
   ],
   "training_three_pillars_c1_u4": [
@@ -4068,13 +3956,6 @@
       "afterParagraph": -1,
       "assetPath": "assets/internal/barrio/training/training_three_pillars_diagrams/training_three_pillars_c2_u4.webp",
       "caption": "Diagram: Attentiveness"
-    }
-  ],
-  "training_three_pillars_c3_u0": [
-    {
-      "afterParagraph": -1,
-      "assetPath": "assets/internal/barrio/training/training_three_pillars_photos/training_three_pillars_c3_u0.webp",
-      "caption": "Plated dish"
     }
   ],
   "training_three_pillars_c3_u1": [

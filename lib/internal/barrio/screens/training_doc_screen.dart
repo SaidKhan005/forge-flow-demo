@@ -1466,7 +1466,10 @@ const Map<String, String> _kDocBackdrops = <String, String>{
   // Originals restored
   'company_handbook': 'assets/internal/barrio/handbook_bg.jpg',
   'interview_playbook': 'assets/internal/barrio/interview_bg.jpg',
-  'jim_taylor_labor_model': 'assets/internal/barrio/jim_taylor_bg.jpg',
+  // jim_taylor_bg.jpg was an AI-generated book mockup (garbled spine text)
+  // and is banned under the no-AI-images law; the labor family shares the
+  // real handbook building photo instead.
+  'jim_taylor_labor_model': 'assets/internal/barrio/handbook_bg.jpg',
   // Service & Hospitality
   'training_strong_foundation': 'assets/internal/barrio/interview_bg.jpg',
   'training_table_manicuring': 'assets/internal/barrio/interview_bg.jpg',
@@ -1480,9 +1483,9 @@ const Map<String, String> _kDocBackdrops = <String, String>{
   'training_latin_ingredients': 'assets/internal/barrio/home_bg.webp',
   'training_menu_concept': 'assets/internal/barrio/home_bg.webp',
   // A Deeper Dive
-  'training_labour_cost': 'assets/internal/barrio/jim_taylor_bg.jpg',
-  'training_bold_by_design': 'assets/internal/barrio/jim_taylor_bg.jpg',
-  'training_mastering_metrics': 'assets/internal/barrio/jim_taylor_bg.jpg',
+  'training_labour_cost': 'assets/internal/barrio/handbook_bg.jpg',
+  'training_bold_by_design': 'assets/internal/barrio/handbook_bg.jpg',
+  'training_mastering_metrics': 'assets/internal/barrio/handbook_bg.jpg',
   // Company & Compliance
   'training_food_safety': 'assets/internal/barrio/handbook_bg.jpg',
   'training_cheers_responsibility': 'assets/internal/barrio/handbook_bg.jpg',
