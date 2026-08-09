@@ -96,13 +96,13 @@ const Map<String, Color> kBarrioTrainingAccents = {
   'training_coffee': BarrioColors.accentCoffee,
   'training_latin_dishes': BarrioColors.accentHandbook, // brick red
   'training_latin_ingredients': BarrioColors.accentHerb,
-  'training_labour_cost': BarrioColors.accentJimTaylor, // royal blue
+  'training_labour_cost': BarrioColors.tealWarm, // cyan: distinct in the Deeper Dive row
   'training_menu_concept': BarrioColors.tealWarm,
   // Corpus-complete slice (2026-07-11): the remaining 5 knowledge-graph docs.
   'training_bold_by_design': BarrioColors.accentSteel, // steel blue
   'training_food_safety': BarrioColors.accentFresh, // fresh green
   'training_cheers_responsibility': BarrioColors.gold,
-  'training_mastering_metrics': BarrioColors.accentJimTaylor, // royal blue
+  'training_mastering_metrics': BarrioColors.accentPlum, // plum: distinct in the Deeper Dive row
   'training_general_words': BarrioColors.tealWarm,
   // SOP training manuals (Scribe-format point-of-sale + scheduling docs).
   'training_clover_sop': BarrioColors.accentSteel, // steel blue
