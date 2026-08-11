@@ -145,8 +145,8 @@ documents:
       - "planning"
     word_count_estimate: 1451
     heading_count: 26
-    line_count: 253
-    sha256: "05c4d2f9b748d3bcc6e14150367d2c3f0e1130efdad1c7872f3471e18b7b31a1"
+    line_count: 229
+    sha256: "a2126be43066777aebf4e3e29b901aa1b063facbf19f9584913666712fb3a17d"
   - doc_id: "barrio_menu"
     file_name: "Barrio_Menu.md"
     source_path: "docs/Knowledge_graph_docs/Barrio_Menu.md"
@@ -171,8 +171,8 @@ documents:
       - "barrio_legado"
     word_count_estimate: 1433
     heading_count: 32
-    line_count: 259
-    sha256: "6e1278f5c6cc98e1445976bd7ad0ab3fd51661025fd76012bd1d1e55ef6db494"
+    line_count: 238
+    sha256: "fcd22c0a668ad72d1ed23bb969b80e2c33760c9cbbe2b5c5ac3a2379e8fcf888"
 
   - doc_id: "barrio_table_maintenance_and_manicuring"
     file_name: "Barrio Table Maintenance and Manicuring.md"
@@ -329,10 +329,10 @@ documents:
       - "risk"
     word_count_estimate: 10801
     heading_count: 86
-    line_count: 725
+    line_count: 723
     # Refreshed 2026-08-06: same stale-checksum drift from PR #1543
     # (e726d69e) as barrio_company_handbook above.
-    sha256: "3d5cadf20db8e5ae10ca3d5d0997813520c8d3c48f1ac9b318495567e7468d57"
+    sha256: "5249953ac3ab6ee1135e843d34a8d16932695b2aefa48311dde36d12dd81f69c"
 
   - doc_id: "general_words_to_know"
     file_name: "GENERAL WORDS TO KNOW.md"
@@ -797,4 +797,4 @@ documents:
     word_count_estimate: 21806
     heading_count: 170
     line_count: 946
-    sha256: "89efa7feeb0e64e8a69a6d33a8fdca1c78af9b159e2664c3073a1b0061e9b0b7"
+    sha256: "1fd62008f928eed33525689d2d94589f3d6c8dc9d42f6f904b3bef2effbfb17a"
