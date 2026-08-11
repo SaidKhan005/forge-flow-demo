@@ -279,8 +279,11 @@ void main() {
     // The AI-image purge (2026-08-09) then removed the 28 cards whose only
     // picture was AI-generated: the 17 uncredited build-30 renders (PR
     // #1531), the 12 AI map slides shared by the Menu Concept docs, and the
-    // AI food-safety infographic. Every one was a single-picture card, so
-    // groups, grouped slides, and the deepest group are untouched:
+    // AI food-safety infographic. 30 images but 28 cards in this census:
+    // this registry routes 'training_menu_concept' to kTrainingMenu, whose
+    // doc carries 10 of the 12 slides; the other 2 sit only in the parked,
+    // unrouted kTrainingMenuConcept file. Every one was a single-picture
+    // card, so groups, grouped slides, and the deepest group are untouched:
     // imaged 822 - 28 = 794, single-picture 729 - 28 = 701.
     test('forms exactly 93 slide groups across 93 cards', () {
       expect(imagedUnits, 794);
