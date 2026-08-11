@@ -3,6 +3,13 @@
 The list of training assets `tool/barrio_training_image_extractor.py`
 produced, and therefore the only ones it is allowed to delete.
 
+Its permanent counterpart is `tool/barrio_training_extracted_bans.json`:
+output files the extractor must never produce again (the AI-generated
+pictures purged in PR #1580). This manifest records what the extractor
+DID produce and may delete; the ban manifest records what it may never
+produce, so a banned name never appears in the lists below. See
+`tool/barrio_training_extracted_bans.README.md`.
+
 ## Why this exists
 
 `assets/internal/barrio/training/<doc_id>/` used to have exactly one

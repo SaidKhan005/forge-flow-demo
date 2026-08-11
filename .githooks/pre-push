@@ -162,7 +162,7 @@ fi
 # tracked assets and 8 docs' markers on clean master (2026-08-06). The test
 # builds a synthetic PDF in a temp dir, so unlike the extractor's own --check
 # it does not need the untracked docs/training drop. ~2s.
-if has_changed '^tool/barrio_training_image_extractor(_test)?\.py$|^tool/barrio_training_extracted_assets\.json$'; then
+if has_changed '^tool/barrio_training_image_extractor(_test)?\.py$|^tool/barrio_training_extracted_(assets|bans)\.json$'; then
   barrio_ex_py=""
   for candidate in python python3 py; do
     if "$candidate" -c "" >/dev/null 2>&1; then
