@@ -1778,13 +1778,6 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'execute at speed.\n'
               '\n'
               'Until that is recognized, the problem cannot be solved.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bold_by_design_photos/training_bold_by_design_c8_u2.webp',
-              caption: 'Restaurant menu',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c8_u3',

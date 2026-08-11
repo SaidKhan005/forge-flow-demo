@@ -159,12 +159,6 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
           body: '- THE CIVILIZATIONS\n'
               '\n'
               '- The INCA:',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/01.webp',
-              afterParagraph: 1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c1_u1',
@@ -174,12 +168,6 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
           body: '- THE CIVILIZATIONS\n'
               '\n'
               '- The Maya:',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/02.webp',
-              afterParagraph: 1,
-            ),
-          ],
         ),
       ],
     ),
@@ -204,12 +192,6 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               'Crackers -> Mexican Style Ceviche\n'
               '\n'
               '- -> Salsa Inglesa = Worchestire Sauce:',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/03.webp',
-              afterParagraph: 4,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c2_u1',
@@ -231,12 +213,6 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               '\n'
               '- The Andes is the longest Continental Mountain Range across '
               'Chile Peru Bolivia Argentina',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/04.webp',
-              afterParagraph: 5,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c2_u2',
@@ -250,12 +226,6 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               '- -> Lava Salt = In Latin called Salnegra: This is an '
               'Ancestral Mayan Salt cooked for hours in clay pots over wood '
               'fire from Volcanic fed Saline Springs',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/05.webp',
-              afterParagraph: 2,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c2_u3',
@@ -271,12 +241,6 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               'featuring quicker marinated fish for a more firm texture. See '
               'Latin dishes to know for deeper dive: This dish is from '
               'Sinoaloa Mexico',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/06.webp',
-              afterParagraph: 2,
-            ),
-          ],
         ),
       ],
     ),
@@ -333,12 +297,6 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               '\n'
               '- Belongs to the Masa family of foods; Same Family as a '
               'Quesedilla',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/07.webp',
-              afterParagraph: 5,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c3_u2',
@@ -422,13 +380,6 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               'potatoes, creating one of Peru\'s most celebrated fusion '
               'dishes. Today, it is widely recognized as a symbol of Peru\'s '
               'multicultural culinary heritage.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_menu_concept_photos/training_menu_concept_c4_u1.webp',
-              caption: 'Lomo Saltado',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c4_u2',
@@ -453,12 +404,6 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               'Bologna, Italy where it\'s taken so seriously that a golden '
               'ruler defining the official ribbon width is kept at the city\'s '
               'Chamber of Commerce.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/09.webp',
-              afterParagraph: 6,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c4_u3',
@@ -522,12 +467,6 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               'valued skill is patience slowly tending the fire. Likewise, '
               'chimichurri tastes even better after resting, allowing its '
               'flavors to fully develop.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/10.webp',
-              afterParagraph: 5,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c4_u6',
@@ -574,12 +513,6 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               '- Meaning: Gallo Pinto translates to "Spotted Rooster," named '
               'for the speckled appearance created by mixing rice and black '
               'beans.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/11.webp',
-              afterParagraph: 3,
-            ),
-          ],
         ),
       ],
     ),

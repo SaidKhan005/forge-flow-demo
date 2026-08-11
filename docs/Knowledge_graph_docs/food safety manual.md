@@ -346,8 +346,6 @@ Foods high in protein and carbohydrates, including meat, dairy, cooked beans, an
 
 "When in doubt, throw it out!"
 
-![](assets/internal/barrio/training/food_safety_manual/03.webp)
-
 ### Chemical Hazards
 
 Chemical hazards in food safety encompass a wide range of risks that can seriously impact health, often without any visible or detectable signs. These hazards arise from cleaning, sanitizing, and disinfecting supplies, as well as the presence of toxic metals from utensils and cookware, and pesticides. Safe food handling practices are essential in preventing these dangers, which can include naturally occurring toxins from plants, animals, and microorganisms, as well as chemicals intentionally or unintentionally added to food.

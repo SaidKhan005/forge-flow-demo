@@ -683,13 +683,6 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'use this board to relay important daily information and to '
               'keep everyone aligned about promotions, features, '
               'announcements, reservation details, and our company goals.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c7_u7.webp',
-              caption: 'Staff communication board',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c7_u8',
@@ -2787,13 +2780,6 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'smaller portable kit is conveniently located at the host stand '
               'for easy access to essential supplies, such as band-aids, '
               'alcohol swabs, and safety pins, for minor everyday incidents.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c16_u16.webp',
-              caption: 'First aid kit',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c16_u17',
@@ -2947,13 +2933,6 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'use the required measures of the Fire Safety Plan. The '
               'location of fire alarm pull stations can be found in your '
               'health and safety manual and on the health and safety board.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c16_u23.webp',
-              caption: 'Fire alarm pull station',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c16_u24',
@@ -3003,13 +2982,6 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'so the fire can be subdued before it gets the opportunity to '
               'spread. The exhaust system is the ductwork that mechanically '
               'expels cooking vapours from the building.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook_photos/company_handbook_c16_u25.webp',
-              caption: 'Kitchen exhaust hood',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c16_u26',

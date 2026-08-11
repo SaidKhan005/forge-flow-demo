@@ -730,13 +730,6 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'bartenders must adhere to our specified recipes, no matter '
               'their past experiences, ensuring each sip is as memorable as '
               'the last.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c5_u6.webp',
-              caption: 'Classic cocktail',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bar_manual_c5_u7',
@@ -764,13 +757,6 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'This personalized approach not only helps guests discover '
               'something exceptional but also enhances their overall '
               'experience at our venue.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c5_u7.webp',
-              caption: 'Craft cocktail',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bar_manual_c5_u8',
@@ -821,13 +807,6 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               '1.5 inches or 1 to 2 fingers wide.',
           runIndex: 1,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c5_u9.webp',
-              caption: 'Draft beer',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bar_manual_c5_u10',
@@ -839,13 +818,6 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'time to drink.',
           runIndex: 2,
           runLength: 2,
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c5_u10.webp',
-              caption: 'Pint of beer',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bar_manual_c5_u11',
@@ -1147,13 +1119,6 @@ const BarrioTrainingDoc kTrainingBarManual = BarrioTrainingDoc(
               'Remember, maintaining the organization of these areas is a '
               'shared responsibility, with access limited to bartenders, '
               'supervisors, and managers.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/training_bar_manual_photos/training_bar_manual_c6_u10.webp',
-              caption: 'Wine cellar',
-              afterParagraph: -1,
-            ),
-          ],
         ),
         HandbookUnit(
           id: 'training_bar_manual_c6_u11',

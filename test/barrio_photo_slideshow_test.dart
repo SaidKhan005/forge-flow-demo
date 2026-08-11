@@ -275,8 +275,15 @@ void main() {
     //     decanting photograph stacks on its own.
     // Slides inside groups: 202 + 2 + 2 + 2 + 3 + 2 - 2 = 211.
     // Single-picture cards: 677 + 56 - 5 + 1 = 729.
+    //
+    // The AI-image purge (2026-08-09) then removed the 28 cards whose only
+    // picture was AI-generated: the 17 uncredited build-30 renders (PR
+    // #1531), the 12 AI map slides shared by the Menu Concept docs, and the
+    // AI food-safety infographic. Every one was a single-picture card, so
+    // groups, grouped slides, and the deepest group are untouched:
+    // imaged 822 - 28 = 794, single-picture 729 - 28 = 701.
     test('forms exactly 93 slide groups across 93 cards', () {
-      expect(imagedUnits, 822);
+      expect(imagedUnits, 794);
       expect(groups, hasLength(93));
       expect(unitsWithSlideGroup, 93,
           reason: 'no card carries two separate slide holders today');
@@ -292,11 +299,11 @@ void main() {
       );
     });
 
-    test('729 imaged cards keep the single-picture degrade path', () {
+    test('701 imaged cards keep the single-picture degrade path', () {
       // The degrade rule at corpus scale: the overwhelming majority of
       // imaged cards still render exactly today's tree, one picture per
       // holder, no chips, no dots, no counter.
-      expect(unitsWithNoSlideGroup, 729);
+      expect(unitsWithNoSlideGroup, 701);
       expect(unitsWithSlideGroup + unitsWithNoSlideGroup, imagedUnits);
     });
 
