@@ -32,6 +32,14 @@ Against the pre-fix extractor (`git show b707ace7:tool/barrio_training_
 image_extractor.py`) every scenario reports failures, 15 in total, led by
 the two that describe the incident itself: "curated 03.webp must NOT be
 deleted" and "the Photo: credit marker must survive verbatim".
+
+Scenarios 7 to 9 pin the permanent ban list
+(`tool/barrio_training_extracted_bans.json`, seeded from the 2026-08-09
+AI-image purge, PR #1580): a banned file is never written, never gets a
+marker, never re-enters the ownership manifest, and a missing banned
+file is not a pending `--check` change. Against the pre-ban extractor
+(the parent of the commit that added them) those scenarios report 11
+failures, led by "banned 02.webp must NOT be written back to disk".
 """
 
 import importlib.util
@@ -162,6 +170,12 @@ class Fixture:
             return {}
         with open(path, encoding='utf-8') as f:
             return json.load(f)
+
+    def write_bans(self, bans):
+        """Write the temp tree's permanent ban list (replacing any prior one)."""
+        path = os.path.join(self.root, 'tool', 'barrio_training_extracted_bans.json')
+        with open(path, 'w', encoding='utf-8', newline='') as f:
+            json.dump(bans, f, indent=2, sort_keys=True)
 
     def asset(self, name):
         return os.path.join(self.asset_dir, name)
@@ -338,6 +352,81 @@ def scenario_6_collision_hard_stops(fx):
           f'a hard stop must leave the tree completely untouched; changed: {changed}')
 
 
+def scenario_7_banned_file_stays_dead(fx):
+    print('7. a banned file is never resurrected (the 2026-08-09 AI purge)')
+    # The post-purge state: the banned file is not on disk, not in the
+    # ownership manifest, and has no marker, but the untracked source
+    # still yields it. The run must not bring any part of it back.
+    make_pdf(fx.src_pdf, [1, 2])
+    fx.write_bans({DOC_ID: ['02.webp']})
+    code = fx.run()
+    check(ok(code), f'run should succeed, got exit {code}')
+    check('SKIPPED 02.webp (banned)' in fx.output,
+          'the run should report the banned file as SKIPPED (banned)')
+    check(not os.path.exists(fx.asset('02.webp')),
+          'banned 02.webp must NOT be written back to disk')
+    check(f'{DOC_ID}/02.webp' not in fx.md_text(),
+          'banned 02.webp must NOT get a marker derived')
+    check(fx.manifest().get(DOC_ID) == ['01.webp'],
+          f'banned 02.webp must NOT re-enter the ownership manifest, '
+          f'got {fx.manifest().get(DOC_ID)}')
+    check(fx.run(check=True) == 0,
+          '--check must treat a missing banned file as settled, not pending')
+
+
+def scenario_8_ban_preserves_sibling_numbering(fx):
+    print('8. banning an early file neither renumbers nor revives anything')
+    # Ban 01 instead: the sibling that has always shipped as 02.webp must
+    # KEEP that name (sliding it down to 01.webp would collide with
+    # curated content), and the still-owned 01.webp converges through the
+    # normal owned-cleanup path: removed exactly once, never recreated.
+    fx.write_bans({DOC_ID: ['01.webp']})
+    code = fx.run()
+    check(ok(code), f'run should succeed, got exit {code}')
+    check(not os.path.exists(fx.asset('01.webp')),
+          'a banned still-owned file should be removed via owned cleanup')
+    check(f'{DOC_ID}/01.webp' not in fx.md_text(),
+          "the banned file's marker should be stripped with it")
+    check(os.path.exists(fx.asset('02.webp')),
+          'the unbanned sibling must still extract')
+    check(f'{DOC_ID}/02.webp' in fx.md_text(),
+          'the unbanned sibling must keep its shipped number, not slide to 01')
+    check(fx.manifest().get(DOC_ID) == ['02.webp'],
+          f'manifest should list only the sibling, got {fx.manifest().get(DOC_ID)}')
+    before = fx.snapshot()
+    code = fx.run()
+    check(ok(code), f're-run should succeed, got exit {code}')
+    after = fx.snapshot()
+    changed = sorted(set(before) ^ set(after)) + sorted(
+        k for k in before.keys() & after.keys() if before[k] != after[k])
+    check(not changed,
+          f'a banned file is deleted once, never recreated; changed: {changed}')
+    check(fx.run(check=True) == 0, '--check should settle after the ban cleanup')
+
+
+def scenario_9_ban_shields_curated_number(fx):
+    print('9. a ban shields a curated file sitting on a banned number')
+    # Scenario 6's hard stop: source image 3 wants 03.webp, where the
+    # curated photograph lives. With 03.webp banned the extractor skips
+    # it BEFORE the ownership byte comparison: no collision error, and
+    # the curated file plus its credit are untouched.
+    make_pdf(fx.src_pdf, [1, 2, 3])
+    fx.write_bans({DOC_ID: ['01.webp', '03.webp']})
+    curated_bytes = open(fx.asset('03.webp'), 'rb').read()
+    before_md = fx.md_bytes()
+    code = fx.run()
+    check(ok(code), f'a banned collision must not hard-stop, got exit {code}')
+    check('NOT extractor-owned' not in fx.output,
+          'the ownership collision error must not fire for a banned name')
+    check(open(fx.asset('03.webp'), 'rb').read() == curated_bytes,
+          'the curated photograph on the banned number must be untouched')
+    check(fx.md_bytes() == before_md,
+          'the markdown (including the Photo: credit) must be untouched')
+    check(fx.manifest().get(DOC_ID) == ['02.webp'],
+          f'manifest should still list only 02.webp, got {fx.manifest().get(DOC_ID)}')
+    check(fx.run(check=True) == 0, '--check should stay settled')
+
+
 def main():
     print(f'extractor under test: {EXTRACTOR_PATH}')
     fx = Fixture()
@@ -347,7 +436,10 @@ def main():
                          scenario_3_curated_photo_survives,
                          scenario_4_hand_edits_preserved,
                          scenario_5_owned_removal_still_works,
-                         scenario_6_collision_hard_stops):
+                         scenario_6_collision_hard_stops,
+                         scenario_7_banned_file_stays_dead,
+                         scenario_8_ban_preserves_sibling_numbering,
+                         scenario_9_ban_shields_curated_number):
             try:
                 scenario(fx)
             except Exception:
@@ -364,7 +456,8 @@ def main():
         for f in FAILURES:
             print(f'  - {f}')
         return 1
-    print('PASSED: curated assets, captions, and hand-placed markers all survive.')
+    print('PASSED: curated assets, captions, and hand-placed markers all '
+          'survive, and banned files stay dead.')
     return 0
 
 

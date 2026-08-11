@@ -28,6 +28,14 @@ ownership is now explicit:
   exact file names this tool produced. Only those files may be deleted,
   and only markers pointing at them may be stripped or moved. Everything
   else in the folder belongs to curation and is left alone.
+* `tool/barrio_training_extracted_bans.json` is the permanent ban list:
+  output files this tool must never produce again (seeded with the 13
+  AI-generated pictures purged in PR #1580; the operator's law is that
+  zero AI images may ever ship). A banned name is skipped AFTER
+  reading-order numbering, so an unbanned sibling keeps its shipped
+  number: never written to disk, never given a marker, never listed in
+  the ownership manifest, reported as SKIPPED (banned). See
+  `tool/barrio_training_extracted_bans.README.md`.
 * A file whose bytes on disk already equal this run's output is adopted
   as extractor-owned (that is how the manifest was seeded, and it means
   a manifest-less checkout still converges instead of hard-stopping).
@@ -101,6 +109,10 @@ ASSET_ROOT = 'assets/internal/barrio/training'
 # doc_id -> [file name], the files this tool produced and may therefore
 # delete. See the ownership section of the module docstring.
 MANIFEST_PATH = 'tool/barrio_training_extracted_assets.json'
+# doc_id -> [file name], output files this tool must never produce again.
+# Hand-maintained, never rewritten by this tool. See the ownership section
+# of the module docstring and the ban manifest's README.
+BANS_PATH = 'tool/barrio_training_extracted_bans.json'
 
 MIN_DIMENSION_PX = 100
 MIN_RAW_BYTES = 10 * 1024
@@ -120,6 +132,21 @@ def load_manifest():
     if not os.path.exists(MANIFEST_PATH):
         return {}
     with open(MANIFEST_PATH, encoding='utf-8') as f:
+        return json.load(f)
+
+
+def load_bans():
+    """The permanent ban list, doc_id -> [file name], or {} if absent.
+
+    A banned file is treated as if the source never yielded it. The list
+    was seeded on 2026-08-09 with the 13 AI-generated pictures purged in
+    PR #1580: the untracked source drop still contains that art, so
+    without this list a plain re-run would silently resurrect every one
+    of them, against the operator's rule that zero AI images ever ship.
+    """
+    if not os.path.exists(BANS_PATH):
+        return {}
+    with open(BANS_PATH, encoding='utf-8') as f:
         return json.load(f)
 
 
@@ -781,6 +808,7 @@ class Report:
         self.total_bytes = 0
         self.kept_count = 0
         self.excluded_count = 0
+        self.banned_count = 0
         self.errors = []
 
     def doc(self, doc_id, src):
@@ -808,10 +836,18 @@ class Report:
         self.excluded_count += 1
         self.lines.append(f'  EXCLUDED {label}: {reason}')
 
+    def skip_banned(self, item):
+        """A banned output the source still yields. Expected, not an error."""
+        self.banned_count += 1
+        self.lines.append(
+            f'  SKIPPED {os.path.basename(item["asset"])} (banned): never '
+            f'written, never marked, never listed; see {BANS_PATH}')
+
     def summary(self, changes):
         self.lines.append('')
         self.lines.append(
             f'TOTAL kept={self.kept_count} excluded={self.excluded_count} '
+            f'banned={self.banned_count} '
             f'assets={self.total_bytes / (1024 * 1024):.2f} MB')
         self.lines.append('')
         if changes:
@@ -829,7 +865,58 @@ class Report:
 # Main
 # ---------------------------------------------------------------------------
 
-def plan_doc(entry, src_root, manifest, report, plan):
+def number_encode_and_ban(doc_id, kept, bans, report):
+    """Assign reading-order names, drop banned names, encode the rest.
+
+    Encoding happens up front so the report lines carry final WebP sizes
+    and so the collision guard in `plan_doc` can compare bytes before
+    anything is written. Names are assigned over the FULL kept list
+    before the ban filter runs, so an unbanned sibling keeps the number
+    it has always shipped under: banning `01.webp` through `07.webp`
+    must not slide `08.webp` down to `01.webp` and collide with curated
+    content. A banned name is skipped entirely (never encoded, never
+    written, never marked, never listed); the source doc still yielding
+    it is the expected steady state, so it is a SKIPPED report line,
+    not an error.
+    """
+    banned = set(bans.get(doc_id, []))
+    out = []
+    for n, item in enumerate(kept, start=1):
+        item['name'] = f'{n:02d}.webp'
+        item['asset'] = f'{ASSET_ROOT}/{doc_id}/{item["name"]}'
+        if item['name'] in banned:
+            report.skip_banned(item)
+            continue
+        data = encode_webp(item['pil'])
+        item['webp_bytes'] = data
+        item['webp_len'] = len(data)
+        report.total_bytes += len(data)
+        out.append(item)
+    return out
+
+
+def remove_stale_owned(doc_id, owned, new_names, md, plan, report):
+    """Delete owned files the source no longer yields; drop their markers.
+
+    This is also how a ban converges when the banned name is still in the
+    ownership manifest: a banned name can never be in `new_names`, so the
+    file is removed here exactly once and, because the name is skipped
+    before anything is written, it never comes back.
+    """
+    out_dir = os.path.join(*ASSET_ROOT.split('/'), doc_id)
+    for name in owned:
+        if name in new_names:
+            continue
+        path = os.path.join(out_dir, name)
+        asset = f'{ASSET_ROOT}/{doc_id}/{name}'
+        if os.path.exists(path):
+            plan['deletes'].append(path)
+        if asset in md.marker_line:
+            md.drop_marker(asset)
+        report.note(f'{asset}: no longer in the source; removing it and its marker.')
+
+
+def plan_doc(entry, src_root, manifest, bans, report, plan):
     """Work out what this doc needs, writing nothing.
 
     Appends to `plan` (a dict of pending writes/deletes) and returns the
@@ -858,16 +945,7 @@ def plan_doc(entry, src_root, manifest, report, plan):
     else:
         doc, kept = collect_pdf_images(src_path, report)
 
-    # Encode first so the report lines carry final WebP sizes, and so the
-    # collision guard below can compare bytes before anything is written.
-    for n, item in enumerate(kept, start=1):
-        name = f'{n:02d}.webp'
-        data = encode_webp(item['pil'])
-        item['name'] = name
-        item['asset'] = f'{ASSET_ROOT}/{doc_id}/{name}'
-        item['webp_bytes'] = data
-        item['webp_len'] = len(data)
-        report.total_bytes += len(data)
+    kept = number_encode_and_ban(doc_id, kept, bans, report)
 
     new_names = [item['name'] for item in kept]
     for item in kept:
@@ -896,16 +974,7 @@ def plan_doc(entry, src_root, manifest, report, plan):
                         f'caption describes the old picture, re-check it.')
 
     # Owned files the source no longer yields: delete them and drop markers.
-    for name in owned:
-        if name in new_names:
-            continue
-        path = os.path.join(out_dir, name)
-        asset = f'{ASSET_ROOT}/{doc_id}/{name}'
-        if os.path.exists(path):
-            plan['deletes'].append(path)
-        if asset in md.marker_line:
-            md.drop_marker(asset)
-        report.note(f'{asset}: no longer in the source; removing it and its marker.')
+    remove_stale_owned(doc_id, owned, new_names, md, plan, report)
 
     if is_pptx:
         place_pptx_images(doc_id, kept, md, report)
@@ -954,12 +1023,19 @@ def main():
         return 2
 
     manifest = load_manifest()
+    bans = load_bans()
+    unknown = sorted(set(bans) - {entry['doc_id'] for entry in SOURCES})
+    if unknown:
+        # A typo in a ban key would silently disable the ban. Hard stop.
+        print(f'ERROR {BANS_PATH} names doc_id(s) not in the SOURCES '
+              f'table: {", ".join(unknown)}', file=sys.stderr)
+        return 2
     new_manifest = dict(manifest)
     report = Report()
     plan = dict(writes={}, deletes=[], md={}, mkdirs=set())
 
     for entry in SOURCES:
-        names = plan_doc(entry, args.src, manifest, report, plan)
+        names = plan_doc(entry, args.src, manifest, bans, report, plan)
         if names is not None:
             new_manifest[entry['doc_id']] = names
 
