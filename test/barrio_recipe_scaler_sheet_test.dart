@@ -38,6 +38,11 @@ const String _kMethodUnitId = 'training_recipes_c0_u1';
 /// A recipe card where nothing at all may be scaled.
 const String _kAllHeldUnitId = 'training_recipes_c22_u0';
 
+/// Beef Skewer Topping: five gram lines, one of which ('235 Pumpkin
+/// Seeds') the card prints with no unit at all and the operator confirmed
+/// as grams on 2026-08-13.
+const String _kConfirmedUnitId = 'training_recipes_c8_u0';
+
 final ValueKey<String> _kScaleButton =
     const ValueKey<String>('barrio_recipe_scale_button');
 
@@ -342,12 +347,15 @@ void main() {
       await tester.pump();
 
       // Hand-read off the card: these six lines and these reasons.
+      // '¼ Red Onion' and '4 Juiced Limes' count whole things the same
+      // way '2 Stalks Celery' does; the counted noun is just in the
+      // ingredient's name rather than in a unit word (REC-4).
       const heldLines = <String, String>{
         '1 Jar Aji Amarillo': 'Counted in containers. Round it yourself.',
         '2 Stalks Celery': 'Counted as whole items. Round it yourself.',
         '4 Cloves of garlic': 'Counted as whole items. Round it yourself.',
-        '¼ Red Onion': 'The recipe does not say what this number measures.',
-        '4 Juiced Limes': 'The recipe does not say what this number measures.',
+        '¼ Red Onion': 'Counted as whole items. Round it yourself.',
+        '4 Juiced Limes': 'Counted as whole items. Round it yourself.',
         'Salt TT': 'No amount to scale. Go by taste and by eye.',
       };
       var shown = 0;
@@ -407,10 +415,63 @@ void main() {
         find.textContaining('Nothing in this recipe can be scaled'),
         findsOneWidget,
       );
-      // The line itself is still shown, with its reason.
+      // The line itself is still shown, with its reason. A cook reading
+      // '12 Eggs' is told it counts whole things, not that the recipe
+      // failed to say what the 12 measures (REC-4).
       expect(find.text('12 Eggs'), findsOneWidget);
-      expect(find.text('The recipe does not say what this number measures.'),
+      expect(find.text('Counted as whole items. Round it yourself.'),
           findsOneWidget);
+      expect(find.textContaining('does not say what this number measures'),
+          findsNothing,
+          reason: 'that sentence was removed: it read as a broken app '
+              'beside a line that plainly counts eggs');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a unit the operator gave says where it came from',
+        (tester) async {
+      // The gate, stated independently of the widget: this card carries
+      // a line the recipe prints with no unit at all.
+      final confirmed = barrioRecipeIngredientsForUnit(_kConfirmedUnitId)
+          .where((line) => line.unitFromOperator)
+          .toList();
+      expect(confirmed, hasLength(1),
+          reason: 'this card is the operator-confirmed-unit case');
+      expect(confirmed.single.raw.contains(confirmed.single.unit!), isFalse,
+          reason: 'the note only makes sense because the line prints no '
+              'unit of its own');
+
+      await pumpSheet(tester, _kConfirmedUnitId);
+      await reveal(tester, 'Pumpkin Seeds');
+      expect(
+        find.text(
+            'The recipe prints no unit here. The operator confirmed grams.'),
+        findsOneWidget,
+        reason: 'the calculator shows grams on a line the card printed '
+            'without a unit, so it has to say where the grams came from',
+      );
+
+      // And the line really does scale: 940g of corn nuts is 2 times the
+      // recipe, worked by hand, so 235 becomes 470.
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('barrio_recipe_scale_amount')),
+        '940',
+      );
+      await tester.pump();
+      expect(find.text('Every amount below is 2 times the recipe.'),
+          findsOneWidget);
+      await reveal(tester, '470 g');
+      expect(find.text('was 235 g'), findsWidgets,
+          reason: 'the written amount stays beside the new one here too');
+
+      // The note is for the lines that need it and nowhere else.
+      expect(
+        find.text(
+            'The recipe prints no unit here. The operator confirmed grams.'),
+        findsOneWidget,
+        reason: 'four other lines of this card print their own grams and '
+            'need no explanation',
+      );
       expect(tester.takeException(), isNull);
     });
   });
