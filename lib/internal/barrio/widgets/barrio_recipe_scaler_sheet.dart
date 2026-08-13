@@ -127,10 +127,12 @@ class _BarrioRecipeScalerSheetState extends State<BarrioRecipeScalerSheet> {
   Widget build(BuildContext context) {
     final multiplier =
         barrioRecipeMultiplier(anchor: _anchor, amount: _typedAmount);
-    // The amount column keeps its proportions as the reader's text grows,
-    // so the ingredient names stay lined up at every text size.
+    // The amount column grows with the reader's text so the ingredient
+    // names stay lined up, but only so far: at full growth it would eat
+    // the room the names need, and an amount that wraps to two lines
+    // costs less than an ingredient name that wraps to five.
     final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
-    final amountWidth = 100 * textScale;
+    final amountWidth = 116 * textScale.clamp(1.0, 1.5);
 
     return Container(
       key: const ValueKey<String>('barrio_recipe_scaler_sheet'),
