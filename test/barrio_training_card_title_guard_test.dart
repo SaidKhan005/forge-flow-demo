@@ -64,7 +64,35 @@ const int kMaxCardTitleChars = 26;
 /// `tool/barrio_training_verbatim_check.py` only passes at `lost=0w`.
 /// Wine's continuation share is 0, exactly like every other manual, and
 /// the `authoredOver` assertion below is what actually holds the rule.
-const int kOverBudgetTitleBaseline = 257;
+///
+/// 274 as of 2026-08-13, same sanctioned reason: a source document was
+/// ADDED. The Recipes manual contributes 17 run-start cards, because a
+/// recipe's own title line is how the operator records its yield and its
+/// shelf life, and that line IS the card heading:
+///
+///   Sikil Pak ( Pumpkin Seed Dip) Yield ...        (65)
+///   Aji Amarillo Dressing Yield 1L - ...           (55)
+///   Salsa Yield 4L - Shelf Life 2-3 Days ...       (53)
+///   Cocktail Sauce  Yields Approx 3L - ...         (52)
+///   Beef Skewer Glaze Yield 1.5L - ...             (50)
+///   Burnt Onion Oil Yield 500mL - ...              (48)
+///   Aji Sauce 9L Yield - Shelf Life 5 - 7 Days     (42)
+///   Half Chicken ( Pollo Marinade, 6 Chickens)     (42)
+///   Pork Belly Skewers Shelf Life 3 - 4 Days       (40)
+///   Guacamole Yield 4L - Shelf Life 3 Days         (38)
+///   Beef Empanada 9 KG Shelf Life 4 Days           (36)
+///   Hard Boiled Eggs Shelf Life 3-5 Days           (36)
+///   Poblano Crema Yield - 3kg - 5-7 days           (36)
+///   Carrot Skewer Marinade x 8 Carrots             (34)
+///   ALBONDIGAS - Yields 130 Balls                  (29)
+///   Beef Cube Marinade - 1KG beef                  (29)
+///   Glaze Pork Belly Yield 1.5L                    (27)
+///
+/// Cutting the yield or the shelf life out of a heading to fit the budget
+/// would delete source words the kitchen needs, so the same reasoning
+/// applies. The other 16 recipe headings fit. Recipes splits no card at
+/// all, so its continuation share is 0 and `authoredOver` still holds.
+const int kOverBudgetTitleBaseline = 274;
 
 /// RATCHET: cards that repeat a title already used in the same chapter.
 ///

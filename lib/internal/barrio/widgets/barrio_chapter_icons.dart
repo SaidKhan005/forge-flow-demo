@@ -60,6 +60,7 @@ const Map<String, IconData> kBarrioManualIcons = <String, IconData>{
   'training_host_manual': Icons.support_agent,
   'training_bar_manual': Icons.local_bar,
   'training_drink_specs': Icons.wine_bar,
+  'training_recipes': Icons.soup_kitchen,
 };
 
 /// Curated per-chapter icons, keyed by the chapter's stable id (the

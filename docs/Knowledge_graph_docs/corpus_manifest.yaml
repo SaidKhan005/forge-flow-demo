@@ -798,3 +798,35 @@ documents:
     heading_count: 170
     line_count: 946
     sha256: "1fd62008f928eed33525689d2d94589f3d6c8dc9d42f6f904b3bef2effbfb17a"
+
+  - doc_id: "recipes"
+    file_name: "Barrio Recipes.md"
+    source_path: "docs/Knowledge_graph_docs/Barrio Recipes.md"
+    title: "Recipes"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "kitchen_production_training"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "low"
+    audience:
+      - "staff"
+      - "managers"
+      - "founder_ops"
+    chunk_profile: "heading_aware_training_narrative"
+    graph_profiles:
+      - "Procedure"
+      - "Term"
+      - "Concept"
+    tags:
+      - "recipes"
+      - "kitchen"
+      - "prep"
+      - "production"
+      - "food"
+      - "training"
+    word_count_estimate: 3755
+    heading_count: 61
+    line_count: 716
+    sha256: "f4ba81e166dffb9df03aa69ebf7284178ca158c19421f14695d8a2bac0622960"

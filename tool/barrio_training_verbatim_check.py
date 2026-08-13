@@ -102,6 +102,7 @@ PAIRS = [
     ('training_host_manual', 'Barrio Host Manual.md'),
     ('training_bar_manual', 'Bar Manual.md'),
     ('training_drink_specs', 'Barrio Drink Specs.md'),
+    ('training_recipes', 'Barrio Recipes.md'),
 ]
 
 for doc_id, md_name in PAIRS:

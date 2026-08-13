@@ -312,6 +312,26 @@ const List<BarrioDestination> barrioDestinations = [
     showOnHomeHub: true,
     iconCodePoint: 0xe6f1, // Icons.wine_bar
   ),
+  // Manual-drop bubble (2026-08-13 operator kitchen recipes). Sits
+  // directly after Drink Specs so the food recipes read next to the
+  // cocktail recipes, both under the MENU they build.
+  BarrioDestination(
+    id: 'training_recipes',
+    label: 'Recipes',
+    description:
+        'Recipes: ingredients, yields, shelf life, and method for every '
+        'prep we make.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    category: BarrioCategory.foodAndDrink,
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+    iconCodePoint: 0xf056c, // Icons.soup_kitchen
+  ),
   BarrioDestination(
     id: 'training_tequila',
     label: 'Tequila',
