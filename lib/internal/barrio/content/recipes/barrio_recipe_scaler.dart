@@ -12,11 +12,18 @@
 // class of wrong-number bugs, and it is not what was asked for: the
 // recipe says 500mL, so the cook types millilitres.
 //
-// HONESTY IS THE POINT. 46 of the manual's 203 ingredient lines cannot
+// HONESTY IS THE POINT. 44 of the manual's 203 ingredient lines cannot
 // be multiplied at all (see [BarrioIngredientHold]). Those lines are
 // carried through UNCHANGED, never hidden and never quietly scaled, each
 // with a reason a cook can act on. A calculator that silently turned
 // '1 Jar Aji Amarillo' into '2.5 Jar' would be worse than no calculator.
+//
+// A REASON HAS TO BE TRUE, NOT JUST CAUTIOUS. Holding a line is only
+// honest while the sentence beside it is honest. 14 countable lines used
+// to be held with 'the recipe does not say what this number measures',
+// printed next to '12 Eggs', which reads as a broken app rather than as
+// a judgement left to the cook. They are counts now, and they say so.
+// See the removal note in `barrio_recipe_models.dart`.
 //
 // Nothing here reads or writes anything. It is arithmetic and
 // formatting over the data in `barrio_recipe_ingredients.dart`, so it is
@@ -153,12 +160,39 @@ String barrioHoldReason(BarrioIngredientHold hold) {
       'Counted in containers. Round it yourself.',
     BarrioIngredientHold.wholeItemCount =>
       'Counted as whole items. Round it yourself.',
-    BarrioIngredientHold.noUnit =>
-      'The recipe does not say what this number measures.',
     BarrioIngredientHold.range =>
       'The recipe gives a range. Pick a number inside it.',
   };
 }
+
+/// Where a line's unit came from, when it did not come from the recipe.
+///
+/// Two lines of the manual are weights the operator wrote as a bare
+/// number, and confirmed as grams on 2026-08-13. The card still prints
+/// them without a unit, because the manual is reproduced word for word.
+/// So the calculator shows a unit the page does not, and a cook who
+/// noticed that deserves the one sentence that explains it rather than
+/// being left to wonder which of the two is wrong.
+///
+/// Null for every ordinary line, where the unit is right there on the
+/// page and saying so would be noise.
+String? barrioUnitSourceNote(BarrioRecipeIngredient line) {
+  final unit = line.unit;
+  if (!line.unitFromOperator || unit == null) return null;
+  return 'The recipe prints no unit here. The operator confirmed '
+      '${_unitInWords(unit)}.';
+}
+
+/// A unit said the way a cook would say it out loud.
+///
+/// Only the units an operator confirmation actually uses are spelled out.
+/// Anything else falls back to the unit as written, which still reads
+/// true; inventing wording for units no line carries would be wording
+/// nothing can test.
+String _unitInWords(String unit) => switch (unit.toLowerCase()) {
+      'g' => 'grams',
+      _ => unit,
+    };
 
 /// A number and its unit, spaced the way the source line spaced it
 /// ('500mL' stays closed up, '1 TSP' keeps its space).

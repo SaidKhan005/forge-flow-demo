@@ -455,6 +455,11 @@ class _ScalableRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The two lines whose unit the operator confirmed rather than the
+    // recipe printing it. Shown on the row rather than beside the amount
+    // box so the note is there whether or not the cook is starting from
+    // that line.
+    final unitNote = barrioUnitSourceNote(entry.line);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: MergeSemantics(
@@ -502,6 +507,17 @@ class _ScalableRow extends StatelessWidget {
                               fontSize: 10,
                               letterSpacing: 0.4,
                               color: accent,
+                            ),
+                          ),
+                        ],
+                        if (unitNote != null) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            unitNote,
+                            style: GoogleFonts.ibmPlexSans(
+                              fontSize: 11,
+                              height: 1.4,
+                              color: BarrioColors.textMuted,
                             ),
                           ),
                         ],

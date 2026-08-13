@@ -32,9 +32,15 @@ import 'package:forge_and_flow/internal/barrio/content/recipes/barrio_recipe_mod
 import 'package:forge_and_flow/internal/barrio/content/recipes/barrio_recipe_scaler.dart';
 
 /// Aji Amarillo Dressing: the first recipe card of the manual. Two
-/// scalable lines besides the anchor, six lines held for four different
+/// scalable lines besides the anchor, six lines held for three different
 /// reasons.
 const String _kDressing = 'training_recipes_c0_u0';
+
+/// Beef Skewer Topping: carries '235 Pumpkin Seeds', one of the two lines
+/// whose unit the OPERATOR confirmed because the recipe prints none. It
+/// is the only card in this suite where a scaled amount shows a unit its
+/// own line never printed.
+const String _kSkewerTopping = 'training_recipes_c8_u0';
 
 /// Braised Pork Belly: the only card whose anchor is written with a
 /// decimal ('2.5kg'), so it proves a fractional anchor quantity.
@@ -149,11 +155,17 @@ void main() {
       expect(held, greaterThan(0),
           reason: 'nothing held means the hold sweeps prove nothing');
 
-      // Each of the five reasons has to be reached by real data, or
+      // Every reason has to be reached by real data, or
       // `barrioHoldReason` is only tested against invented inputs.
       final reasons = all.map((line) => line.hold).whereType<BarrioIngredientHold>().toSet();
       expect(reasons, BarrioIngredientHold.values.toSet(),
           reason: 'a hold reason no live line uses is untested wording');
+
+      // And the operator-confirmed branch is reached too, or every
+      // assertion about it below is written against nothing.
+      expect(all.where((line) => line.unitFromOperator), isNotEmpty,
+          reason: 'no line takes its unit from the operator, so the note '
+              'that explains that to a cook is untested wording');
     });
 
     test('the cards this suite names are the shapes it claims', () {
@@ -170,6 +182,9 @@ void main() {
         expect(barrioScalableLines(_linesOf(unitId)), isEmpty,
             reason: '$unitId is an every-line-is-held case');
       }
+      expect(_lineNamed(_kSkewerTopping, '235 Pumpkin Seeds').unitFromOperator,
+          isTrue,
+          reason: '$_kSkewerTopping is the operator-confirmed-unit case');
     });
   });
 
@@ -310,6 +325,133 @@ void main() {
         },
       );
     });
+
+    test('a line whose unit the operator confirmed scales with the rest', () {
+      // Worked by hand from the card at 2 times: 470 -> 940, 235 -> 470,
+      // 180 -> 360 twice, 35 -> 70. The pumpkin seeds are the point: the
+      // card prints '235 Pumpkin Seeds' with no unit, and before the
+      // operator confirmed grams that line could not move at all while
+      // every other line of its own recipe did.
+      //
+      // '470 g' carries the space its own line put after the number, the
+      // same rule every other line follows.
+      _expectRecipe(
+        _kSkewerTopping,
+        anchorRaw: '470g Corn Nuts',
+        amount: 940,
+        expectedMultiplier: 2,
+        expected: const <String, String?>{
+          '470g Corn Nuts': '940g',
+          '235 Pumpkin Seeds': '470 g',
+          '180g Sunflower Seeds': '360g',
+          '180g White/Black Sesame Seed (90g each)': '360g',
+          '35g Maldon Salt': '70g',
+        },
+      );
+    });
+
+    test('the cook can start from the confirmed line too', () {
+      // The same batch, read off the confirmed line instead. 470g of
+      // pumpkin seeds is 2 times a 235 line, so every amount matches the
+      // test above. A confirmed unit that was decorative rather than real
+      // would give a multiplier of 1 here and leave the recipe as
+      // written.
+      _expectRecipe(
+        _kSkewerTopping,
+        anchorRaw: '235 Pumpkin Seeds',
+        amount: 470,
+        expectedMultiplier: 2,
+        expected: const <String, String?>{
+          '470g Corn Nuts': '940g',
+          '235 Pumpkin Seeds': '470 g',
+          '180g Sunflower Seeds': '360g',
+          '180g White/Black Sesame Seed (90g each)': '360g',
+          '35g Maldon Salt': '70g',
+        },
+      );
+    });
+  });
+
+  group('a unit the operator gave says so', () {
+    test('the note names the unit in words, on those lines and no others',
+        () {
+      // Hand-written sentence, and the only wording the live data can
+      // produce. A cook reading '470 g' on a card that printed no unit
+      // gets told why in one line.
+      const expected =
+          'The recipe prints no unit here. The operator confirmed grams.';
+      var noted = 0;
+      var quiet = 0;
+      for (final entry in kBarrioRecipeIngredients.entries) {
+        for (final line in entry.value) {
+          final note = barrioUnitSourceNote(line);
+          if (line.unitFromOperator) {
+            expect(note, expected,
+                reason: '${entry.key}: "${line.raw}" takes its unit from the '
+                    'operator, so the calculator must say so');
+            expect(line.raw.contains(line.unit!), isFalse,
+                reason: '${entry.key}: "${line.raw}" prints its own unit '
+                    'after all, so the note is telling a cook something '
+                    'untrue');
+            noted += 1;
+            continue;
+          }
+          expect(note, isNull,
+              reason: '${entry.key}: "${line.raw}" prints its own unit, so a '
+                  'note about where the unit came from is noise');
+          quiet += 1;
+        }
+      }
+      expect(noted, greaterThan(0),
+          reason: 'no line produced the note, so its wording is untested');
+      expect(quiet, greaterThan(100),
+          reason: 'the quiet case was barely reached, so the corpus '
+              'collapsed and this proved nothing');
+    });
+
+    test('an unfamiliar unit is still named, as the line writes it', () {
+      // The fallback arm, which no live line reaches. Reached here with a
+      // hand-built line rather than left as wording nobody has read.
+      const line = BarrioRecipeIngredient(
+        raw: '2 Pinches Saffron',
+        name: 'Pinches Saffron',
+        quantity: 2,
+        unit: 'pinch',
+        unitFromOperator: true,
+        scalable: true,
+      );
+      expect(barrioUnitSourceNote(line),
+          'The recipe prints no unit here. The operator confirmed pinch.');
+    });
+
+    test('a line with no unit at all gets no note', () {
+      const line = BarrioRecipeIngredient(
+        raw: '12 Eggs',
+        name: 'Eggs',
+        quantity: 12,
+        scalable: false,
+        hold: BarrioIngredientHold.wholeItemCount,
+      );
+      expect(barrioUnitSourceNote(line), isNull);
+    });
+
+    test('no reason and no note uses an em dash', () {
+      // UX no-em-dash law, over every sentence this file can produce.
+      for (final hold in BarrioIngredientHold.values) {
+        expect(barrioHoldReason(hold).contains('—'), isFalse);
+      }
+      var checked = 0;
+      for (final entry in kBarrioRecipeIngredients.entries) {
+        for (final line in entry.value) {
+          final note = barrioUnitSourceNote(line);
+          if (note == null) continue;
+          expect(note.contains('—'), isFalse);
+          checked += 1;
+        }
+      }
+      expect(checked, greaterThan(0),
+          reason: 'no note was checked for an em dash');
+    });
   });
 
   group('a held line is never multiplied', () {
@@ -369,7 +511,7 @@ void main() {
           reason: 'no scalable line was reached, so this guard could pass '
               'against a calculator that scales nothing at all');
       expect(reasonsSeen, BarrioIngredientHold.values.toSet(),
-          reason: 'the sweep must exercise all five hold reasons');
+          reason: 'the sweep must exercise every hold reason');
     });
 
     test('a recipe where every line is held scales to itself', () {
@@ -498,12 +640,29 @@ void main() {
       // except where the source wrote the number as a fraction glyph.
       var matched = 0;
       var glyphs = 0;
+      var operatorUnits = 0;
       for (final entry in kBarrioRecipeIngredients.entries) {
         final lines = entry.value;
         final scale = barrioScaleRecipe(lines: lines);
         expect(scale.multiplier, 1.0);
         for (final scaled in scale.lines.where((line) => line.scaled)) {
           final text = scaled.scaledText!;
+          if (scaled.line.unitFromOperator) {
+            // A line whose unit came from the operator CANNOT reprint its
+            // own opening, because its opening has no unit in it. What it
+            // must do instead is keep the card's own number and add only
+            // the confirmed unit: '235 Pumpkin Seeds' reads '235 g' and
+            // never a different number. The number here is re-read off
+            // the raw text rather than taken from the parse.
+            operatorUnits += 1;
+            final printedNumber =
+                RegExp(r'^\d+(?:\.\d+)?').firstMatch(scaled.line.raw)!.group(0);
+            expect(text, '$printedNumber ${scaled.line.unit}',
+                reason: '${entry.key}: at one times the recipe '
+                    '"${scaled.line.raw}" must read as the number the card '
+                    'printed plus the confirmed unit, not "$text"');
+            continue;
+          }
           if (RegExp(r'^[¼½¾⅓⅔]')
               .hasMatch(scaled.line.raw)) {
             // '1/2 Cup' written as a glyph cannot reprint its own
@@ -524,6 +683,9 @@ void main() {
           reason: 'the sweep must cover the manual, not a handful of lines');
       expect(glyphs, greaterThan(0),
           reason: 'the fraction-glyph branch was never reached, so its '
+              'assertion proved nothing');
+      expect(operatorUnits, greaterThan(0),
+          reason: 'the operator-confirmed branch was never reached, so its '
               'assertion proved nothing');
     });
   });

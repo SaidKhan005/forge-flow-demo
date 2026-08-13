@@ -30,26 +30,48 @@ A line is SCALABLE only when it carries exactly one number and that number is
 attached to a unit of MASS or VOLUME. Those units divide cleanly at any
 multiplier: half of 500mL is 250mL, and 1.4 times 210g is 294g.
 
-Every other line is held back and carried through unchanged, for one of five
+Every other line is held back and carried through unchanged, for one of four
 stated reasons:
 
   * noQuantity     - the line carries no leading number at all
                      ('Salt TT', 'The Peel of One Orange').
   * containerCount - it counts containers, and a shelf does not sell 2.5 of
-                     them ('1 Jar Aji Amarillo', '2 Bags Yellow Corn Tortilla').
+                     them ('1 Jar Aji Amarillo', '2 Bags Yellow Corn Tortilla',
+                     '1 Whole Can Chipotle Pepper in Adobo Sauce').
   * wholeItemCount - it counts whole items, and a fraction of one is nonsense
                      at the bench ('4 Cloves of garlic', '2 Stalks Celery',
-                     '1 Bunch Thyme', '4 piece Star Anise').
-  * noUnit         - it carries a number but never says what that number
-                     measures, so scaling it would be a guess ('15 Avocados',
-                     '235 Pumpkin Seeds', '654 Canola Oil').
+                     '12 Eggs', '15 Avocados', '3 Corn Tortillas').
   * range          - the operator wrote a range, which is a judgement call
                      rather than a quantity ('8-10lbs of beets').
+
+WHAT A NUMBER WITH NO UNIT WORD MEANS (widened 2026-08-13, REC-4). English
+puts a countable noun straight after its number: '12 Eggs' counts eggs the
+same way '2 Stalks Celery' counts stalks. The first release read the word
+after the number against a vocabulary of unit words only, so a line that put
+the counted noun in the ingredient NAME fell through to a fifth reason,
+`noUnit`, which told the cook 'the recipe does not say what this number
+measures'. That is true of a bare number, and plainly false of '12 Eggs'.
+
+The rule is now stated the way the language works: a leading number whose
+attached word is NOT a unit of measure counts the thing the line names. Which
+count it is comes from the head of that name: a container word there means
+containers ('1 Whole Can ...'), and anything else means whole items. Nothing
+is keyed to a specific line, so a recipe added tomorrow classifies itself.
+
+The vocabulary of measure words below carries the spelled-out forms as well
+as the abbreviations for exactly this reason: under the widened rule any
+measure word MISSING from it would read as a countable noun, and a real
+weight ('500 grams Chicken') would stop scaling. RULE_PROBES at the foot of
+this file re-proves that boundary on every run.
+
+OPERATOR-CONFIRMED UNITS. Two lines of the manual are weights the source
+never spelled out. See OPERATOR_CONFIRMED_UNITS.
 
 A held line still carries whatever quantity and unit could be read off it, so
 a calculator can SHOW them; `scalable: false` is what stops it multiplying
 them.
 """
+import collections
 import os
 import re
 import sys
@@ -60,9 +82,20 @@ OUT = ('lib/internal/barrio/content/recipes/'
        'barrio_recipe_ingredients.dart')
 
 # Units that measure mass or volume. Only these make a line scalable.
+#
+# The spelled-out forms are here even though the manual writes none of them
+# today, because of the count rule in `parse_line`: a measure word this set
+# does not know reads as a countable noun, and '500 grams Chicken' would be
+# held as a count of 500 whole chickens instead of scaling. Recognising the
+# word costs nothing and keeps the widened rule honest at its own boundary.
 MASS_VOLUME_UNITS = {
     'g', 'kg', 'mg', 'lb', 'lbs', 'oz',
     'ml', 'l', 'tsp', 'tbsp', 'cup', 'cups',
+    'gram', 'grams', 'kilogram', 'kilograms', 'milligram', 'milligrams',
+    'pound', 'pounds', 'ounce', 'ounces',
+    'millilitre', 'millilitres', 'milliliter', 'milliliters',
+    'litre', 'litres', 'liter', 'liters',
+    'teaspoon', 'teaspoons', 'tablespoon', 'tablespoons',
 }
 
 # Units that count a container off a shelf.
@@ -101,8 +134,41 @@ SINGLE_RE = re.compile(
 NO_QUANTITY = 'noQuantity'
 CONTAINER_COUNT = 'containerCount'
 WHOLE_ITEM_COUNT = 'wholeItemCount'
-NO_UNIT = 'noUnit'
 RANGE = 'range'
+
+# Units the OPERATOR confirmed for lines the source prints with no unit at
+# all, keyed to the exact line text.
+#
+# WHY THIS EXISTS. The Recipes source is the operator's own working document,
+# and two of its lines are weights written as a bare number. Sitting among
+# gram lines in their own cards ('470g Corn Nuts', '478g Red Wine Vinegar'),
+# they are plainly grams, but a parser must not guess that. The operator was
+# asked and confirmed both on 2026-08-13.
+#
+# WHAT IT DOES NOT DO. It does not touch the card body. The reader still sees
+# the line exactly as the operator wrote it, with no unit, because the
+# verbatim law is not negotiable. Only this structured second view carries
+# the unit, and it carries a flag with it so the calculator can tell the cook
+# where the unit came from.
+#
+# WHY KEYED TO THE WHOLE RAW LINE. A confirmation is a fact about one exact
+# line. Keyed to anything looser it could drift onto a different ingredient
+# the next time the manual changes. `check_operator_confirmations` fails the
+# run if a key stops appearing, appears more than once, or stops being read
+# as a bare count, so a stale confirmation can never be applied quietly.
+OPERATOR_CONFIRMED_UNITS = {
+    # Beef Skewer Topping, confirmed by the operator 2026-08-13.
+    '235 Pumpkin Seeds': 'g',
+    # Pork Belly Glaze, confirmed by the operator 2026-08-13.
+    '654 Canola Oil': 'g',
+}
+
+# One parsed ingredient line. Named rather than positional because the
+# reader below has to be able to see which field is which.
+Parsed = collections.namedtuple(
+    'Parsed', 'quantity unit name scalable reason unit_from_operator')
+Row = collections.namedtuple(
+    'Row', 'raw quantity unit name scalable reason unit_from_operator')
 
 
 def to_number(token):
@@ -141,8 +207,33 @@ def classify_unit(unit):
     return None
 
 
+def head_words(name, count=2):
+    """The first [count] words of an ingredient name, folded for lookup."""
+    folded = []
+    for word in name.split()[:count]:
+        letters = re.sub(r'[^a-z]', '', word.lower())
+        if letters:
+            folded.append(letters)
+    return folded
+
+
+def count_kind(name):
+    """A bare count counts CONTAINERS or WHOLE ITEMS: which one.
+
+    English puts the counted noun straight after its number, with at most an
+    adjective in front of it ('1 Whole Can Chipotle Pepper in Adobo Sauce'),
+    so only the head of the name is consulted. A container word further along
+    a description is not what the number counts, and must not be read as if
+    it were.
+    """
+    for word in head_words(name):
+        if word in CONTAINER_UNITS:
+            return CONTAINER_COUNT
+    return WHOLE_ITEM_COUNT
+
+
 def parse_line(raw):
-    """One ingredient line -> (quantity, unit, name, scalable, reason).
+    """One ingredient line -> a [Parsed].
 
     The whole scaling rule lives here, and nowhere else.
     """
@@ -162,29 +253,40 @@ def parse_line(raw):
             unit, cut = low_unit, m.end(3)
         else:
             unit, cut = None, m.end(3)
-        return to_number(low), unit, clean_name(text[cut:]), False, RANGE
+        return Parsed(to_number(low), unit, clean_name(text[cut:]), False,
+                      RANGE, False)
 
     m = SINGLE_RE.match(text)
     if not m:
-        return None, None, text, False, NO_QUANTITY
+        return Parsed(None, None, text, False, NO_QUANTITY, False)
     number, unit, rest = m.groups()
     quantity = to_number(number)
     if quantity is None:
-        return None, None, text, False, NO_QUANTITY
+        return Parsed(None, None, text, False, NO_QUANTITY, False)
 
     kind = classify_unit(unit)
     if kind is None:
-        # The word after the number is part of the ingredient name, not a
-        # unit, so the line counts something without saying what it measures.
+        # THE COUNT RULE. The word attached to the number is not a unit of
+        # measure, so it belongs to the ingredient's own name and the number
+        # counts that ingredient: '12 Eggs', '3 Corn Tortillas', '15
+        # Avocados'. This is the same shape as '2 Stalks Celery'; the only
+        # difference is that the countable noun sits in the name rather than
+        # in a unit slot, which is a fact about English, not about the line.
         name = clean_name(f'{unit} {rest}' if unit else rest)
-        return quantity, None, name, False, NO_UNIT
+        confirmed = OPERATOR_CONFIRMED_UNITS.get(text)
+        if confirmed is not None:
+            # Not a count at all: a weight the source never spelled out, and
+            # the operator said so. `check_operator_confirmations` proves
+            # this arm was reached for every confirmation, exactly once.
+            return Parsed(quantity, confirmed, name, True, None, True)
+        return Parsed(quantity, None, name, False, count_kind(name), False)
 
     name = clean_name(rest)
     if kind == 'massVolume':
-        return quantity, unit, name, True, None
+        return Parsed(quantity, unit, name, True, None, False)
     if kind == 'container':
-        return quantity, unit, name, False, CONTAINER_COUNT
-    return quantity, unit, name, False, WHOLE_ITEM_COUNT
+        return Parsed(quantity, unit, name, False, CONTAINER_COUNT, False)
+    return Parsed(quantity, unit, name, False, WHOLE_ITEM_COUNT, False)
 
 
 # --- Reading the generated content file -----------------------------------
@@ -224,13 +326,61 @@ def ingredient_lines(body):
 
 
 def collect(path):
-    """[(unit_id, [(raw, quantity, unit, name, scalable, reason)])]."""
+    """[(unit_id, [Row])] for every card that prints an ingredient line."""
     out = []
     for unit_id, body in read_units(path):
-        rows = [(raw,) + parse_line(raw) for raw in ingredient_lines(body)]
+        rows = [Row(raw, *parse_line(raw)) for raw in ingredient_lines(body)]
         if rows:
             out.append((unit_id, rows))
     return out
+
+
+def check_operator_confirmations(rows_by_unit):
+    """Fail the run if an operator-confirmed line stopped being what it was.
+
+    A confirmation is a fact taken by hand about ONE exact line on ONE date.
+    Three ways it can go stale, all of them silent without this check:
+
+      * the line stops appearing in the manual, so the confirmation is about
+        nothing;
+      * the same text turns up on a second card, so one confirmation would
+        land on two ingredients;
+      * the line starts printing its own unit (or becomes a range), so the
+        parser no longer reaches the arm that applies the confirmed unit and
+        the entry is dead weight nobody notices.
+
+    Any of them means a human has to go back to the operator, which is
+    exactly what a loud failure asks for.
+    """
+    seen = collections.Counter()
+    applied = collections.Counter()
+    for _unit_id, rows in rows_by_unit:
+        for row in rows:
+            if row.raw in OPERATOR_CONFIRMED_UNITS:
+                seen[row.raw] += 1
+                if row.unit_from_operator:
+                    applied[row.raw] += 1
+
+    problems = []
+    for raw, unit in sorted(OPERATOR_CONFIRMED_UNITS.items()):
+        if not seen[raw]:
+            problems.append(f'{raw!r}: no longer printed anywhere in the '
+                            f'manual, so the confirmed unit {unit!r} is a '
+                            f'fact about nothing')
+        elif seen[raw] > 1:
+            problems.append(f'{raw!r}: printed {seen[raw]} times, so one '
+                            f'confirmation would attach {unit!r} to more '
+                            f'than one ingredient')
+        elif applied[raw] != 1:
+            problems.append(f'{raw!r}: still printed, but the parser no '
+                            f'longer reads it as a number with no unit '
+                            f'word, so {unit!r} was never applied')
+    if problems:
+        raise SystemExit(
+            'operator-confirmed units are stale:\n  ' + '\n  '.join(problems)
+            + '\nRe-take the confirmation with the operator, then update '
+              'OPERATOR_CONFIRMED_UNITS in '
+              'tool/barrio_recipe_ingredients_generator.py.')
 
 
 # --- Emitting the Dart ----------------------------------------------------
@@ -262,10 +412,14 @@ def emit(rows_by_unit):
     a('//')
     a('// `scalable` is the whole point: only a single quantity in a unit of')
     a('// mass or volume may be multiplied. Container counts, whole-item')
-    a('// counts, bare numbers with no unit, ranges, and lines with no number')
-    a('// at all are held back with the reason why, and a calculator carries')
-    a('// them through unchanged. The rule and its five reasons are stated')
-    a('// once, in the generator.')
+    a('// counts, ranges, and lines with no number at all are held back with')
+    a('// the reason why, and a calculator carries them through unchanged.')
+    a('// The rule and its four reasons are stated once, in the generator.')
+    a('//')
+    a('// `unitFromOperator` marks the two lines whose unit the OPERATOR')
+    a('// confirmed rather than the recipe printing it. The card body is')
+    a('// untouched: it still shows no unit there, which is why the')
+    a('// calculator says where the unit came from.')
     a('')
     a("import 'barrio_recipe_models.dart';")
     a('')
@@ -276,22 +430,81 @@ def emit(rows_by_unit):
     a('    <String, List<BarrioRecipeIngredient>>{')
     for unit_id, rows in rows_by_unit:
         a(f"  '{esc(unit_id)}': <BarrioRecipeIngredient>[")
-        for raw, quantity, unit, name, scalable, reason in rows:
+        for row in rows:
             a('    BarrioRecipeIngredient(')
-            a(f"      raw: '{esc(raw)}',")
-            a(f"      name: '{esc(name)}',")
-            if quantity is not None:
-                a(f'      quantity: {dart_number(quantity)},')
-            if unit is not None:
-                a(f"      unit: '{esc(unit)}',")
-            a(f'      scalable: {"true" if scalable else "false"},')
-            if reason is not None:
-                a(f'      hold: BarrioIngredientHold.{reason},')
+            a(f"      raw: '{esc(row.raw)}',")
+            a(f"      name: '{esc(row.name)}',")
+            if row.quantity is not None:
+                a(f'      quantity: {dart_number(row.quantity)},')
+            if row.unit is not None:
+                a(f"      unit: '{esc(row.unit)}',")
+            if row.unit_from_operator:
+                a('      unitFromOperator: true,')
+            a(f'      scalable: {"true" if row.scalable else "false"},')
+            if row.reason is not None:
+                a(f'      hold: BarrioIngredientHold.{row.reason},')
             a('    ),')
         a('  ],')
     a('};')
     a('')
     return '\n'.join(lines)
+
+
+# --- Proving the rule on lines the manual does not happen to contain ------
+
+# (line, scalable, reason) that `parse_line` must produce.
+#
+# WHY THESE ARE NOT MANUAL LINES. The Dart guards check the rule against the
+# 203 lines the Recipes manual actually prints, which is the only thing that
+# ships. They cannot check the BOUNDARY of the rule, because the manual has
+# no line sitting on it. These probes are that boundary, written by hand:
+# every one of them is a way the widened count rule could be wrong, and the
+# dangerous direction is first. They run on every invocation, so the rule
+# cannot drift without the generator refusing to produce data.
+RULE_PROBES = [
+    # A measure word must never read as a countable noun, abbreviated or
+    # spelled out. This is the direction that would COST a cook a working
+    # calculator line, so it leads.
+    ('500g Chicken Thigh', True, None),
+    ('500 g Chicken Thigh', True, None),
+    ('500 grams Chicken Thigh', True, None),
+    ('2 Pounds Beef Shin', True, None),
+    ('1.5 Litres Chicken Stock', True, None),
+    ('3 Tablespoons Cumin', True, None),
+    # A number followed by a countable noun counts that noun.
+    ('12 Eggs', False, WHOLE_ITEM_COUNT),
+    ('15 Avocados', False, WHOLE_ITEM_COUNT),
+    ('3 Corn Tortillas', False, WHOLE_ITEM_COUNT),
+    ('1 Large Red Onion Small Dice', False, WHOLE_ITEM_COUNT),
+    # A container word at the head of the name counts containers, whether or
+    # not an adjective sits in front of it.
+    ('1 Whole Can Chipotle Pepper in Adobo Sauce', False, CONTAINER_COUNT),
+    ('2 Cans Tomatoes', False, CONTAINER_COUNT),
+    # ... but a container word further along a description is not what the
+    # number counts.
+    ('12 Eggs in a Box', False, WHOLE_ITEM_COUNT),
+    # The reasons that existed before the widening still hold.
+    ('2 Stalks Celery', False, WHOLE_ITEM_COUNT),
+    ('8-10lbs of beets', False, RANGE),
+    ('Salt TT', False, NO_QUANTITY),
+]
+
+
+def check_rule_probes():
+    """Fail the run if the classification rule stops meaning what it says."""
+    problems = []
+    for line, want_scalable, want_reason in RULE_PROBES:
+        got = parse_line(line)
+        if got.scalable != want_scalable or got.reason != want_reason:
+            problems.append(
+                f'{line!r}: expected '
+                f'{"scalable" if want_scalable else f"hold:{want_reason}"}, '
+                f'got '
+                f'{"scalable" if got.scalable else f"hold:{got.reason}"}')
+    if problems:
+        raise SystemExit(
+            'the ingredient classification rule no longer holds:\n  '
+            + '\n  '.join(problems))
 
 
 def rendered_bytes(out_path, text):
@@ -316,19 +529,25 @@ def main():
             f'unknown argument(s): {", ".join(unknown)}. Usage: '
             f'barrio_recipe_ingredients_generator.py [--check] [--report]')
 
+    check_rule_probes()
     rows_by_unit = collect(CONTENT)
+    check_operator_confirmations(rows_by_unit)
     total = sum(len(rows) for _uid, rows in rows_by_unit)
     scalable = sum(1 for _uid, rows in rows_by_unit
-                   for r in rows if r[4])
+                   for row in rows if row.scalable)
 
     if report:
         for unit_id, rows in rows_by_unit:
             print(f'== {unit_id}')
-            for raw, q, u, name, sc, reason in rows:
-                mark = 'SCALE' if sc else f'hold:{reason}'
-                qs = '' if q is None else dart_number(q)
-                print(f'   {mark:<22} q={qs:<8} u={u or "":<8} '
-                      f'name={name!r:<45} raw={raw!r}')
+            for row in rows:
+                mark = 'SCALE' if row.scalable else f'hold:{row.reason}'
+                if row.unit_from_operator:
+                    mark += '*'
+                qs = '' if row.quantity is None else dart_number(row.quantity)
+                print(f'   {mark:<22} q={qs:<8} u={row.unit or "":<8} '
+                      f'name={row.name!r:<45} raw={row.raw!r}')
+        print()
+        print('* = unit confirmed by the operator, not printed by the recipe')
         print()
 
     print(f'recipes with ingredients: {len(rows_by_unit)}')
@@ -336,9 +555,9 @@ def main():
           f'held: {total - scalable}')
     held = {}
     for _uid, rows in rows_by_unit:
-        for r in rows:
-            if not r[4]:
-                held[r[5]] = held.get(r[5], 0) + 1
+        for row in rows:
+            if not row.scalable:
+                held[row.reason] = held.get(row.reason, 0) + 1
     for reason, n in sorted(held.items(), key=lambda kv: -kv[1]):
         print(f'   {reason}: {n}')
     if report:

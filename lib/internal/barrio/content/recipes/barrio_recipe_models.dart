@@ -35,21 +35,31 @@ enum BarrioIngredientHold {
   noQuantity,
 
   /// The number counts containers, and no shelf sells 2.5 of them:
-  /// '1 Jar Aji Amarillo', '2 Bags Yellow Corn Tortilla'.
+  /// '1 Jar Aji Amarillo', '2 Bags Yellow Corn Tortilla',
+  /// '1 Whole Can Chipotle Pepper in Adobo Sauce'.
   containerCount,
 
   /// The number counts whole items, where a fraction is nonsense at the
-  /// bench: '4 Cloves of garlic', '2 Stalks Celery', '1 Bunch Thyme'.
+  /// bench: '4 Cloves of garlic', '2 Stalks Celery', '12 Eggs',
+  /// '15 Avocados'. The counted noun may sit in a unit slot ('Stalks') or
+  /// in the ingredient's own name ('Eggs'); the number counts it either
+  /// way, which is why both read the same to a cook.
   wholeItemCount,
-
-  /// The line carries a number but never says what that number measures,
-  /// so scaling it would be a guess: '15 Avocados', '654 Canola Oil'.
-  noUnit,
 
   /// The operator wrote a range, which is a judgement call rather than a
   /// quantity: '8-10lbs of beets', '2kg-2.5kg Shrimp Shells'.
   range,
 }
+
+// A FIFTH REASON WAS REMOVED (REC-4, 2026-08-13). `noUnit` said 'the
+// recipe does not say what this number measures'. It caught 16 lines, and
+// it was wrong about 14 of them: '12 Eggs' and '15 Avocados' say exactly
+// what they measure, in the ordinary way English attaches a number to a
+// countable noun, so the message read as a broken app. Those 14 are now
+// counts. The other two were weights the source never spelled out, and
+// the operator confirmed them: see [BarrioRecipeIngredient.unitFromOperator].
+// Nothing reaches `noUnit` any more, so keeping it would leave a message
+// no line can produce and a reason nobody can test.
 
 /// One ingredient line of one recipe, as data.
 @immutable
@@ -60,6 +70,7 @@ class BarrioRecipeIngredient {
     required this.scalable,
     this.quantity,
     this.unit,
+    this.unitFromOperator = false,
     this.hold,
   });
 
@@ -84,8 +95,27 @@ class BarrioRecipeIngredient {
 
   /// The unit word attached to [quantity], when the line carries one that
   /// the parser recognises, spelled exactly as the source spells it (the
-  /// kitchen writes both 'mL' and 'ml', and both survive).
+  /// kitchen writes both 'mL' and 'ml', and both survive). See
+  /// [unitFromOperator] for the two lines where it is not on the line at
+  /// all.
   final String? unit;
+
+  /// True when the OPERATOR named this line's [unit], because the recipe
+  /// prints none.
+  ///
+  /// Two lines of the manual are weights written as a bare number
+  /// ('235 Pumpkin Seeds', '654 Canola Oil'). Both sit among gram lines
+  /// in their own recipe, and the operator confirmed on 2026-08-13 that
+  /// both are grams. Confirming them is what lets a cook scale them; a
+  /// parser guessing it would be exactly the invented number this whole
+  /// data set exists to prevent.
+  ///
+  /// The card body is untouched and still prints no unit there, so a
+  /// calculator that showed 'g' without saying where it came from would
+  /// be showing the cook something the page they just read did not. That
+  /// is what this flag is for: `barrioUnitSourceNote` turns it into one
+  /// plain sentence.
+  final bool unitFromOperator;
 
   /// Why this line is held back, or null when [scalable] is true.
   final BarrioIngredientHold? hold;

@@ -11,10 +11,14 @@
 //
 // `scalable` is the whole point: only a single quantity in a unit of
 // mass or volume may be multiplied. Container counts, whole-item
-// counts, bare numbers with no unit, ranges, and lines with no number
-// at all are held back with the reason why, and a calculator carries
-// them through unchanged. The rule and its five reasons are stated
-// once, in the generator.
+// counts, ranges, and lines with no number at all are held back with
+// the reason why, and a calculator carries them through unchanged.
+// The rule and its four reasons are stated once, in the generator.
+//
+// `unitFromOperator` marks the two lines whose unit the OPERATOR
+// confirmed rather than the recipe printing it. The card body is
+// untouched: it still shows no unit there, which is why the
+// calculator says where the unit came from.
 
 import 'barrio_recipe_models.dart';
 
@@ -66,7 +70,7 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
       name: 'Red Onion',
       quantity: 0.25,
       scalable: false,
-      hold: BarrioIngredientHold.noUnit,
+      hold: BarrioIngredientHold.wholeItemCount,
     ),
     BarrioRecipeIngredient(
       raw: '10g Ginger',
@@ -80,7 +84,7 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
       name: 'Juiced Limes',
       quantity: 4,
       scalable: false,
-      hold: BarrioIngredientHold.noUnit,
+      hold: BarrioIngredientHold.wholeItemCount,
     ),
     BarrioRecipeIngredient(
       raw: 'Salt TT',
@@ -242,7 +246,7 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
       name: 'Whole Eggs',
       quantity: 8,
       scalable: false,
-      hold: BarrioIngredientHold.noUnit,
+      hold: BarrioIngredientHold.wholeItemCount,
     ),
     BarrioRecipeIngredient(
       raw: '260g Breadcrumbs',
@@ -489,8 +493,9 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
       raw: '235 Pumpkin Seeds',
       name: 'Pumpkin Seeds',
       quantity: 235,
-      scalable: false,
-      hold: BarrioIngredientHold.noUnit,
+      unit: 'g',
+      unitFromOperator: true,
+      scalable: true,
     ),
     BarrioRecipeIngredient(
       raw: '180g Sunflower Seeds',
@@ -639,7 +644,7 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
       name: 'Whole Can Chipotle Pepper in Adobo Sauce',
       quantity: 1,
       scalable: false,
-      hold: BarrioIngredientHold.noUnit,
+      hold: BarrioIngredientHold.containerCount,
     ),
     BarrioRecipeIngredient(
       raw: '130g Cup Tomato Paste',
@@ -829,7 +834,7 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
       name: 'Tortillas',
       quantity: 2,
       scalable: false,
-      hold: BarrioIngredientHold.noUnit,
+      hold: BarrioIngredientHold.wholeItemCount,
     ),
   ],
   'training_recipes_c17_u0': <BarrioRecipeIngredient>[
@@ -884,7 +889,7 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
       name: 'Avocados',
       quantity: 15,
       scalable: false,
-      hold: BarrioIngredientHold.noUnit,
+      hold: BarrioIngredientHold.wholeItemCount,
     ),
     BarrioRecipeIngredient(
       raw: '500mL Lime Juice',
@@ -898,7 +903,7 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
       name: 'jalapeños (Deseeded)',
       quantity: 5,
       scalable: false,
-      hold: BarrioIngredientHold.noUnit,
+      hold: BarrioIngredientHold.wholeItemCount,
     ),
     BarrioRecipeIngredient(
       raw: '1/4 Bunch cilantro',
@@ -913,7 +918,7 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
       name: 'Large Red Onion Small Dice',
       quantity: 1,
       scalable: false,
-      hold: BarrioIngredientHold.noUnit,
+      hold: BarrioIngredientHold.wholeItemCount,
     ),
     BarrioRecipeIngredient(
       raw: 'L5S TT',
@@ -1000,7 +1005,7 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
       name: 'Eggs',
       quantity: 12,
       scalable: false,
-      hold: BarrioIngredientHold.noUnit,
+      hold: BarrioIngredientHold.wholeItemCount,
     ),
   ],
   'training_recipes_c23_u0': <BarrioRecipeIngredient>[
@@ -1088,7 +1093,7 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
       name: 'Limes (Juiced)',
       quantity: 23,
       scalable: false,
-      hold: BarrioIngredientHold.noUnit,
+      hold: BarrioIngredientHold.wholeItemCount,
     ),
     BarrioRecipeIngredient(
       raw: '454g Garlic',
@@ -1159,8 +1164,9 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
       raw: '654 Canola Oil',
       name: 'Canola Oil',
       quantity: 654,
-      scalable: false,
-      hold: BarrioIngredientHold.noUnit,
+      unit: 'g',
+      unitFromOperator: true,
+      scalable: true,
     ),
   ],
   'training_recipes_c26_u0': <BarrioRecipeIngredient>[
@@ -1373,7 +1379,7 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
       name: 'Corn Tortillas',
       quantity: 3,
       scalable: false,
-      hold: BarrioIngredientHold.noUnit,
+      hold: BarrioIngredientHold.wholeItemCount,
     ),
   ],
   'training_recipes_c30_u0': <BarrioRecipeIngredient>[
@@ -1382,14 +1388,14 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
       name: 'Tomatoes',
       quantity: 12,
       scalable: false,
-      hold: BarrioIngredientHold.noUnit,
+      hold: BarrioIngredientHold.wholeItemCount,
     ),
     BarrioRecipeIngredient(
       raw: '3 Banana Peppers Small Dice',
       name: 'Banana Peppers Small Dice',
       quantity: 3,
       scalable: false,
-      hold: BarrioIngredientHold.noUnit,
+      hold: BarrioIngredientHold.wholeItemCount,
     ),
     BarrioRecipeIngredient(
       raw: 'One Large Onion Red Small Dice',
@@ -1501,7 +1507,7 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
       name: 'Bay Leaves',
       quantity: 8,
       scalable: false,
-      hold: BarrioIngredientHold.noUnit,
+      hold: BarrioIngredientHold.wholeItemCount,
     ),
   ],
   'training_recipes_c32_u0': <BarrioRecipeIngredient>[

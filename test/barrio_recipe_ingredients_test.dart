@@ -20,7 +20,10 @@
 //     `BarrioRecipeIngredient.quantity`;
 //   * the mass and volume vocabulary is declared here, so the scaling
 //     rule is asserted against an independent list rather than against
-//     whichever words the generator happened to accept.
+//     whichever words the generator happened to accept;
+//   * which lines MAY be scaled is re-derived from those bodies by
+//     [_printedMassVolumeUnitOf] below, so the set the calculator offers
+//     a cook is compared with a set this file worked out for itself.
 //
 // Corrupting one entry's `raw` by a single character, or dropping one
 // entry, fails the first two tests below (verified 2026-08-13).
@@ -38,6 +41,28 @@ const String _kRecipesDocId = 'training_recipes';
 const Set<String> _kMassVolumeUnits = <String>{
   'g', 'kg', 'mg', 'lb', 'lbs', 'oz',
   'ml', 'l', 'tsp', 'tbsp', 'cup', 'cups',
+  'gram', 'grams', 'kilogram', 'kilograms', 'milligram', 'milligrams',
+  'pound', 'pounds', 'ounce', 'ounces',
+  'millilitre', 'millilitres', 'milliliter', 'milliliters',
+  'litre', 'litres', 'liter', 'liters',
+  'teaspoon', 'teaspoons', 'tablespoon', 'tablespoons',
+};
+
+/// The ONLY lines allowed to carry a unit their own text never prints.
+///
+/// NARROW BY DESIGN, AND IT MUST STAY NARROW. Two lines of the manual are
+/// weights the operator wrote as a bare number, and confirmed as grams on
+/// 2026-08-13. Everywhere else, a unit that is not on the line is a
+/// parser inventing a measurement, which is the failure this whole file
+/// exists to catch. So this table is written out line by line rather than
+/// the unit check being relaxed, and the tests below prove BOTH
+/// directions: these two carry the confirmed unit and the operator flag,
+/// and no other line in the manual carries that flag at all.
+///
+/// Re-confirming with the operator is the only thing that may add a row.
+const Map<String, String> _kOperatorConfirmedUnits = <String, String>{
+  '235 Pumpkin Seeds': 'g', // Beef Skewer Topping
+  '654 Canola Oil': 'g', // Pork Belly Glaze
 };
 
 /// Fraction glyphs the operator's kitchen types, decoded here so the
@@ -85,6 +110,46 @@ List<String> _ingredientLinesOf(String body) => <String>[
   }
   return (value: double.parse(token), end: match.end);
 }
+
+/// The word [raw] attaches to its leading number, or null when the line
+/// opens with no number or puts no word after it. '500mL Olive Oil' gives
+/// 'mL'; '12 Eggs' gives 'Eggs'; '8-10lbs of beets' gives null, because
+/// what follows the 8 is a second number, not a word.
+String? _wordAfterTheNumber(String raw) {
+  final number = _leadingNumber(raw);
+  if (number == null) return null;
+  final rest = raw.substring(number.end);
+  final word = RegExp(r'^\s*([A-Za-z]+)').firstMatch(rest);
+  if (word == null) return null;
+  // A range is two numbers with a hyphen between them, whichever side
+  // carries the unit: '8-10lbs', '2kg-2.5kg', '9-10 Roma Tomatoes'. It is
+  // a judgement call rather than a quantity, so it is not a single
+  // amount and cannot be read as one.
+  final after = rest.substring(word.end);
+  if (RegExp(r'^\s*-\s*(?:\d|[¼½¾⅓⅔])').hasMatch(after)) return null;
+  return word.group(1);
+}
+
+/// The unit of mass or volume [raw] PRINTS on its own leading number, or
+/// null when it prints none.
+///
+/// Written from first principles so the set of scalable lines this file
+/// expects is worked out from the manual's own words, never read back out
+/// of the parse it is checking.
+String? _printedMassVolumeUnitOf(String raw) {
+  final word = _wordAfterTheNumber(raw);
+  if (word == null) return null;
+  return _kMassVolumeUnits.contains(word.toLowerCase()) ? word : null;
+}
+
+/// Every parsed entry of the committed data, keyed 'cardId|line' so it
+/// can be compared with a set derived from the live card bodies.
+List<({String key, BarrioRecipeIngredient line})> _everyParsedLine() =>
+    <({String key, BarrioRecipeIngredient line})>[
+      for (final entry in kBarrioRecipeIngredients.entries)
+        for (final line in entry.value)
+          (key: '${entry.key}|${line.raw}', line: line),
+    ];
 
 void main() {
   group('recipe ingredient data', () {
@@ -167,7 +232,112 @@ void main() {
       }
     });
 
+    test('exactly the lines that print a mass or volume amount scale, plus '
+        'the two the operator confirmed', () {
+      // THE DANGEROUS DIRECTION. A line held that should scale is a
+      // working amount taken away from a cook, and it is the failure a
+      // widened hold rule causes. So the set of scalable lines is
+      // DERIVED here, off the live card bodies, by this file's own
+      // reader and its own vocabulary, and then compared whole. Neither
+      // side is a number typed to match: a line gained or lost on either
+      // side fails, and it fails naming the line.
+      final cards = _recipeCards();
+      final printedAmounts = <String>{};
+      for (final card in cards) {
+        for (final line in _ingredientLinesOf(card.body)) {
+          if (_printedMassVolumeUnitOf(line) != null) {
+            printedAmounts.add('${card.id}|$line');
+          }
+        }
+      }
+      final confirmed = <String>{
+        for (final card in cards)
+          for (final line in _ingredientLinesOf(card.body))
+            if (_kOperatorConfirmedUnits.containsKey(line)) '${card.id}|$line',
+      };
+
+      // Non-vacuity, and the shape of the two sets. The confirmed lines
+      // are an exception only while they are genuinely NOT in the first
+      // set; if they ever print their own unit they stop being one.
+      expect(printedAmounts.length, greaterThan(100),
+          reason: 'the manual reads as only ${printedAmounts.length} '
+              'scalable lines, so the bodies or this reader collapsed and '
+              'the comparison below would prove nothing');
+      expect(confirmed, hasLength(_kOperatorConfirmedUnits.length),
+          reason: 'an operator-confirmed line is no longer printed by the '
+              'manual');
+      expect(printedAmounts.intersection(confirmed), isEmpty,
+          reason: 'a confirmed line now prints its own unit, so it is not '
+              'an exception any more');
+
+      final expected = <String>{...printedAmounts, ...confirmed};
+      final actual = <String>{
+        for (final row in _everyParsedLine())
+          if (row.line.scalable) row.key,
+      };
+      expect(actual.difference(expected), isEmpty,
+          reason: 'these lines are scalable in the data but print no amount '
+              'in a unit of mass or volume: '
+              '${actual.difference(expected).join(" / ")}');
+      expect(expected.difference(actual), isEmpty,
+          reason: 'these lines print an amount a cook could scale, but the '
+              'data holds them back: '
+              '${expected.difference(actual).join(" / ")}');
+      expect(actual, hasLength(expected.length));
+    });
+
+    test('a number followed by a countable noun is held as a count, never '
+        'left unexplained', () {
+      // THE OTHER HALF OF THE RULE. '12 Eggs' is a number and the thing
+      // it counts, the same shape as '2 Stalks Celery' with the noun in
+      // the name instead of a unit slot. Held with any reason that does
+      // not say 'counted', it reads to a cook as the app failing rather
+      // than as a rounding call left to them.
+      //
+      // Which lines those are is derived from the live bodies: a leading
+      // number, no unit of measure attached to it, and not one of the
+      // two the operator confirmed as a weight.
+      final expected = <String>{};
+      for (final card in _recipeCards()) {
+        for (final line in _ingredientLinesOf(card.body)) {
+          if (_kOperatorConfirmedUnits.containsKey(line)) continue;
+          final word = _wordAfterTheNumber(line);
+          if (word == null) continue;
+          if (_kMassVolumeUnits.contains(word.toLowerCase())) continue;
+          expected.add('${card.id}|$line');
+        }
+      }
+      expect(expected, isNotEmpty,
+          reason: 'no line of the manual counts anything, so this guard '
+              'proved nothing');
+
+      final byKey = <String, BarrioRecipeIngredient>{
+        for (final row in _everyParsedLine()) row.key: row.line,
+      };
+      const counts = <BarrioIngredientHold>{
+        BarrioIngredientHold.containerCount,
+        BarrioIngredientHold.wholeItemCount,
+      };
+      for (final key in expected) {
+        final ingredient = byKey[key];
+        expect(ingredient, isNotNull, reason: '$key is missing from the data');
+        expect(ingredient!.scalable, isFalse,
+            reason: '$key attaches its number to a word that is not a unit '
+                'of measure, so there is nothing honest to multiply');
+        expect(counts.contains(ingredient.hold), isTrue,
+            reason: '$key counts the thing it names, but is held as '
+                '${ingredient.hold}; a cook reading that beside "12 Eggs" '
+                'would think the calculator was broken');
+      }
+    });
+
     test('a held line says why it is held', () {
+      // Counters, because every branch below is skippable and a sweep
+      // that reached none of them would pass having proved nothing.
+      var heldSeen = 0;
+      final reasonsSeen = <BarrioIngredientHold>{};
+      var countsWithAUnitWord = 0;
+      var countsNamingTheirOwnNoun = 0;
       for (final entry in kBarrioRecipeIngredients.entries) {
         for (final ingredient in entry.value.where((i) => !i.scalable)) {
           final where = '${entry.key}: "${ingredient.raw}"';
@@ -175,21 +345,53 @@ void main() {
               reason: '$where is held back with no reason given; a cook '
                   'reading a calculator deserves to know why a line did '
                   'not move');
+          heldSeen += 1;
+          reasonsSeen.add(ingredient.hold!);
           if (ingredient.hold == BarrioIngredientHold.noQuantity) {
             expect(ingredient.quantity, isNull,
                 reason: '$where claims no quantity but carries one');
           }
           if (ingredient.hold == BarrioIngredientHold.containerCount ||
               ingredient.hold == BarrioIngredientHold.wholeItemCount) {
-            expect(ingredient.unit, isNotNull,
-                reason: '$where counts something, so it must name what');
-            expect(_kMassVolumeUnits.contains(ingredient.unit!.toLowerCase()),
-                isFalse,
-                reason: '$where is held as a count but its unit measures '
-                    'mass or volume, which should have been scalable');
+            // A count comes in two shapes, and the rule has to be right
+            // about both: the counted noun can sit in a unit slot
+            // ('2 Stalks Celery') or in the ingredient's own name
+            // ('12 Eggs'). What may never happen either way is a line
+            // that measures mass or volume being held as a count, which
+            // would take a working amount away from the cook.
+            expect(ingredient.quantity, isNotNull,
+                reason: '$where counts something, so it must carry the '
+                    'number it counts');
+            if (ingredient.unit != null) {
+              countsWithAUnitWord += 1;
+              expect(_kMassVolumeUnits.contains(ingredient.unit!.toLowerCase()),
+                  isFalse,
+                  reason: '$where is held as a count but its unit measures '
+                      'mass or volume, which should have been scalable');
+            } else {
+              countsNamingTheirOwnNoun += 1;
+              expect(_printedMassVolumeUnitOf(ingredient.raw), isNull,
+                  reason: '$where is held as a count, but the word its '
+                      'number attaches to measures mass or volume; that '
+                      'line should scale');
+              expect(ingredient.name.trim(), isNotEmpty,
+                  reason: '$where counts something it does not name');
+            }
           }
         }
       }
+      expect(heldSeen, greaterThan(0),
+          reason: 'no held line was reached, so this guard proved nothing');
+      expect(reasonsSeen, BarrioIngredientHold.values.toSet(),
+          reason: 'a hold reason no live line reaches is untested wording, '
+              'and a reason live lines reach that the enum has lost would '
+              'not compile');
+      expect(countsWithAUnitWord, greaterThan(0),
+          reason: 'the counted-noun-in-a-unit-slot branch was never '
+              'reached, so its assertion proved nothing');
+      expect(countsNamingTheirOwnNoun, greaterThan(0),
+          reason: 'the counted-noun-in-the-name branch was never reached, '
+              'so its assertion proved nothing');
     });
 
     test('the parsed quantity is the number the line actually prints', () {
@@ -212,6 +414,28 @@ void main() {
               reason: '$where was parsed as ${ingredient.quantity} but the '
                   'line opens with ${read.value}');
           if (ingredient.unit != null) {
+            final confirmed = _kOperatorConfirmedUnits[ingredient.raw];
+            if (confirmed != null) {
+              // THE NARROW EXCEPTION, and the only one. These two lines
+              // print no unit, which is precisely why the operator had to
+              // be asked. Everything about them is still pinned: the unit
+              // is the confirmed one, the flag that tells the cook where
+              // it came from is set, and the line still prints no unit of
+              // its own (if it ever starts to, this exception is stale
+              // and must be deleted rather than carried).
+              expect(ingredient.unit, confirmed,
+                  reason: '$where carries "${ingredient.unit}", but the '
+                      'operator confirmed "$confirmed"');
+              expect(ingredient.unitFromOperator, isTrue,
+                  reason: '$where takes its unit from the operator, so it '
+                      'must say so; otherwise the calculator shows a unit '
+                      'the card does not print and explains nothing');
+              continue;
+            }
+            expect(ingredient.unitFromOperator, isFalse,
+                reason: '$where claims an operator-confirmed unit, but the '
+                    'only confirmed lines are '
+                    '${_kOperatorConfirmedUnits.keys.join(", ")}');
             expect(ingredient.raw.contains(ingredient.unit!), isTrue,
                 reason: '$where was given the unit "${ingredient.unit}", '
                     'which the line never prints');
@@ -225,8 +449,53 @@ void main() {
                   reason: '$where: the unit must be the word attached to the '
                       'quantity, not one found elsewhere in the line');
             }
+          } else {
+            expect(ingredient.unitFromOperator, isFalse,
+                reason: '$where claims a unit from the operator but carries '
+                    'no unit at all');
           }
         }
+      }
+    });
+
+    test('the operator-confirmed lines are exactly the two lines the '
+        'operator confirmed', () {
+      // BOTH DIRECTIONS. The exception above is only narrow if the
+      // confirmed unit landed on those two lines AND on nothing else. A
+      // confirmation pointed at the wrong ingredient fails here.
+      final flagged = <String>[];
+      final flaggedByRaw = <String, BarrioRecipeIngredient>{};
+      for (final entry in kBarrioRecipeIngredients.entries) {
+        for (final ingredient in entry.value) {
+          if (!ingredient.unitFromOperator) continue;
+          flagged.add('${entry.key}|${ingredient.raw}');
+          flaggedByRaw[ingredient.raw] = ingredient;
+        }
+      }
+      expect(flagged, hasLength(_kOperatorConfirmedUnits.length),
+          reason: 'the manual carries ${flagged.length} operator-confirmed '
+              'unit(s) but this file knows of '
+              '${_kOperatorConfirmedUnits.length}: ${flagged.join(", ")}');
+      expect(flaggedByRaw.keys.toSet(), _kOperatorConfirmedUnits.keys.toSet(),
+          reason: 'an operator confirmation moved to a line the operator '
+              'never confirmed');
+
+      for (final row in _kOperatorConfirmedUnits.entries) {
+        final ingredient = flaggedByRaw[row.key];
+        expect(ingredient, isNotNull,
+            reason: '"${row.key}" is no longer confirmed in the data');
+        expect(ingredient!.unit, row.value);
+        expect(ingredient.scalable, isTrue,
+            reason: 'the point of confirming "${row.key}" was to let a cook '
+                'scale it');
+        expect(ingredient.hold, isNull);
+        // The confirmation exists BECAUSE the line prints no unit. If the
+        // source ever spells one out, the parse would read it off the
+        // line and this table is dead weight.
+        expect(_printedMassVolumeUnitOf(row.key), isNull,
+            reason: '"${row.key}" now prints its own unit, so the operator '
+                'confirmation is stale and must be deleted here and in '
+                'tool/barrio_recipe_ingredients_generator.py');
       }
     });
 
