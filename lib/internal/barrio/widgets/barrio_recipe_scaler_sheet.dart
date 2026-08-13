@@ -294,10 +294,12 @@ class _IngredientRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            Expanded(child: Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: name,
-            )),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: name,
+              ),
+            ),
           ],
         ),
       );
