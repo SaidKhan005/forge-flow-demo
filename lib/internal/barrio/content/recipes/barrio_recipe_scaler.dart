@@ -1,206 +1,106 @@
-// Scaling a recipe from the one ingredient the cook is holding.
+// The arithmetic behind the recipe calculator.
 //
 // WHAT THIS IS FOR. A cook has 3kg of pork belly and the recipe was
 // written for 2.5kg. They should not have to work the multiplier out in
-// their head. They name the line they are starting from, type the
-// amount they actually have, and every other amount that CAN move
-// follows. The multiplier is derived from that one anchor, never typed.
+// their head. They pick the line they are starting from, type the amount
+// they actually have, and every other amount follows. The multiplier is
+// derived from that one anchor, never typed.
 //
 // NO UNIT CONVERSION, ON PURPOSE. Every line stays in the unit it was
 // already written in, and the typed amount is read in the anchor's own
-// unit. A gram never becomes a kilogram here. Converting is a whole
-// class of wrong-number bugs, and it is not what was asked for: the
-// recipe says 500mL, so the cook types millilitres.
+// unit. A gram never becomes a kilogram here. Converting is a whole class
+// of wrong-number bugs, and it is not what was asked for: the recipe says
+// 500mL, so the cook types millilitres.
 //
-// HONESTY IS THE POINT. 44 of the manual's 203 ingredient lines cannot
-// be multiplied at all (see [BarrioIngredientHold]). Those lines are
-// carried through UNCHANGED, never hidden and never quietly scaled, each
-// with a reason a cook can act on. A calculator that silently turned
-// '1 Jar Aji Amarillo' into '2.5 Jar' would be worse than no calculator.
+// ONE RULE. A line with a number scales; a line without one prints as
+// written, and nothing is said about it. See the note in
+// `barrio_recipe_models.dart` for why the old held/scalable split and its
+// four explanations were deleted rather than hidden.
 //
-// A REASON HAS TO BE TRUE, NOT JUST CAUTIOUS. Holding a line is only
-// honest while the sentence beside it is honest. 14 countable lines used
-// to be held with 'the recipe does not say what this number measures',
-// printed next to '12 Eggs', which reads as a broken app rather than as
-// a judgement left to the cook. They are counts now, and they say so.
-// See the removal note in `barrio_recipe_models.dart`.
+// PLAIN ARITHMETIC, NO CATEGORIES. Counts are multiplied like anything
+// else, so '2 Stalks Celery' at 2.4 times reads '4.8 Stalks'. Rounding
+// that back to a whole stalk is the cook's call and the calculator does
+// not make it for them.
 //
-// Nothing here reads or writes anything. It is arithmetic and
-// formatting over the data in `barrio_recipe_ingredients.dart`, so it is
-// testable on its own, and `test/barrio_recipe_scaler_test.dart` derives
-// every expected value by hand rather than asking this file what it did.
+// Nothing here reads or writes anything. It is arithmetic and formatting
+// over the data in `barrio_recipe_ingredients.dart`, so it is testable on
+// its own, and `test/barrio_recipe_scaler_test.dart` derives every
+// expected value by hand rather than asking this file what it did.
 
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
-
 import 'barrio_recipe_models.dart';
 
-/// One ingredient line after scaling.
+/// How many times the written recipe the cook is making.
 ///
-/// [scaledQuantity] is null for every line the recipe does not allow to
-/// be multiplied; [BarrioRecipeIngredient.hold] on [line] says why, and
-/// [barrioHoldReason] turns that into words for the cook.
-@immutable
-class BarrioScaledIngredient {
-  const BarrioScaledIngredient({required this.line, this.scaledQuantity});
-
-  /// The source line, untouched. [BarrioRecipeIngredient.raw] is what a
-  /// held line shows, character for character as the card printed it.
-  final BarrioRecipeIngredient line;
-
-  /// The multiplied amount, or null when the line is held back.
-  final double? scaledQuantity;
-
-  /// Whether this line moved with the cook's amount.
-  bool get scaled => scaledQuantity != null;
-
-  /// The new amount with its unit, ready to show ('1250mL'), or null on
-  /// a held line.
-  String? get scaledText => scaledQuantity == null
-      ? null
-      : barrioAmountWithUnit(scaledQuantity!, line);
-
-  /// The amount the recipe was written with, with its unit ('500mL'), or
-  /// null when the line never carried a quantity at all. A cook has to
-  /// be able to see what changed, so this stays next to [scaledText].
-  String? get originalText =>
-      line.quantity == null ? null : barrioAmountWithUnit(line.quantity!, line);
-
-  /// Whether scaling actually moved this line's printed amount. False at
-  /// a multiplier of 1, and false when the change is too small to show,
-  /// which is exactly when repeating the old amount would be noise.
-  bool get changed =>
-      scaled && originalText != null && scaledText != originalText;
-}
-
-/// A whole recipe scaled from one anchor.
-@immutable
-class BarrioRecipeScale {
-  const BarrioRecipeScale({
-    required this.multiplier,
-    required this.anchor,
-    required this.lines,
-  });
-
-  /// How many times the written recipe this is. Derived from the anchor,
-  /// never typed. Exactly 1.0 whenever the cook has not given a usable
-  /// amount, so the honest default is the recipe as written.
-  final double multiplier;
-
-  /// The line the cook is starting from, or null when the recipe has
-  /// nothing that may be scaled.
-  final BarrioRecipeIngredient? anchor;
-
-  /// Every line of the recipe, in the card's own order, scalable and
-  /// held alike. Nothing is dropped.
-  final List<BarrioScaledIngredient> lines;
-
-  /// True when this is the recipe exactly as written.
-  bool get isAsWritten => multiplier == 1.0;
-}
-
-/// Scales [lines] so that [anchor] comes out at [amount] of its own unit.
-///
-/// The multiplier is `amount / anchor.quantity`, which is the whole idea:
-/// the cook says what they have of ONE ingredient and the rest follows.
-/// An anchor that may not be scaled, a missing amount, and any amount
-/// that is not a real number above zero all fall back to a multiplier of
-/// 1, so a half-typed number never shows a half-invented recipe.
-BarrioRecipeScale barrioScaleRecipe({
-  required List<BarrioRecipeIngredient> lines,
+/// [amount] is read in [anchor]'s own unit, so the multiplier is
+/// `amount / anchor.quantity`: the cook says what they have of ONE
+/// ingredient and the rest follows. A missing anchor, a range (which is
+/// two numbers, so an amount typed against it would be ambiguous), a
+/// missing amount, and anything that is not a real number above zero all
+/// give exactly 1, so a half-typed number never shows a half-invented
+/// recipe.
+double barrioRecipeMultiplier({
   BarrioRecipeIngredient? anchor,
   double? amount,
 }) {
-  final anchorQuantity = anchor?.quantity;
-  final usable = anchor != null &&
-      anchor.scalable &&
-      anchorQuantity != null &&
-      anchorQuantity > 0 &&
-      amount != null &&
-      amount.isFinite &&
-      amount > 0;
-  final multiplier = usable ? amount / anchorQuantity : 1.0;
-  return BarrioRecipeScale(
-    multiplier: multiplier,
-    anchor: anchor,
-    lines: <BarrioScaledIngredient>[
-      for (final line in lines)
-        BarrioScaledIngredient(
-          line: line,
-          // The hold is what decides. A line that may not be multiplied
-          // gets no scaled amount at all, at any multiplier, so there is
-          // no path by which a jar count can be quietly moved.
-          scaledQuantity: line.scalable && line.quantity != null
-              ? line.quantity! * multiplier
-              : null,
-        ),
-    ],
-  );
+  final written = anchor?.quantity;
+  if (anchor == null ||
+      written == null ||
+      written <= 0 ||
+      anchor.quantityHigh != null ||
+      amount == null ||
+      !amount.isFinite ||
+      amount <= 0) {
+    return 1.0;
+  }
+  return amount / written;
 }
 
-/// The lines of [lines] the cook may start from.
-List<BarrioRecipeIngredient> barrioScalableLines(
+/// The lines of [lines] a cook may start from.
+///
+/// Every line with a number except a range: a range is two numbers, and an
+/// amount typed against '8-10lbs of beets' would not say which one it
+/// meant. Ranges still scale when some other line is the anchor.
+List<BarrioRecipeIngredient> barrioAnchorLines(
   List<BarrioRecipeIngredient> lines,
 ) =>
     <BarrioRecipeIngredient>[
       for (final line in lines)
-        if (line.scalable && (line.quantity ?? 0) > 0) line,
+        if ((line.quantity ?? 0) > 0 && line.quantityHigh == null) line,
     ];
 
-/// Why a line did not move, in words a cook can act on.
+/// [line]'s amount at [multiplier], or null when the line has no number.
 ///
-/// Every reason ends with what to DO, because a held line is not an
-/// error: it is a judgement the recipe left to the person cooking.
-String barrioHoldReason(BarrioIngredientHold hold) {
-  return switch (hold) {
-    BarrioIngredientHold.noQuantity =>
-      'No amount to scale. Go by taste and by eye.',
-    BarrioIngredientHold.containerCount =>
-      'Counted in containers. Round it yourself.',
-    BarrioIngredientHold.wholeItemCount =>
-      'Counted as whole items. Round it yourself.',
-    BarrioIngredientHold.range =>
-      'The recipe gives a range. Pick a number inside it.',
-  };
-}
-
-/// Where a line's unit came from, when it did not come from the recipe.
+/// The scaled text is [BarrioRecipeIngredient.amount] with its numbers
+/// rewritten and every other character left alone, so '500mL' becomes
+/// '1250mL', '1 TSP' becomes '2.5 TSP', '8-10lbs' becomes '16-20lbs', and
+/// '2kg-2.5kg' becomes '4kg-5kg'. A range scales on both of its numbers.
 ///
-/// Two lines of the manual are weights the operator wrote as a bare
-/// number, and confirmed as grams on 2026-08-13. The card still prints
-/// them without a unit, because the manual is reproduced word for word.
-/// So the calculator shows a unit the page does not, and a cook who
-/// noticed that deserves the one sentence that explains it rather than
-/// being left to wonder which of the two is wrong.
-///
-/// Null for every ordinary line, where the unit is right there on the
-/// page and saying so would be noise.
-String? barrioUnitSourceNote(BarrioRecipeIngredient line) {
+/// The one line shape that needs more than a rewrite is a unit the recipe
+/// never printed: '235 Pumpkin Seeds' carries the operator-confirmed 'g'
+/// in [BarrioRecipeIngredient.unit] and nowhere in its own text, so the
+/// unit is appended. Every other line already spells its unit inside the
+/// amount.
+String? barrioScaledAmount(BarrioRecipeIngredient line, double multiplier) {
+  final amount = line.amount;
+  final quantity = line.quantity;
+  if (amount == null || quantity == null) return null;
+  final scaled = <double>[
+    quantity * multiplier,
+    if (line.quantityHigh != null) line.quantityHigh! * multiplier,
+  ];
+  var index = 0;
+  final rewritten = amount.replaceAllMapped(_numberInAnAmount, (match) {
+    final source = match.group(0)!;
+    if (index >= scaled.length) return source;
+    final value = scaled[index];
+    index += 1;
+    return barrioFormatRecipeAmount(value);
+  });
   final unit = line.unit;
-  if (!line.unitFromOperator || unit == null) return null;
-  return 'The recipe prints no unit here. The operator confirmed '
-      '${_unitInWords(unit)}.';
-}
-
-/// A unit said the way a cook would say it out loud.
-///
-/// Only the units an operator confirmation actually uses are spelled out.
-/// Anything else falls back to the unit as written, which still reads
-/// true; inventing wording for units no line carries would be wording
-/// nothing can test.
-String _unitInWords(String unit) => switch (unit.toLowerCase()) {
-      'g' => 'grams',
-      _ => unit,
-    };
-
-/// A number and its unit, spaced the way the source line spaced it
-/// ('500mL' stays closed up, '1 TSP' keeps its space).
-String barrioAmountWithUnit(double value, BarrioRecipeIngredient line) {
-  final amount = barrioFormatRecipeAmount(value);
-  final unit = line.unit;
-  if (unit == null || unit.isEmpty) return amount;
-  return _unitIsSpaced(line.raw) ? '$amount $unit' : '$amount$unit';
+  if (unit == null || amount.contains(unit)) return rewritten;
+  return '$rewritten $unit';
 }
 
 /// The derived multiplier as a cook would say it: '2.5', '0.5', '3'.
@@ -230,6 +130,11 @@ String barrioFormatMultiplier(double multiplier) =>
 ///      at twelve decimals purely so the loop is bounded; nothing in the
 ///      manual comes near it at any batch size a kitchen would key in,
 ///      which `test/barrio_recipe_scaler_test.dart` sweeps for.
+///
+/// NO COUNT ROUNDING, DELIBERATELY. A count is not rounded to a whole
+/// number here: '2 Stalks' at 2.4 times prints '4.8 Stalks'. Snapping it
+/// to 5 would be the calculator deciding how much celery goes in, and the
+/// operator chose to leave that with the cook.
 ///
 /// WHAT WAS DELIBERATELY NOT DONE: a hard cap at the source line's own
 /// decimal count. It reads well ('never more precision than the source')
@@ -276,18 +181,8 @@ String _trimTrailingZeros(String fixed) {
   return fixed.substring(0, end);
 }
 
-/// Whether the source line put a space between its number and its unit.
-/// Read off [raw] so the calculator spaces an amount the way the card
-/// the cook just read spaced it.
-bool _unitIsSpaced(String raw) {
-  final match = _leadingNumberPattern.firstMatch(raw);
-  if (match == null) return true;
-  final rest = raw.substring(match.end);
-  return rest.isEmpty || rest.startsWith(' ');
-}
-
-/// The number a line opens with: a kitchen fraction glyph, a decimal, or
-/// a written fraction such as '1/2'.
-final RegExp _leadingNumberPattern =
-    RegExp(r'^\s*(?:[¼½¾⅓⅔]|'
-        r'\d+(?:\.\d+)?(?:/\d+(?:\.\d+)?)?)');
+/// A number inside an amount: a kitchen fraction glyph, a decimal, or a
+/// written fraction such as '1/2'. The generator guarantees an amount
+/// holds exactly one of these, or two when the line is a range.
+final RegExp _numberInAnAmount = RegExp(r'[¼½¾⅓⅔⅛⅜⅝⅞]|'
+    r'\d+(?:\.\d+)?(?:/\d+(?:\.\d+)?)?');
