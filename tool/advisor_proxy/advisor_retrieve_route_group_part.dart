@@ -1,37 +1,55 @@
 // Forge & Flow advisor proxy — advisor retrieval route group.
 //
-// Advisor Knowledge Activation — Slice A2.
+// Advisor Knowledge Activation — Slice A2 (A2b extension).
 //
-// This part file exposes POST /v1/advisor/retrieve, which accepts a
-// pre-computed 1024-dim query embedding and returns the top-K corpus
-// chunks by cosine similarity. It delegates to [CorpusRetrievalService]
-// (Slice A1) and [PostgresCorpusRetrievalRepository] for the actual SQL
-// call — no additional DB connections are opened here.
+// This part file exposes POST /v1/advisor/retrieve, which accepts either:
+//   (a) a text `query` string (A2b): server-side Voyage embedding, then
+//       [CorpusRetrievalService] vector search; OR
+//   (b) a pre-computed `query_embedding` 1024-dim array (back-compat path
+//       from Slice A2): passed directly to [CorpusRetrievalService].
+//
+// One of the two MUST be present; missing both returns 400.
 //
 // Ceiling-safe decomposition: ALL handler logic lives in this `part` file.
-// The monolith (`advisor_proxy.dart`) gains exactly two lines:
-//   1. `part 'advisor_retrieve_route_group_part.dart';`  (beside line 325)
-//   2. A minimal path-match + dispatch in `routeRequest` (before the
-//      final 404 fallthrough).
+// The monolith (`advisor_proxy.dart`) gains one new optional parameter
+// (`corpusQueryEmbeddingGateway`) in `routeRequest` — < 4 lines.
 // No handler logic lives in the monolith. No `kAdvisorProxyMaxLines` raise.
 //
 // Route contract:
 //   POST /v1/advisor/retrieve
 //   Auth: standard operator JWT (requireOperatorContext).
-//   Body: {
-//     "query_embedding": [<1024 floats>],
-//     "graph_scope"?:  "methodology"   (default: "methodology"),
-//     "restaurant_id"?: <uuid-string|null>,
-//     "max_results"?:  <int 1–100>     (default: 8)
-//   }
+//   Body (text-query path — A2b):
+//     {
+//       "query":       <non-empty string>,
+//       "graph_scope"?:  "methodology"   (default: "methodology"),
+//       "restaurant_id"?: <uuid-string|null>,
+//       "max_results"?:  <int 1–100>     (default: 8)
+//     }
+//   Body (pre-computed embedding path — A2 back-compat):
+//     {
+//       "query_embedding": [<1024 floats>],
+//       "graph_scope"?:  "methodology",
+//       "restaurant_id"?: <uuid-string|null>,
+//       "max_results"?:  <int 1–100>
+//     }
 //   200: { "chunks": [{ "chunk_id", "doc_id", "heading_path", "text",
 //                        "similarity" }] }
-//   400: standard error envelope (missing/invalid embedding, wrong length)
+//   400: standard error envelope (missing/invalid query or embedding)
 //   401/403: standard auth envelope (missing/expired/wrong scope)
-//   503: standard dependency-timeout envelope
+//   503: standard dependency-timeout envelope (gateway/service unavailable)
 //
-// Read-only retrieval only. No writes, no rerank (A3), no answer
-// generation (A4), no server-side text→embedding (A2b).
+// HP #7: the Voyage API key is accepted by the route as a plain String,
+// used in exactly one downstream call, and never returned to the client
+// or captured in a log field.
+//
+// TODO(HP#9): increment the voyage usage counter for the embedding call.
+//   The existing [ProxyUsageGuard] / [ProxyUsageCounterStore] is scoped
+//   to LLM advisor requests (operator/location/tier). The query-embedding
+//   call is a different cost class (Voyage tokens, not Anthropic tokens).
+//   Wiring requires a separate counter lane or a new cost-class key in
+//   `advisor_proxy_usage_counters`. This is left for a follow-up slice
+//   (A2b.1 or the HP#9 dedicated pass) rather than implemented silently
+//   with a no-op that would be invisible in the audit trail.
 
 part of 'advisor_proxy.dart';
 
@@ -43,55 +61,141 @@ const String advisorRetrievePath = '/v1/advisor/retrieve';
 /// Handler for POST [advisorRetrievePath].
 ///
 /// Called from [routeRequest] after the standard operator-scope JWT has
-/// been resolved. The repository is constructed from the shared
-/// [tenantWrapper] injected via the [CorpusRetrievalService] parameter —
-/// no new DB connection is opened.
+/// been resolved. Supports two input paths:
 ///
-/// Validation is intentionally minimal here: the embedding-length guard
-/// is owned by [CorpusRetrievalService] (throws [ArgumentError] on
-/// wrong dimension). This function validates the raw JSON shape only
-/// (presence and list-of-number constraints).
+///   1. **Text query (A2b):** body contains `"query": <string>`.  The
+///      handler embeds it via [embeddingGateway] using the server-side
+///      Voyage key ([voyageApiKey]).  [embeddingGateway] must be
+///      non-null when this path is used.
+///   2. **Pre-computed embedding (A2 back-compat):** body contains
+///      `"query_embedding": [<1024 floats>]`.  Passed directly to
+///      [retrievalService] — no API call.
+///
+/// HP #7: [voyageApiKey] is never logged or returned to the client.
 Future<void> _handleAdvisorRetrieve({
   required HttpRequest request,
   required HttpResponse response,
   required Map<String, Object?> body,
   required CorpusRetrievalService retrievalService,
+  AdvisorQueryEmbeddingGateway? embeddingGateway,
+  String? voyageApiKey,
 }) async {
-  // ── Validate query_embedding ─────────────────────────────────────────
-  final rawEmbedding = body['query_embedding'];
-  if (rawEmbedding is! List) {
-    _writeJson(response, 400, const <String, Object?>{
-      'error': 'missing_query_embedding',
-      'message': 'query_embedding is required and must be a JSON array',
-    });
-    return;
-  }
+  // ── Resolve the embedding (text query or pre-computed) ───────────────
+  List<double> embedding;
 
-  // Coerce each element to double. JSON numbers may arrive as int.
-  final embedding = <double>[];
-  for (final element in rawEmbedding) {
-    if (element is num) {
-      embedding.add(element.toDouble());
-    } else {
+  final rawQuery = body['query'];
+  final rawEmbedding = body['query_embedding'];
+
+  if (rawQuery != null) {
+    // ── Path A: text query → server-side embedding (A2b) ──────────────
+    if (rawQuery is! String || rawQuery.trim().isEmpty) {
       _writeJson(response, 400, const <String, Object?>{
-        'error': 'invalid_query_embedding',
-        'message': 'every element of query_embedding must be a number',
+        'error': 'invalid_query',
+        'message':
+            'query must be a non-empty string when provided',
       });
       return;
     }
-  }
 
-  // Dimension check — CorpusRetrievalService also guards this, but
-  // returning a structured 400 here before the service call gives the
-  // caller a better error message than an unhandled ArgumentError.
-  if (embedding.length != 1024) {
-    _writeJson(response, 400, <String, Object?>{
-      'error': 'invalid_query_embedding_dimension',
+    if (embeddingGateway == null || voyageApiKey == null) {
+      _writeJson(response, 503, const <String, Object?>{
+        'error': 'query_embedding_gateway_not_configured',
+        'message':
+            'server-side query embedding is not available; '
+            'provide query_embedding instead',
+      });
+      return;
+    }
+
+    try {
+      embedding = await embeddingGateway.embedQuery(
+        // HP #7: key stays in the call stack, never logged or returned.
+        apiKey: voyageApiKey,
+        model: AdvisorProviderConstants.voyageEmbeddingModelId,
+        dimensions: AdvisorProviderConstants.voyageEmbeddingDimensions,
+        queryText: rawQuery.trim(),
+      );
+    } on AdvisorQueryEmbeddingException catch (e) {
+      // Surface the exception message in the proxy log — it is safe
+      // (no key, truncated provider error).  Return a typed 503 to
+      // the caller; the full message is not client-visible.
+      log(
+        LogSeverity.warning,
+        'advisor_retrieve.embedding_failed',
+        fields: <String, Object?>{'message': e.message},
+      );
+      _writeJson(response, 503, const <String, Object?>{
+        'error': 'query_embedding_unavailable',
+        'message': 'could not embed query; please retry',
+      });
+      return;
+    }
+
+    // Dimension sanity check — Voyage should always return the
+    // requested dimension, but guard defensively.
+    if (embedding.length != AdvisorProviderConstants.voyageEmbeddingDimensions) {
+      log(
+        LogSeverity.warning,
+        'advisor_retrieve.embedding_dimension_mismatch',
+        fields: <String, Object?>{
+          'expected': AdvisorProviderConstants.voyageEmbeddingDimensions,
+          'received': embedding.length,
+        },
+      );
+      _writeJson(response, 503, const <String, Object?>{
+        'error': 'query_embedding_dimension_mismatch',
+        'message':
+            'embedding provider returned wrong dimension; please retry',
+      });
+      return;
+    }
+  } else if (rawEmbedding != null) {
+    // ── Path B: pre-computed embedding (A2 back-compat) ───────────────
+    if (rawEmbedding is! List) {
+      _writeJson(response, 400, const <String, Object?>{
+        'error': 'missing_query_embedding',
+        'message': 'query_embedding is required and must be a JSON array',
+      });
+      return;
+    }
+
+    // Coerce each element to double. JSON numbers may arrive as int.
+    final coerced = <double>[];
+    for (final element in rawEmbedding) {
+      if (element is num) {
+        coerced.add(element.toDouble());
+      } else {
+        _writeJson(response, 400, const <String, Object?>{
+          'error': 'invalid_query_embedding',
+          'message': 'every element of query_embedding must be a number',
+        });
+        return;
+      }
+    }
+
+    // Dimension check — CorpusRetrievalService also guards this, but
+    // returning a structured 400 here before the service call gives the
+    // caller a better error message than an unhandled ArgumentError.
+    if (coerced.length != 1024) {
+      _writeJson(response, 400, <String, Object?>{
+        'error': 'invalid_query_embedding_dimension',
+        'message':
+            'query_embedding must contain exactly 1024 floats '
+            '(got ${coerced.length})',
+        'expected_dimension': 1024,
+        'received_dimension': coerced.length,
+      });
+      return;
+    }
+
+    embedding = coerced;
+  } else {
+    // ── Neither query nor query_embedding provided ─────────────────────
+    _writeJson(response, 400, const <String, Object?>{
+      'error': 'missing_query_or_embedding',
       'message':
-          'query_embedding must contain exactly 1024 floats '
-          '(got ${embedding.length})',
-      'expected_dimension': 1024,
-      'received_dimension': embedding.length,
+          'provide either "query" (text, server-side embedding) or '
+          '"query_embedding" (pre-computed 1024-dim array)',
     });
     return;
   }
