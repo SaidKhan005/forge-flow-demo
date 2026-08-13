@@ -156,6 +156,33 @@ if has_changed '^lib/internal/barrio/content/training/.*\.dart$|^tool/barrio_tra
   fi
 fi
 
+# Barrio ingredient-bank drift: barrio_recipe_ingredients.dart is generator
+# OUTPUT too, and it has a second way to go stale that the training check
+# above does not cover. Its parser reads the GENERATED recipes content file,
+# so the bank rots either when that input is regenerated or when the bank
+# itself is hand-edited. A hand-edit that stayed internally consistent still
+# passed the substring and coverage guards in
+# test/barrio_recipe_ingredients_test.dart, so it slipped through silently
+# and the next regeneration reverted it. --check renders in memory and
+# compares; it writes nothing. ~0.5s, cheaper than the content check above.
+# Same python probe and skip posture as that check.
+if has_changed '^lib/internal/barrio/content/recipes/barrio_recipe_ingredients\.dart$|^lib/internal/barrio/content/training/training_recipes_content\.dart$|^tool/barrio_recipe_ingredients_generator\.py$'; then
+  barrio_ing_py=""
+  for candidate in python python3 py; do
+    if "$candidate" -c "" >/dev/null 2>&1; then
+      barrio_ing_py="$candidate"
+      break
+    fi
+  done
+  if [ -n "$barrio_ing_py" ]; then
+    run_lint "$barrio_ing_py" tool/barrio_recipe_ingredients_generator.py --check
+  else
+    echo
+    echo "[forge-flow pre-push] No working python found; skipping barrio ingredient drift check."
+    echo "  Run it manually: python tool/barrio_recipe_ingredients_generator.py --check"
+  fi
+fi
+
 # Barrio extractor safety: assets/internal/barrio/training/<doc_id>/ has two
 # writers (this extractor and the real-images pass), so the extractor may only
 # delete files its manifest says it produced. Getting that wrong destroyed 127
