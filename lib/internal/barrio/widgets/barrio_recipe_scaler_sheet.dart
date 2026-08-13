@@ -1,22 +1,31 @@
-// The recipe calculator, as a bottom sheet (operator request,
-// 2026-08-13: "key in a certain amount of one ingredient and it gives me
-// the adjusted measurement for the other items").
+// The recipe calculator, as a bottom sheet.
 //
-// HOW IT WORKS. The cook taps the ingredient they are starting from,
-// types how much of it they have, and every other amount that may be
-// multiplied follows. The multiplier is derived from that one anchor and
-// shown in plain words, so a cook can sanity-check the whole answer with
-// one glance. The written amount stays beside the new one.
+// A CALCULATOR AND NOTHING ELSE (operator direction, REC-6, 2026-08-13:
+// "I want the calculator to just be a calculator, no verbage, just keep it
+// simple as possible and intuitive as possible, no jargon"). What is on
+// screen is the ingredient list at the current scale, one box to type in,
+// and the multiplier as a number. There is no heading, no instruction, no
+// recipe title, no section labels, and no sentence explaining any line.
+// The first release carried all of those; they were deleted, not hidden.
+//
+// HOW IT WORKS. Every amount is a box. Tapping one picks that ingredient
+// and puts the cursor in it; typing an amount moves every other amount.
+// An empty box shows what the recipe wrote, greyed, so the list opens as
+// the recipe was written.
+//
+// A LINE WITH NO NUMBER JUST SITS THERE. 'Salt TT' has nothing to
+// multiply, so it prints exactly as the card printed it, with no box, no
+// badge and no explanation. Silence is the whole treatment.
 //
 // WHY A SHEET, NOT SOMETHING ON THE CARD. The reader turns the page on a
 // tap, and the page-turn zones live in a gesture arena with everything
 // the card plants. Slice A9 already proved that adding a gesture-owning
 // widget inside the card body kills page turns (see the DO NOT MOVE note
-// on `_buildSelectableDeck` in `training_doc_screen.dart`). A modal
-// route sits on its own Navigator entry, above that arena entirely, so a
-// text field in here can never race the reader's tap. The card carries
-// only a button, which is the same shape as the bookmark toggle that has
-// been safe there since rec #8.
+// on `_buildSelectableDeck` in `training_doc_screen.dart`). A modal route
+// sits on its own Navigator entry, above that arena entirely, so a text
+// field in here can never race the reader's tap. The card carries only a
+// button, which is the same shape as the bookmark toggle that has been
+// safe there since rec #8.
 //
 // The arithmetic and every rounding decision live in
 // `../content/recipes/barrio_recipe_scaler.dart`. This file is the
@@ -36,31 +45,22 @@ import 'barrio_destination_scaffold.dart';
 /// method cards and every card of every other manual never reach here.
 Future<void> showBarrioRecipeScaler(
   BuildContext context, {
-  required String recipeTitle,
   required List<BarrioRecipeIngredient> lines,
   required Color accent,
 }) {
   return showModalBottomSheet<void>(
     context: context,
     // The keyboard has to be able to push the sheet up without the
-    // amount field going under it.
+    // amount box going under it.
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => BarrioRecipeScalerSheet(
-      recipeTitle: recipeTitle,
-      lines: lines,
-      accent: accent,
-    ),
+    builder: (_) => BarrioRecipeScalerSheet(lines: lines, accent: accent),
   );
 }
 
 /// Bottom sheet that scales one recipe from one ingredient.
 class BarrioRecipeScalerSheet extends StatefulWidget {
-  /// The card's own title, so a cook knows which recipe they are scaling.
-  final String recipeTitle;
-
-  /// Every ingredient line of that card, in reading order, scalable and
-  /// held alike.
+  /// Every ingredient line of that card, in reading order.
   final List<BarrioRecipeIngredient> lines;
 
   /// The owning manual's identity color.
@@ -68,7 +68,6 @@ class BarrioRecipeScalerSheet extends StatefulWidget {
 
   const BarrioRecipeScalerSheet({
     super.key,
-    required this.recipeTitle,
     required this.lines,
     required this.accent,
   });
@@ -80,38 +79,41 @@ class BarrioRecipeScalerSheet extends StatefulWidget {
 
 class _BarrioRecipeScalerSheetState extends State<BarrioRecipeScalerSheet> {
   final TextEditingController _amount = TextEditingController();
+  final FocusNode _focus = FocusNode();
 
-  /// The line the cook is starting from. Null only when the recipe holds
-  /// nothing that may be scaled at all (three cards of the manual).
+  /// The line the cook is typing against. Null only for a recipe with no
+  /// number anywhere in it, which the manual does not currently contain.
   BarrioRecipeIngredient? _anchor;
 
   @override
   void initState() {
     super.initState();
-    final scalable = barrioScalableLines(widget.lines);
-    if (scalable.isNotEmpty) _setAnchor(scalable.first);
+    final anchors = barrioAnchorLines(widget.lines);
+    if (anchors.isNotEmpty) _anchor = anchors.first;
   }
 
   @override
   void dispose() {
     _amount.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
-  /// Starts from [line], with the field holding that line's WRITTEN
-  /// amount. The recipe therefore opens exactly as authored (multiplier
-  /// 1) and switching anchors goes back to as-written rather than
-  /// carrying a rounded amount across, which would nudge the multiplier
-  /// every time the cook changed their mind.
-  void _setAnchor(BarrioRecipeIngredient line) {
-    _anchor = line;
-    final written = line.quantity;
-    _amount.text = written == null ? '' : barrioFormatRecipeAmount(written);
+  /// Starts from [line], with an empty box. The list therefore goes back
+  /// to the recipe as written rather than carrying a rounded amount
+  /// across, which would nudge the multiplier every time the cook changed
+  /// their mind.
+  void _pick(BarrioRecipeIngredient line) {
+    setState(() {
+      _anchor = line;
+      _amount.clear();
+    });
+    _focus.requestFocus();
   }
 
-  /// The batch size the cook typed, or null when the field is empty or
-  /// holds nothing that is a batch: a half-typed '.', a zero, a negative.
-  /// A comma is read as a decimal point, because some keyboards offer one
+  /// The amount the cook typed, or null when the box is empty or holds
+  /// nothing that is a batch: a half-typed '.', a zero, a negative. A
+  /// comma is read as a decimal point, because some keyboards offer one
   /// and a cook should not have to care which.
   double? get _typedAmount {
     final text = _amount.text.trim().replaceAll(',', '.');
@@ -123,19 +125,12 @@ class _BarrioRecipeScalerSheetState extends State<BarrioRecipeScalerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final scale = barrioScaleRecipe(
-      lines: widget.lines,
-      anchor: _anchor,
-      amount: _typedAmount,
-    );
-    final scaled = <BarrioScaledIngredient>[
-      for (final line in scale.lines)
-        if (line.scaled) line,
-    ];
-    final held = <BarrioScaledIngredient>[
-      for (final line in scale.lines)
-        if (!line.scaled) line,
-    ];
+    final multiplier =
+        barrioRecipeMultiplier(anchor: _anchor, amount: _typedAmount);
+    // The amount column keeps its proportions as the reader's text grows,
+    // so the ingredient names stay lined up at every text size.
+    final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+    final amountWidth = 100 * textScale;
 
     return Container(
       key: const ValueKey<String>('barrio_recipe_scaler_sheet'),
@@ -150,77 +145,33 @@ class _BarrioRecipeScalerSheetState extends State<BarrioRecipeScalerSheet> {
         border: Border(top: BorderSide(color: BarrioColors.hairline)),
       ),
       child: Padding(
-        // Keeps the amount field above the keyboard instead of behind it.
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        // Keeps the amount box above the keyboard instead of behind it.
+        padding:
+            EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const _SheetHandle(),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 2, 20, 0),
-              child: _Header(
-                recipeTitle: widget.recipeTitle,
-                accent: widget.accent,
-                anchor: _anchor,
-              ),
-            ),
-            if (_anchor != null) ...[
-              const SizedBox(height: 14),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: _AmountField(
-                  controller: _amount,
-                  anchor: _anchor!,
-                  accent: widget.accent,
-                  onChanged: () => setState(() {}),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: _MultiplierLine(
-                  scale: scale,
-                  accent: widget.accent,
-                  hasAmount: _typedAmount != null,
-                ),
-              ),
-            ],
-            const SizedBox(height: 6),
+            _TopBar(multiplier: multiplier, accent: widget.accent),
             Flexible(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                children: [
-                  if (scaled.isNotEmpty) ...[
-                    const _SectionHeading('Scales with your amount'),
-                    const SizedBox(height: 8),
-                    for (var i = 0; i < scaled.length; i++)
-                      _ScalableRow(
-                        index: i,
-                        entry: scaled[i],
-                        accent: widget.accent,
-                        isAnchor: identical(scaled[i].line, _anchor),
-                        onTap: () => setState(() => _setAnchor(scaled[i].line)),
-                      ),
-                    const SizedBox(height: 18),
-                  ],
-                  if (held.isNotEmpty) ...[
-                    const _SectionHeading('Stays as the recipe wrote it'),
-                    const SizedBox(height: 6),
-                    Text(
-                      'These lines cannot be multiplied honestly, so the '
-                      'calculator leaves them alone.',
-                      style: GoogleFonts.ibmPlexSans(
-                        fontSize: 12.5,
-                        height: 1.5,
-                        color: BarrioColors.textMuted,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    for (var i = 0; i < held.length; i++)
-                      _HeldRow(index: i, entry: held[i]),
-                  ],
-                ],
+              child: ListView.builder(
+                padding: const EdgeInsets.fromLTRB(18, 4, 18, 22),
+                itemCount: widget.lines.length,
+                itemBuilder: (BuildContext context, int index) {
+                  final line = widget.lines[index];
+                  final isAnchor = identical(line, _anchor);
+                  return _IngredientRow(
+                    index: index,
+                    line: line,
+                    multiplier: multiplier,
+                    amountWidth: amountWidth,
+                    accent: widget.accent,
+                    controller: isAnchor ? _amount : null,
+                    focusNode: isAnchor ? _focus : null,
+                    onChanged: isAnchor ? () => setState(() {}) : null,
+                    onPick: isAnchor ? null : () => _pick(line),
+                  );
+                },
               ),
             ),
           ],
@@ -230,185 +181,188 @@ class _BarrioRecipeScalerSheetState extends State<BarrioRecipeScalerSheet> {
   }
 }
 
-class _Header extends StatelessWidget {
-  final String recipeTitle;
+/// The drag handle, with the multiplier as a number beside it.
+///
+/// A number, not a sentence: 'x2.5' is the whole readout. It is the one
+/// thing on the sheet that is not an ingredient line, and it earns that
+/// because it is how a cook checks the answer at a glance.
+class _TopBar extends StatelessWidget {
+  final double multiplier;
   final Color accent;
-  final BarrioRecipeIngredient? anchor;
 
-  const _Header({
-    required this.recipeTitle,
+  const _TopBar({required this.multiplier, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 10, 18, 8),
+      child: Row(
+        children: [
+          const Expanded(child: SizedBox.shrink()),
+          Container(
+            width: 42,
+            height: 4,
+            decoration: BoxDecoration(
+              color: BarrioColors.hairline,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                'x${barrioFormatMultiplier(multiplier)}',
+                key: const ValueKey<String>('barrio_recipe_scale_multiplier'),
+                textAlign: TextAlign.end,
+                style: GoogleFonts.ibmPlexMono(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: accent,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One ingredient line: its amount, then what it is an amount of.
+///
+/// Three shapes, and the row picks its own:
+///
+///   * the picked line puts the cook's box where its amount goes;
+///   * any other line with a number shows that amount in a box the cook
+///     can tap to start typing there instead;
+///   * a line with no number shows nothing in the amount column and
+///     prints its own text, exactly as the card printed it.
+class _IngredientRow extends StatelessWidget {
+  final int index;
+  final BarrioRecipeIngredient line;
+  final double multiplier;
+  final double amountWidth;
+  final Color accent;
+
+  /// Set only on the picked line.
+  final TextEditingController? controller;
+  final FocusNode? focusNode;
+  final VoidCallback? onChanged;
+
+  /// Set only on a line the cook could pick instead.
+  final VoidCallback? onPick;
+
+  const _IngredientRow({
+    required this.index,
+    required this.line,
+    required this.multiplier,
+    required this.amountWidth,
     required this.accent,
-    required this.anchor,
+    this.controller,
+    this.focusNode,
+    this.onChanged,
+    this.onPick,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+    final name = Text(
+      line.name,
+      style: GoogleFonts.ibmPlexSans(
+        fontSize: 14,
+        height: 1.4,
+        color: BarrioColors.textPrimary,
+      ),
+    );
+
+    if (controller != null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.calculate_rounded, size: 18, color: accent),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Scale this recipe',
-                style: GoogleFonts.playfairDisplay(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: BarrioColors.textPrimary,
-                ),
+            SizedBox(
+              width: amountWidth,
+              child: _AmountField(
+                controller: controller!,
+                focusNode: focusNode,
+                line: line,
+                accent: accent,
+                onChanged: onChanged!,
               ),
             ),
+            const SizedBox(width: 12),
+            Expanded(child: Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: name,
+            )),
           ],
         ),
-        const SizedBox(height: 4),
-        Text(
-          recipeTitle,
-          style: GoogleFonts.ibmPlexMono(
-            fontSize: 11,
-            letterSpacing: 0.4,
-            color: BarrioColors.textMuted,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Text(
-          anchor == null
-              ? 'Nothing in this recipe can be scaled by typing an amount. '
-                  'Here is why every line stays as it is written.'
-              : 'Tap the ingredient you are starting from, then type how '
-                  'much of it you have. Every amount that can move follows.',
-          style: GoogleFonts.ibmPlexSans(
-            fontSize: 13,
-            height: 1.55,
-            color: BarrioColors.textSecondary,
-          ),
-        ),
-      ],
-    );
-  }
-}
+      );
+    }
 
-/// The one number the cook types, fixed to the anchor's own unit.
-///
-/// No unit picker and no conversion: the suffix names the unit the
-/// recipe already used, so the number typed here means the same thing the
-/// card meant.
-class _AmountField extends StatelessWidget {
-  final TextEditingController controller;
-  final BarrioRecipeIngredient anchor;
-  final Color accent;
-  final VoidCallback onChanged;
-
-  const _AmountField({
-    required this.controller,
-    required this.anchor,
-    required this.accent,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final unit = anchor.unit ?? '';
-    return Column(
+    final scaled = barrioScaledAmount(line, multiplier);
+    final row = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'How much ${anchor.name} do you have?',
-          style: GoogleFonts.ibmPlexSans(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: BarrioColors.textPrimary,
-          ),
+        SizedBox(
+          width: amountWidth,
+          child: scaled == null
+              ? const SizedBox.shrink()
+              : _AmountBox(text: scaled),
         ),
-        const SizedBox(height: 8),
-        TextField(
-          key: const ValueKey<String>('barrio_recipe_scale_amount'),
-          controller: controller,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: <TextInputFormatter>[
-            FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-          ],
-          onChanged: (_) => onChanged(),
-          style: GoogleFonts.ibmPlexMono(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: BarrioColors.textPrimary,
-          ),
-          decoration: InputDecoration(
-            isDense: true,
-            filled: true,
-            fillColor: BarrioColors.shellMid,
-            hintText: 'Amount',
-            hintStyle: GoogleFonts.ibmPlexMono(
-              fontSize: 16,
-              color: BarrioColors.textMuted,
-            ),
-            suffixText: unit.isEmpty ? null : unit,
-            suffixStyle: GoogleFonts.ibmPlexMono(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: accent,
-            ),
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(BarrioRadii.card),
-              borderSide: const BorderSide(color: BarrioColors.hairline),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(BarrioRadii.card),
-              borderSide: const BorderSide(color: BarrioColors.hairline),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(BarrioRadii.card),
-              borderSide: BorderSide(color: accent, width: 1.5),
-            ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: name,
           ),
         ),
       ],
     );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: MergeSemantics(
+        child: onPick == null
+            ? row
+            : Semantics(
+                button: true,
+                child: GestureDetector(
+                  key: ValueKey<String>('barrio_recipe_row_$index'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    onPick!();
+                  },
+                  child: row,
+                ),
+              ),
+      ),
+    );
   }
 }
 
-/// The derived multiplier, said out loud so a cook can sanity-check the
-/// whole answer at a glance.
-class _MultiplierLine extends StatelessWidget {
-  final BarrioRecipeScale scale;
-  final Color accent;
-  final bool hasAmount;
+/// One amount the cook is not typing in, shown the way the box they can
+/// type in is shown, because tapping it is what makes it that box.
+class _AmountBox extends StatelessWidget {
+  final String text;
 
-  const _MultiplierLine({
-    required this.scale,
-    required this.accent,
-    required this.hasAmount,
-  });
+  const _AmountBox({required this.text});
 
   @override
   Widget build(BuildContext context) {
-    final String message;
-    if (!hasAmount) {
-      message = 'Type an amount to see the rest of the recipe change.';
-    } else if (scale.isAsWritten) {
-      message = 'That is the recipe exactly as it is written.';
-    } else {
-      message = 'Every amount below is '
-          '${barrioFormatMultiplier(scale.multiplier)} times the recipe.';
-    }
     return Container(
-      key: const ValueKey<String>('barrio_recipe_scale_multiplier'),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
-        color: accent.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(BarrioRadii.chip),
-        border: Border.all(color: accent.withValues(alpha: 0.35)),
+        color: BarrioColors.shellMid,
+        borderRadius: BorderRadius.circular(BarrioRadii.card),
+        border: Border.all(color: BarrioColors.hairline),
       ),
       child: Text(
-        message,
-        style: GoogleFonts.ibmPlexSans(
-          fontSize: 12.5,
-          height: 1.45,
+        text,
+        style: GoogleFonts.ibmPlexMono(
+          fontSize: 14,
           fontWeight: FontWeight.w600,
           color: BarrioColors.textPrimary,
         ),
@@ -417,219 +371,73 @@ class _MultiplierLine extends StatelessWidget {
   }
 }
 
-class _SectionHeading extends StatelessWidget {
-  final String label;
-
-  const _SectionHeading(this.label);
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      label.toUpperCase(),
-      style: GoogleFonts.ibmPlexMono(
-        fontSize: 10.5,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 1.0,
-        color: BarrioColors.textMuted,
-      ),
-    );
-  }
-}
-
-/// One line that moved. Tapping it makes it the ingredient the cook is
-/// starting from.
-class _ScalableRow extends StatelessWidget {
-  final int index;
-  final BarrioScaledIngredient entry;
+/// The one box the cook types in, fixed to its own line's unit.
+///
+/// No unit picker and no conversion: the suffix names the unit the recipe
+/// already used, so the number typed here means the same thing the card
+/// meant. Left empty, the hint shows the amount the recipe wrote, which
+/// is what makes an untouched sheet the recipe as written.
+class _AmountField extends StatelessWidget {
+  final TextEditingController controller;
+  final FocusNode? focusNode;
+  final BarrioRecipeIngredient line;
   final Color accent;
-  final bool isAnchor;
-  final VoidCallback onTap;
+  final VoidCallback onChanged;
 
-  const _ScalableRow({
-    required this.index,
-    required this.entry,
+  const _AmountField({
+    required this.controller,
+    required this.focusNode,
+    required this.line,
     required this.accent,
-    required this.isAnchor,
-    required this.onTap,
+    required this.onChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    // The two lines whose unit the operator confirmed rather than the
-    // recipe printing it. Shown on the row rather than beside the amount
-    // box so the note is there whether or not the cook is starting from
-    // that line.
-    final unitNote = barrioUnitSourceNote(entry.line);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: MergeSemantics(
-        child: Semantics(
-          button: true,
-          selected: isAnchor,
-          child: GestureDetector(
-            key: ValueKey<String>('barrio_recipe_scaled_row_$index'),
-            behavior: HitTestBehavior.opaque,
-            onTap: onTap,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: isAnchor
-                    ? accent.withValues(alpha: 0.07)
-                    : BarrioColors.shellMid,
-                borderRadius: BorderRadius.circular(BarrioRadii.card),
-                border: Border.all(
-                  color: isAnchor
-                      ? accent.withValues(alpha: 0.55)
-                      : BarrioColors.hairline,
-                ),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          entry.line.name,
-                          style: GoogleFonts.ibmPlexSans(
-                            fontSize: 13,
-                            height: 1.4,
-                            color: BarrioColors.textPrimary,
-                          ),
-                        ),
-                        if (isAnchor) ...[
-                          const SizedBox(height: 3),
-                          Text(
-                            'Starting from this one',
-                            style: GoogleFonts.ibmPlexMono(
-                              fontSize: 10,
-                              letterSpacing: 0.4,
-                              color: accent,
-                            ),
-                          ),
-                        ],
-                        if (unitNote != null) ...[
-                          const SizedBox(height: 3),
-                          Text(
-                            unitNote,
-                            style: GoogleFonts.ibmPlexSans(
-                              fontSize: 11,
-                              height: 1.4,
-                              color: BarrioColors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    flex: 2,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          entry.scaledText ?? '',
-                          textAlign: TextAlign.end,
-                          style: GoogleFonts.ibmPlexMono(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: BarrioColors.textPrimary,
-                          ),
-                        ),
-                        // The written amount stays visible whenever it is
-                        // no longer the amount on the left, so a cook can
-                        // always see what changed.
-                        if (entry.changed) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            'was ${entry.originalText}',
-                            textAlign: TextAlign.end,
-                            style: GoogleFonts.ibmPlexMono(
-                              fontSize: 11,
-                              color: BarrioColors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+    final unit = line.unit ?? '';
+    final written = line.quantity;
+    return TextField(
+      key: const ValueKey<String>('barrio_recipe_scale_amount'),
+      controller: controller,
+      focusNode: focusNode,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: <TextInputFormatter>[
+        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+      ],
+      onChanged: (_) => onChanged(),
+      style: GoogleFonts.ibmPlexMono(
+        fontSize: 14,
+        fontWeight: FontWeight.w700,
+        color: BarrioColors.textPrimary,
       ),
-    );
-  }
-}
-
-/// One line that may not be multiplied: shown exactly as the card printed
-/// it, with the reason it did not move.
-class _HeldRow extends StatelessWidget {
-  final int index;
-  final BarrioScaledIngredient entry;
-
-  const _HeldRow({required this.index, required this.entry});
-
-  @override
-  Widget build(BuildContext context) {
-    final hold = entry.line.hold;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: MergeSemantics(
-        child: Container(
-          key: ValueKey<String>('barrio_recipe_held_row_$index'),
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: BarrioColors.shellSurface,
-            borderRadius: BorderRadius.circular(BarrioRadii.card),
-            border: Border.all(color: BarrioColors.hairline),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                entry.line.raw,
-                style: GoogleFonts.ibmPlexSans(
-                  fontSize: 13,
-                  height: 1.4,
-                  color: BarrioColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                hold == null ? '' : barrioHoldReason(hold),
-                style: GoogleFonts.ibmPlexSans(
-                  fontSize: 11.5,
-                  height: 1.45,
-                  color: BarrioColors.textSecondary,
-                ),
-              ),
-            ],
-          ),
+      decoration: InputDecoration(
+        isDense: true,
+        filled: true,
+        fillColor: BarrioColors.shellMid,
+        hintText: written == null ? null : barrioFormatRecipeAmount(written),
+        hintStyle: GoogleFonts.ibmPlexMono(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: BarrioColors.textMuted,
         ),
-      ),
-    );
-  }
-}
-
-class _SheetHandle extends StatelessWidget {
-  const _SheetHandle();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        width: 42,
-        height: 4,
-        margin: const EdgeInsets.only(top: 10, bottom: 10),
-        decoration: BoxDecoration(
-          color: const Color(0x3316243B),
-          borderRadius: BorderRadius.circular(2),
+        suffixText: unit.isEmpty ? null : unit,
+        suffixStyle: GoogleFonts.ibmPlexMono(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: accent,
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(BarrioRadii.card),
+          borderSide: BorderSide(color: accent.withValues(alpha: 0.55)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(BarrioRadii.card),
+          borderSide: BorderSide(color: accent.withValues(alpha: 0.55)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(BarrioRadii.card),
+          borderSide: BorderSide(color: accent, width: 1.5),
         ),
       ),
     );

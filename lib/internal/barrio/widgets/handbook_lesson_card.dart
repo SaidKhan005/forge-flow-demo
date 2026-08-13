@@ -474,7 +474,6 @@ class _HandbookLessonCardState extends State<HandbookLessonCard>
                     accent: _numberAccent,
                     onTap: () => showBarrioRecipeScaler(
                       context,
-                      recipeTitle: unit.title,
                       lines: recipeLines,
                       accent: _numberAccent,
                     ),

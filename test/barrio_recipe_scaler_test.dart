@@ -1,65 +1,76 @@
-// The recipe calculator's arithmetic, guarded against the three ways it
+// The recipe calculator's arithmetic, guarded against the four ways it
 // could quietly hand a cook a wrong number:
 //
-//   1. a line that MAY NOT be multiplied gets multiplied anyway,
-//   2. the multiplier comes off the wrong ingredient,
-//   3. rounding turns a real amount into nothing.
+//   1. a line with a number does not move when the batch changes,
+//   2. a line with NO number is given one,
+//   3. the multiplier comes off the wrong ingredient,
+//   4. rounding turns a real amount into nothing.
 //
 // HOW THIS STAYS AN HONEST GUARD (see
-// `feedback_negative_controls_can_be_vacuous`): no expected value below
-// is produced by the code under test.
+// `feedback_negative_controls_can_be_vacuous`): no expected value below is
+// produced by the code under test.
 //
-//   * The recipe tables in `_kExpected*` were READ OFF the committed
-//     ingredient data by hand and typed in here, amount by amount. A
-//     scaler that multiplies by the wrong factor, holds the wrong lines,
-//     or reorders anything disagrees with a literal.
-//   * The rounding cases are hand-written literals for hand-chosen
-//     inputs, never a comparison of the formatter with itself.
-//   * The corpus sweeps assert PROPERTIES ('a real amount never prints
-//     as nothing', 'a held line never carries a scaled amount') whose
-//     reference is the committed data plus this file's own arithmetic.
-//   * Every loop carries a counter and every counter is asserted
-//     non-zero, so a sweep that iterated nothing fails instead of
-//     passing quietly.
+//   * The recipe tables in the `_expectRecipe` calls were worked out BY
+//     HAND from the committed ingredient lines, amount by amount. A scaler
+//     that multiplies by the wrong factor, freezes the wrong lines, or
+//     reorders anything disagrees with a literal.
+//   * The rounding cases are hand-written literals for hand-chosen inputs,
+//     never a comparison of the formatter with itself.
+//   * The corpus sweeps assert PROPERTIES ('a real amount never prints as
+//     nothing', 'a line with no number never gets one', 'the output is an
+//     amount and never a sentence') whose reference is the committed data
+//     plus this file's own arithmetic.
+//   * Every loop carries a counter and every counter is asserted non-zero,
+//     so a sweep that iterated nothing fails instead of passing quietly.
 //
 // The tie between this data and the words a cook actually reads on the
-// card is `test/barrio_recipe_ingredients_test.dart`; it is not
-// re-proved here.
+// card is `test/barrio_recipe_ingredients_test.dart`; it is not re-proved
+// here.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/internal/barrio/content/recipes/barrio_recipe_ingredients.dart';
 import 'package:forge_and_flow/internal/barrio/content/recipes/barrio_recipe_models.dart';
 import 'package:forge_and_flow/internal/barrio/content/recipes/barrio_recipe_scaler.dart';
 
-/// Aji Amarillo Dressing: the first recipe card of the manual. Two
-/// scalable lines besides the anchor, six lines held for three different
-/// reasons.
+/// Aji Amarillo Dressing: a jar, stalks, cloves, a fraction glyph and a
+/// line with no number at all, all on one card.
 const String _kDressing = 'training_recipes_c0_u0';
 
+/// Pickled Beets: carries '8-10lbs of beets', a range with its unit on the
+/// high side only.
+const String _kBeets = 'training_recipes_c3_u0';
+
 /// Beef Skewer Topping: carries '235 Pumpkin Seeds', one of the two lines
-/// whose unit the OPERATOR confirmed because the recipe prints none. It
-/// is the only card in this suite where a scaled amount shows a unit its
-/// own line never printed.
+/// whose unit the OPERATOR confirmed because the recipe prints none.
 const String _kSkewerTopping = 'training_recipes_c8_u0';
 
-/// Braised Pork Belly: the only card whose anchor is written with a
-/// decimal ('2.5kg'), so it proves a fractional anchor quantity.
-const String _kPorkBelly = 'training_recipes_c26_u0';
+/// Fish Taco: carries '½ Cup cornstarch', a fraction written as a glyph.
+const String _kFishTaco = 'training_recipes_c16_u0';
 
-/// Shrimp Stock: carries '1g Coriander Seeds' (an anchor of exactly 1)
-/// and the manual's only 'range' hold.
-const String _kShrimpStock = 'training_recipes_c31_u0';
-
-/// Guacamole: the one card with exactly ONE scalable line, so scaling it
-/// moves that line and nothing else.
+/// Guacamole: carries '1/4 Bunch cilantro', a fraction written out.
 const String _kGuacamole = 'training_recipes_c19_u0';
 
-/// Cards with no scalable line at all.
+/// Soft Boiled Eggs: one line, '12 Eggs', and nothing else.
 const String _kSoftBoiledEggs = 'training_recipes_c22_u0';
-const String _kTortillaChips = 'training_recipes_c30_u0';
 
-/// Ten to the power of [exponent], written out here so the tolerance
-/// check below borrows nothing from the code it is checking.
+/// Pico de Gallo: carries 'Lime 300mL', the one line of the manual that
+/// writes its amount after the ingredient, plus three lines with no
+/// number.
+const String _kPico = 'training_recipes_c30_u0';
+
+/// Shrimp Stock: carries '2kg-2.5kg Shrimp Shells', a range with its unit
+/// on BOTH sides.
+const String _kShrimpStock = 'training_recipes_c31_u0';
+
+/// Tortilla Chips: one line, '2 Bags Yellow Corn Tortilla'.
+const String _kTortillaChips = 'training_recipes_c32_u0';
+
+/// Pumpkin Seed Salsa: carries '9-10 Roma Tomatoes' (a range with no unit)
+/// and the habanero line the parser deliberately leaves alone.
+const String _kSeedSalsa = 'training_recipes_c27_u0';
+
+/// Ten to the power of [exponent], written out here so the tolerance check
+/// below borrows nothing from the code it is checking.
 double _tenTo(int exponent) {
   var value = 1.0;
   for (var i = 0; i < exponent.abs(); i++) {
@@ -87,7 +98,8 @@ BarrioRecipeIngredient _lineNamed(String unitId, String raw) {
 }
 
 /// What [unitId] must read as, keyed by the line's printed text: the new
-/// amount for a line that scales, null for a line that must not move.
+/// amount for a line that carries a number, null for a line that carries
+/// none.
 void _expectRecipe(
   String unitId, {
   required String anchorRaw,
@@ -96,50 +108,52 @@ void _expectRecipe(
   required Map<String, String?> expected,
 }) {
   final lines = _linesOf(unitId);
-  final scale = barrioScaleRecipe(
-    lines: lines,
-    anchor: _lineNamed(unitId, anchorRaw),
-    amount: amount,
-  );
+  final anchor = _lineNamed(unitId, anchorRaw);
+  final multiplier =
+      barrioRecipeMultiplier(anchor: anchor, amount: amount);
 
-  expect(scale.multiplier, closeTo(expectedMultiplier, 1e-12),
+  expect(multiplier, closeTo(expectedMultiplier, 1e-12),
       reason: '$unitId: $amount of "$anchorRaw" is $expectedMultiplier times '
           'the written recipe');
 
-  // Nothing is dropped and nothing is reordered: a calculator that hid a
-  // line it could not handle would be the dishonest failure.
-  expect(scale.lines.map((entry) => entry.line.raw).toList(),
-      lines.map((line) => line.raw).toList(),
-      reason: '$unitId: every ingredient line must come back, in the '
-          "card's own order");
+  // The table has to name every line exactly once, or a silently changed
+  // amount could slip past unasserted.
+  expect(lines.map((line) => line.raw).toSet(), expected.keys.toSet(),
+      reason: '$unitId: the hand-written table must cover every line of the '
+          'card exactly once');
+  expect(lines, hasLength(expected.length),
+      reason: '$unitId prints a line twice, so a table keyed by line text '
+          'cannot pin every row');
 
-  // The table has to name every line, or a silently changed amount could
-  // slip past unasserted.
-  expect(expected.keys.toSet(), lines.map((line) => line.raw).toSet(),
-      reason: '$unitId: the hand-written table must cover every line of '
-          'the card exactly once');
-
-  for (final entry in scale.lines) {
-    final want = expected[entry.line.raw];
+  for (final line in lines) {
+    final want = expected[line.raw];
+    final got = barrioScaledAmount(line, multiplier);
     if (want == null) {
-      expect(entry.scaled, isFalse,
-          reason: '$unitId: "${entry.line.raw}" may not be multiplied, but '
-              'the calculator produced ${entry.scaledText}');
-      expect(entry.scaledText, isNull);
-      expect(entry.scaledQuantity, isNull);
+      expect(got, isNull,
+          reason: '$unitId: "${line.raw}" carries no number, but the '
+              'calculator produced $got');
     } else {
-      expect(entry.scaledText, want,
-          reason: '$unitId: "${entry.line.raw}" at $expectedMultiplier times '
-              'must read $want');
+      expect(got, want,
+          reason: '$unitId: "${line.raw}" at $expectedMultiplier times must '
+              'read $want');
     }
   }
 }
 
+/// The shape of every string the calculator is allowed to produce: digits,
+/// a fraction glyph, amount punctuation, and at most the unit word or two
+/// a range repeats. Hand-written, so a sentence sneaking back into the
+/// arithmetic layer fails against a rule this file states for itself.
+final RegExp _kAmountShape = RegExp(
+  r'^(?:\d+(?:\.\d+)?(?:/\d+)?|[¼½¾⅓⅔])\s?[A-Za-z]*'
+  r'(?:-(?:\d+(?:\.\d+)?)\s?[A-Za-z]*)?$',
+);
+
 void main() {
   group('the corpus this suite sweeps is real', () {
-    test('there are scalable lines, held lines, and every hold reason', () {
+    test('there are lines with numbers, lines without, and ranges', () {
       // NON-VACUITY. Every sweep below is trivially true against an empty
-      // or one-sided corpus, so prove both branches exist first.
+      // or one-sided corpus, so prove each branch exists first.
       expect(kBarrioRecipeIngredients, isNotEmpty);
       final all = kBarrioRecipeIngredients.values
           .expand((lines) => lines)
@@ -147,51 +161,109 @@ void main() {
       expect(all.length, greaterThan(100),
           reason: 'the Recipes manual parses to hundreds of lines; a corpus '
               'this small means the data was gutted');
-
-      final scalable = all.where((line) => line.scalable).length;
-      final held = all.length - scalable;
-      expect(scalable, greaterThan(0),
+      expect(all.where((line) => line.scales).length, greaterThan(100),
           reason: 'nothing to scale means the scaling sweeps prove nothing');
-      expect(held, greaterThan(0),
-          reason: 'nothing held means the hold sweeps prove nothing');
-
-      // Every reason has to be reached by real data, or
-      // `barrioHoldReason` is only tested against invented inputs.
-      final reasons = all.map((line) => line.hold).whereType<BarrioIngredientHold>().toSet();
-      expect(reasons, BarrioIngredientHold.values.toSet(),
-          reason: 'a hold reason no live line uses is untested wording');
-
-      // And the operator-confirmed branch is reached too, or every
-      // assertion about it below is written against nothing.
-      expect(all.where((line) => line.unitFromOperator), isNotEmpty,
-          reason: 'no line takes its unit from the operator, so the note '
-              'that explains that to a cook is untested wording');
+      expect(all.where((line) => !line.scales), isNotEmpty,
+          reason: 'no line without a number means the leave-it-alone sweeps '
+              'prove nothing');
+      expect(all.where((line) => line.quantityHigh != null), isNotEmpty,
+          reason: 'no range means the both-numbers-move sweeps prove '
+              'nothing');
+      expect(
+          all.where((line) =>
+              line.unit != null && !line.raw.contains(line.unit!)),
+          isNotEmpty,
+          reason: 'no line takes its unit from the operator, so the arm that '
+              'appends one is never reached');
     });
 
     test('the cards this suite names are the shapes it claims', () {
-      // Each hand-written table below depends on the card still having
-      // the shape it was written against.
-      expect(barrioScalableLines(_linesOf(_kGuacamole)), hasLength(1),
-          reason: '$_kGuacamole is the one-scalable-line case');
-      expect(_lineNamed(_kPorkBelly, '2.5kg Pork Belly ( Half a Slab)').quantity,
+      // Each hand-written table below depends on the card still having the
+      // shape it was written against.
+      expect(_lineNamed(_kBeets, '8-10lbs of beets').quantityHigh, 10.0,
+          reason: '$_kBeets is the unit-on-the-high-side range case');
+      expect(_lineNamed(_kShrimpStock, '2kg-2.5kg Shrimp Shells').quantityHigh,
           2.5,
-          reason: '$_kPorkBelly is the fractional-anchor case');
-      expect(_lineNamed(_kShrimpStock, '1g Coriander Seeds').quantity, 1.0,
-          reason: '$_kShrimpStock is the anchor-of-one case');
-      for (final unitId in <String>[_kSoftBoiledEggs, _kTortillaChips]) {
-        expect(barrioScalableLines(_linesOf(unitId)), isEmpty,
-            reason: '$unitId is an every-line-is-held case');
+          reason: '$_kShrimpStock is the unit-on-both-sides range case');
+      expect(_lineNamed(_kSeedSalsa, '9-10 Roma Tomatoes').unit, isNull,
+          reason: '$_kSeedSalsa is the range-with-no-unit case');
+      expect(_lineNamed(_kPico, 'Lime 300mL').amount, '300mL',
+          reason: '$_kPico is the amount-written-last case');
+      expect(_lineNamed(_kFishTaco, '½ Cup cornstarch seasoned with salt')
+          .quantity, 0.5,
+          reason: '$_kFishTaco is the fraction-glyph case');
+      expect(_lineNamed(_kGuacamole, '1/4 Bunch cilantro').quantity, 0.25,
+          reason: '$_kGuacamole is the written-fraction case');
+      final confirmed = _lineNamed(_kSkewerTopping, '235 Pumpkin Seeds');
+      expect(confirmed.unit, 'g');
+      expect(confirmed.raw.contains('g'), isFalse,
+          reason: '$_kSkewerTopping is the unit-the-recipe-never-printed '
+              'case, which only holds while the line prints no unit');
+    });
+
+    test('a range is not something to type an amount against, but every '
+        'other numbered line is', () {
+      // The sheet offers these lines. A range is two numbers, so an amount
+      // typed against '8-10lbs' would not say which one it meant.
+      var checked = 0;
+      var rangesSkipped = 0;
+      var blanksSkipped = 0;
+      for (final entry in kBarrioRecipeIngredients.entries) {
+        final anchors = barrioAnchorLines(entry.value).toSet();
+        for (final line in entry.value) {
+          if (line.quantityHigh != null) {
+            expect(anchors.contains(line), isFalse,
+                reason: '${entry.key}: "${line.raw}" is a range');
+            rangesSkipped += 1;
+          } else if (!line.scales) {
+            expect(anchors.contains(line), isFalse,
+                reason: '${entry.key}: "${line.raw}" has no number');
+            blanksSkipped += 1;
+          } else {
+            expect(anchors.contains(line), isTrue,
+                reason: '${entry.key}: "${line.raw}" carries a number, so a '
+                    'cook must be able to start from it');
+            checked += 1;
+          }
+        }
       }
-      expect(_lineNamed(_kSkewerTopping, '235 Pumpkin Seeds').unitFromOperator,
-          isTrue,
-          reason: '$_kSkewerTopping is the operator-confirmed-unit case');
+      expect(checked, greaterThan(100),
+          reason: 'the offered-lines sweep covered $checked lines');
+      expect(rangesSkipped, greaterThan(0),
+          reason: 'the range branch was never reached');
+      expect(blanksSkipped, greaterThan(0),
+          reason: 'the no-number branch was never reached');
     });
   });
 
-  group('the multiplier comes off the anchor the cook picked', () {
-    test('anchoring the dressing on its oil at 1250mL is 2.5 times', () {
-      // Hand-read from training_recipes_c0_u0 and multiplied by hand:
-      // 500 -> 1250, 50 -> 125, 10 -> 25.
+  group('every line with a number moves', () {
+    test('the operator\'s own example: 2.4 times reads 4.8 Stalks', () {
+      // THE POINT OF REC-6, from real data. 24g of ginger is 2.4 times the
+      // dressing. Worked by hand: 500 -> 1200, 1 -> 2.4, 50 -> 120,
+      // 2 -> 4.8, 4 -> 9.6, 0.25 -> 0.6, 10 -> 24, 4 -> 9.6.
+      _expectRecipe(
+        _kDressing,
+        anchorRaw: '10g Ginger',
+        amount: 24,
+        expectedMultiplier: 2.4,
+        expected: const <String, String?>{
+          '500mL Olive Oil': '1200mL',
+          '1 Jar Aji Amarillo': '2.4 Jar',
+          '50ml Water ( Add to jar and shake)': '120ml',
+          '2 Stalks Celery': '4.8 Stalks',
+          '4 Cloves of garlic': '9.6 Cloves',
+          '¼ Red Onion': '0.6',
+          '10g Ginger': '24g',
+          '4 Juiced Limes': '9.6',
+          'Salt TT': null,
+        },
+      );
+    });
+
+    test('anchoring the same recipe on its oil gives the same answers', () {
+      // THE WRONG-ANCHOR CONTROL. 1250mL of oil is 2.5 times the recipe. A
+      // scaler that read its multiplier off the first line regardless
+      // would make the ginger test above 24/500 and print 24mL of oil.
       _expectRecipe(
         _kDressing,
         anchorRaw: '500mL Olive Oil',
@@ -199,37 +271,13 @@ void main() {
         expectedMultiplier: 2.5,
         expected: const <String, String?>{
           '500mL Olive Oil': '1250mL',
-          '1 Jar Aji Amarillo': null,
+          '1 Jar Aji Amarillo': '2.5 Jar',
           '50ml Water ( Add to jar and shake)': '125ml',
-          '2 Stalks Celery': null,
-          '4 Cloves of garlic': null,
-          '¼ Red Onion': null,
+          '2 Stalks Celery': '5 Stalks',
+          '4 Cloves of garlic': '10 Cloves',
+          '¼ Red Onion': '0.625',
           '10g Ginger': '25g',
-          '4 Juiced Limes': null,
-          'Salt TT': null,
-        },
-      );
-    });
-
-    test('anchoring the SAME recipe on its ginger at 25g gives the SAME '
-        'answer', () {
-      // THE WRONG-ANCHOR CONTROL. 25g of ginger is also 2.5 times the
-      // recipe. A scaler that read its multiplier off the first scalable
-      // line would make this 25/500 = 0.05 and print 25mL of oil.
-      _expectRecipe(
-        _kDressing,
-        anchorRaw: '10g Ginger',
-        amount: 25,
-        expectedMultiplier: 2.5,
-        expected: const <String, String?>{
-          '500mL Olive Oil': '1250mL',
-          '1 Jar Aji Amarillo': null,
-          '50ml Water ( Add to jar and shake)': '125ml',
-          '2 Stalks Celery': null,
-          '4 Cloves of garlic': null,
-          '¼ Red Onion': null,
-          '10g Ginger': '25g',
-          '4 Juiced Limes': null,
+          '4 Juiced Limes': '10',
           'Salt TT': null,
         },
       );
@@ -237,104 +285,92 @@ void main() {
 
     test('two anchors that mean different batches give different answers',
         () {
-      // The pair above could both pass if the multiplier were pinned at
-      // 2.5 somehow. 30g of ginger is 3 times the recipe, not 2.5.
-      final lines = _linesOf(_kDressing);
-      final scale = barrioScaleRecipe(
-        lines: lines,
+      // The pair above could both pass if the multiplier were pinned
+      // somehow. 30g of ginger is 3 times the recipe, not 2.4 or 2.5.
+      final multiplier = barrioRecipeMultiplier(
         anchor: _lineNamed(_kDressing, '10g Ginger'),
         amount: 30,
       );
-      expect(scale.multiplier, closeTo(3.0, 1e-12));
-      final oil = scale.lines
-          .firstWhere((entry) => entry.line.raw == '500mL Olive Oil');
-      expect(oil.scaledText, '1500mL',
-          reason: '500mL of oil at 3 times the recipe is 1500mL');
+      expect(multiplier, closeTo(3.0, 1e-12));
+      expect(
+        barrioScaledAmount(
+            _lineNamed(_kDressing, '500mL Olive Oil'), multiplier),
+        '1500mL',
+        reason: '500mL of oil at 3 times the recipe is 1500mL',
+      );
+      expect(
+        barrioScaledAmount(
+            _lineNamed(_kDressing, '2 Stalks Celery'), multiplier),
+        '6 Stalks',
+      );
     });
 
-    test('an anchor written with a decimal scales the rest cleanly', () {
-      // FRACTIONAL MULTIPLIER, from real data: 1kg of a 2.5kg slab is
-      // 0.4 times the recipe. 250 -> 100, 200 -> 80, 50 -> 20, 60 -> 24,
-      // 30 -> 12, 10 -> 4, all worked by hand.
+    test('a fraction written as a glyph scales as the number it means', () {
+      // 18oz of cod is 3 times the taco. Worked by hand: 6 -> 18,
+      // 0.5 -> 1.5, 1 -> 3, 2 -> 6. The glyph line is the point: '½ Cup'
+      // reads '1.5 Cup', not '1½ Cup' and not '½ Cup' unchanged.
       _expectRecipe(
-        _kPorkBelly,
-        anchorRaw: '2.5kg Pork Belly ( Half a Slab)',
-        amount: 1,
-        expectedMultiplier: 0.4,
+        _kFishTaco,
+        anchorRaw: '6oz Cod , Bite sized cubes',
+        amount: 18,
+        expectedMultiplier: 3,
         expected: const <String, String?>{
-          '2.5kg Pork Belly ( Half a Slab)': '1kg',
-          '250g Soy Sauce': '100g',
-          '200g Orange Juice': '80g',
-          '50g Ginger': '20g',
-          '60g Green Onion': '24g',
-          '30g Sesame Oil': '12g',
-          '10g Black Peppercorn': '4g',
-          '8 piece Star Anise': null,
-          '6 piece Cinnamon Sticks': null,
-          '1 Bunch Thyme': null,
+          '6oz Cod , Bite sized cubes': '18oz',
+          '½ Cup cornstarch seasoned with salt': '1.5 Cup',
+          '1 cup slaw': '3 cup',
+          '2 Tortillas': '6',
         },
       );
     });
 
-    test('an anchor of exactly 1 halves the recipe without rounding itself '
-        'back up', () {
-      // ANCHOR OF ONE, from real data. 0.5g of coriander is half the
-      // stock. The anchor's own line is the trap: rounded to the source
-      // line's zero decimals it would print '1g', which is the amount
-      // the cook explicitly said they did NOT have.
-      // Worked by hand: 7 -> 3.5, 670 -> 335, 335 -> 167.5 (prints 168 at
-      // this magnitude), 150 -> 75, 170 -> 85, 120 -> 60, 50 -> 25,
-      // 4 -> 2, 1 -> 0.5.
-      _expectRecipe(
-        _kShrimpStock,
-        anchorRaw: '1g Coriander Seeds',
-        amount: 0.5,
-        expectedMultiplier: 0.5,
-        expected: const <String, String?>{
-          '2kg-2.5kg Shrimp Shells': null,
-          '7L Water': '3.5L',
-          '670g Tomato Quartered': '335g',
-          '335g White Onion (Large Dice)': '168g',
-          '150g Celery ( Large Dice)': '75g',
-          '170g Cilantro Stems': '85g',
-          '120g Salt': '60g',
-          '50g Garlic Cloves': '25g',
-          '4g Black Peppercorn': '2g',
-          '1g Coriander Seeds': '0.5g',
-          '8 Bay Leaves': null,
-        },
-      );
-    });
-
-    test('scaling the one scalable line of a recipe moves nothing else', () {
-      // 750mL of lime juice is 1.5 times the guacamole, and every other
-      // line of that card is held.
+    test('a fraction written out scales too', () {
+      // 750mL of lime juice is 1.5 times the guacamole. Worked by hand:
+      // 15 -> 22.5, 500 -> 750, 5 -> 7.5, 0.25 -> 0.375, 1 -> 1.5. The two
+      // 'TT' lines have no number and stay exactly as the card wrote them.
       _expectRecipe(
         _kGuacamole,
         anchorRaw: '500mL Lime Juice',
         amount: 750,
         expectedMultiplier: 1.5,
         expected: const <String, String?>{
-          '15 Avocados': null,
+          '15 Avocados': '22.5',
           '500mL Lime Juice': '750mL',
-          '5 jalapeños (Deseeded)': null,
-          '1/4 Bunch cilantro': null,
-          '1 Large Red Onion Small Dice': null,
+          '5 jalapeños (Deseeded)': '7.5',
+          '1/4 Bunch cilantro': '0.375 Bunch',
+          '1 Large Red Onion Small Dice': '1.5',
           'L5S TT': null,
           'Salt TT': null,
         },
       );
     });
 
-    test('a line whose unit the operator confirmed scales with the rest', () {
-      // Worked by hand from the card at 2 times: 470 -> 940, 235 -> 470,
-      // 180 -> 360 twice, 35 -> 70. The pumpkin seeds are the point: the
-      // card prints '235 Pumpkin Seeds' with no unit, and before the
-      // operator confirmed grams that line could not move at all while
-      // every other line of its own recipe did.
-      //
-      // '470 g' carries the space its own line put after the number, the
-      // same rule every other line follows.
+    test('an amount written after the ingredient scales like any other',
+        () {
+      // 600mL of lime is 2 times the pico. Worked by hand: 12 -> 24,
+      // 3 -> 6, 300 -> 600, 0.25 -> 0.5. Three lines carry no number and
+      // print exactly as the card printed them.
+      _expectRecipe(
+        _kPico,
+        anchorRaw: 'Lime 300mL',
+        amount: 600,
+        expectedMultiplier: 2,
+        expected: const <String, String?>{
+          '12 Tomatoes': '24',
+          '3 Banana Peppers Small Dice': '6',
+          'One Large Onion Red Small Dice': null,
+          'Lime 300mL': '600mL',
+          'Salt TT': null,
+          'L5S TT': null,
+          '¼ Bunch Cilantro': '0.5 Bunch',
+        },
+      );
+    });
+
+    test('a unit the recipe never printed comes along with the number', () {
+      // Worked by hand at 2 times: 470 -> 940, 235 -> 470, 180 -> 360
+      // twice, 35 -> 70. The pumpkin seeds are the point: the card prints
+      // '235 Pumpkin Seeds' with no unit at all, so the confirmed gram is
+      // added after the number.
       _expectRecipe(
         _kSkewerTopping,
         anchorRaw: '470g Corn Nuts',
@@ -350,12 +386,10 @@ void main() {
       );
     });
 
-    test('the cook can start from the confirmed line too', () {
+    test('the cook can start from the line whose unit was confirmed', () {
       // The same batch, read off the confirmed line instead. 470g of
       // pumpkin seeds is 2 times a 235 line, so every amount matches the
-      // test above. A confirmed unit that was decorative rather than real
-      // would give a multiplier of 1 here and leave the recipe as
-      // written.
+      // test above.
       _expectRecipe(
         _kSkewerTopping,
         anchorRaw: '235 Pumpkin Seeds',
@@ -370,178 +404,268 @@ void main() {
         },
       );
     });
+
+    test('a one-line recipe of pure count scales', () {
+      _expectRecipe(
+        _kSoftBoiledEggs,
+        anchorRaw: '12 Eggs',
+        amount: 18,
+        expectedMultiplier: 1.5,
+        expected: const <String, String?>{'12 Eggs': '18'},
+      );
+    });
+
+    test('a container count scales too', () {
+      // 5 bags is 2.5 times a 2 bag recipe. The operator was shown that
+      // this reads as a fractional container at other multipliers and
+      // chose it anyway.
+      _expectRecipe(
+        _kTortillaChips,
+        anchorRaw: '2 Bags Yellow Corn Tortilla',
+        amount: 5,
+        expectedMultiplier: 2.5,
+        expected: const <String, String?>{
+          '2 Bags Yellow Corn Tortilla': '5 Bags',
+        },
+      );
+    });
   });
 
-  group('a unit the operator gave says so', () {
-    test('the note names the unit in words, on those lines and no others',
+  group('a range scales on both of its numbers', () {
+    test('a range with its unit on the high side', () {
+      // 6L of water is 2 times the beets. Worked by hand: 8 and 10 both
+      // double, 3 -> 6, 200 -> 400, 70 -> 140.
+      _expectRecipe(
+        _kBeets,
+        anchorRaw: '3L Water',
+        amount: 6,
+        expectedMultiplier: 2,
+        expected: const <String, String?>{
+          '8-10lbs of beets': '16-20lbs',
+          '3L Water': '6L',
+          '200mL Red Wine Vinegar': '400mL',
+          '70g Salt ( 1.75% weight of beets)': '140g',
+        },
+      );
+    });
+
+    test('a range with its unit on both sides keeps both', () {
+      // 14L of water is 2 times the stock, so 2kg-2.5kg becomes 4kg-5kg
+      // and the shape of the line survives.
+      _expectRecipe(
+        _kShrimpStock,
+        anchorRaw: '7L Water',
+        amount: 14,
+        expectedMultiplier: 2,
+        expected: const <String, String?>{
+          '2kg-2.5kg Shrimp Shells': '4kg-5kg',
+          '7L Water': '14L',
+          '670g Tomato Quartered': '1340g',
+          '335g White Onion (Large Dice)': '670g',
+          '150g Celery ( Large Dice)': '300g',
+          '170g Cilantro Stems': '340g',
+          '120g Salt': '240g',
+          '50g Garlic Cloves': '100g',
+          '4g Black Peppercorn': '8g',
+          '1g Coriander Seeds': '2g',
+          '8 Bay Leaves': '16',
+        },
+      );
+    });
+
+    test('a range with no unit, and the one line left deliberately alone',
         () {
-      // Hand-written sentence, and the only wording the live data can
-      // produce. A cook reading '470 g' on a card that printed no unit
-      // gets told why in one line.
-      const expected =
-          'The recipe prints no unit here. The operator confirmed grams.';
-      var noted = 0;
-      var quiet = 0;
+      // 375g of pumpkin seed is half the salsa. Worked by hand:
+      // 750 -> 375, 210 -> 105, 9 and 10 -> 4.5 and 5, 225 -> 112.5 which
+      // prints 113 at that magnitude, 135 -> 67.5, 90 -> 45, 42 -> 21,
+      // 75 -> 37.5, 30 -> 15.
+      //
+      // The habanero line carries a parenthesised weight AND a count of
+      // peppers, so no rule reads one without leaving the other lying. It
+      // prints exactly as written, with nothing said about it.
+      _expectRecipe(
+        _kSeedSalsa,
+        anchorRaw: '750g Pumpkin Seeds',
+        amount: 375,
+        expectedMultiplier: 0.5,
+        expected: const <String, String?>{
+          '750g Pumpkin Seeds': '375g',
+          '210g Unhulled Seeds': '105g',
+          '9-10 Roma Tomatoes': '4.5-5',
+          '225g White Onion': '113g',
+          '135g Lime Juice': '67.5g',
+          '90g Orange Juice': '45g',
+          '42g Cilantro': '21g',
+          '(30g) 4-5 Habanero Peppers (deseeded and deribbed)': null,
+          '75g Garlic': '37.5g',
+          '30g Salt': '15g',
+        },
+      );
+    });
+  });
+
+  group('a line with no number never gets one', () {
+    test('no numberless line anywhere in the manual produces an amount, at '
+        'any multiplier', () {
+      // THE SWEEP, over the whole corpus rather than one card, because the
+      // rule has to hold for lines this suite never names by hand.
+      const multipliers = <double>[0.25, 0.5, 1, 2, 2.4, 7.5, 100];
+      var blankSeen = 0;
+      var numberedSeen = 0;
       for (final entry in kBarrioRecipeIngredients.entries) {
         for (final line in entry.value) {
-          final note = barrioUnitSourceNote(line);
-          if (line.unitFromOperator) {
-            expect(note, expected,
-                reason: '${entry.key}: "${line.raw}" takes its unit from the '
-                    'operator, so the calculator must say so');
-            expect(line.raw.contains(line.unit!), isFalse,
-                reason: '${entry.key}: "${line.raw}" prints its own unit '
-                    'after all, so the note is telling a cook something '
-                    'untrue');
-            noted += 1;
-            continue;
+          for (final multiplier in multipliers) {
+            final got = barrioScaledAmount(line, multiplier);
+            if (line.quantity == null) {
+              expect(got, isNull,
+                  reason: '${entry.key}: "${line.raw}" carries no number, '
+                      'but at $multiplier times it produced "$got"');
+              blankSeen += 1;
+              continue;
+            }
+            expect(got, isNotNull,
+                reason: '${entry.key}: "${line.raw}" carries a number but '
+                    'the calculator refused to move it');
+            numberedSeen += 1;
           }
-          expect(note, isNull,
-              reason: '${entry.key}: "${line.raw}" prints its own unit, so a '
-                  'note about where the unit came from is noise');
-          quiet += 1;
         }
       }
-      expect(noted, greaterThan(0),
-          reason: 'no line produced the note, so its wording is untested');
-      expect(quiet, greaterThan(100),
-          reason: 'the quiet case was barely reached, so the corpus '
-              'collapsed and this proved nothing');
+      expect(blankSeen, greaterThan(0),
+          reason: 'no numberless line was reached, so this guard proved '
+              'nothing');
+      expect(numberedSeen, greaterThan(500),
+          reason: 'only $numberedSeen numbered checks ran, so the corpus or '
+              'the multiplier list collapsed');
     });
 
-    test('an unfamiliar unit is still named, as the line writes it', () {
-      // The fallback arm, which no live line reaches. Reached here with a
-      // hand-built line rather than left as wording nobody has read.
-      const line = BarrioRecipeIngredient(
-        raw: '2 Pinches Saffron',
-        name: 'Pinches Saffron',
-        quantity: 2,
-        unit: 'pinch',
-        unitFromOperator: true,
-        scalable: true,
-      );
-      expect(barrioUnitSourceNote(line),
-          'The recipe prints no unit here. The operator confirmed pinch.');
-    });
-
-    test('a line with no unit at all gets no note', () {
-      const line = BarrioRecipeIngredient(
-        raw: '12 Eggs',
-        name: 'Eggs',
-        quantity: 12,
-        scalable: false,
-        hold: BarrioIngredientHold.wholeItemCount,
-      );
-      expect(barrioUnitSourceNote(line), isNull);
-    });
-
-    test('no reason and no note uses an em dash', () {
-      // UX no-em-dash law, over every sentence this file can produce.
-      for (final hold in BarrioIngredientHold.values) {
-        expect(barrioHoldReason(hold).contains('—'), isFalse);
+    test('the multiplier is 1 for anything that is not a batch size', () {
+      final anchor = _lineNamed(_kDressing, '500mL Olive Oil');
+      for (final amount in <double?>[
+        null,
+        0,
+        -250,
+        double.nan,
+        double.infinity,
+      ]) {
+        expect(barrioRecipeMultiplier(anchor: anchor, amount: amount), 1.0,
+            reason: 'an amount of $amount is not a batch size');
       }
+      expect(barrioRecipeMultiplier(anchor: null, amount: 500), 1.0,
+          reason: 'with no ingredient picked there is nothing to scale from');
+      expect(
+        barrioRecipeMultiplier(
+          anchor: _lineNamed(_kBeets, '8-10lbs of beets'),
+          amount: 20,
+        ),
+        1.0,
+        reason: 'a range is two numbers, so an amount typed against it does '
+            'not say which one it meant',
+      );
+      expect(
+        barrioRecipeMultiplier(
+          anchor: _lineNamed(_kDressing, 'Salt TT'),
+          amount: 20,
+        ),
+        1.0,
+        reason: 'a line with no number cannot be a starting point',
+      );
+    });
+  });
+
+  group('the calculator only ever says an amount', () {
+    test('every string it produces is an amount, never a sentence', () {
+      // THE NO-VERBIAGE GUARD at the arithmetic layer (operator direction,
+      // REC-6). The shape is stated in this file, by hand, so a hold
+      // reason, a unit note, or any other prose reintroduced downstream
+      // fails here rather than reaching a cook.
+      const multipliers = <double>[0.5, 1, 2.4, 12];
       var checked = 0;
       for (final entry in kBarrioRecipeIngredients.entries) {
         for (final line in entry.value) {
-          final note = barrioUnitSourceNote(line);
-          if (note == null) continue;
-          expect(note.contains('—'), isFalse);
-          checked += 1;
-        }
-      }
-      expect(checked, greaterThan(0),
-          reason: 'no note was checked for an em dash');
-    });
-  });
-
-  group('a held line is never multiplied', () {
-    test('no held line anywhere in the manual carries a scaled amount, at '
-        'any multiplier', () {
-      // THE HOLD CONTROL, swept over the whole corpus rather than one
-      // card, because the rule has to hold for reasons this suite never
-      // names by hand.
-      var heldSeen = 0;
-      var scaledSeen = 0;
-      final reasonsSeen = <BarrioIngredientHold>{};
-      for (final entry in kBarrioRecipeIngredients.entries) {
-        final lines = entry.value;
-        final anchors = barrioScalableLines(lines);
-        // Try every anchor the sheet would offer, at a batch up and a
-        // batch down, plus the no-anchor case a fully held card gets.
-        final attempts = <({BarrioRecipeIngredient? anchor, double? amount})>[
-          (anchor: null, amount: null),
-          for (final anchor in anchors) ...<({
-            BarrioRecipeIngredient? anchor,
-            double? amount
-          })>[
-            (anchor: anchor, amount: anchor.quantity! * 4),
-            (anchor: anchor, amount: anchor.quantity! / 4),
-          ],
-        ];
-        for (final attempt in attempts) {
-          final scale = barrioScaleRecipe(
-            lines: lines,
-            anchor: attempt.anchor,
-            amount: attempt.amount,
-          );
-          expect(scale.lines, hasLength(lines.length),
-              reason: '${entry.key}: lines went missing');
-          for (final scaled in scale.lines) {
-            if (scaled.line.scalable) {
-              scaledSeen += 1;
-              expect(scaled.scaled, isTrue,
-                  reason: '${entry.key}: "${scaled.line.raw}" is scalable but '
-                      'the calculator refused to move it');
-              continue;
-            }
-            heldSeen += 1;
-            reasonsSeen.add(scaled.line.hold!);
-            expect(scaled.scaledQuantity, isNull,
-                reason: '${entry.key}: "${scaled.line.raw}" is held '
-                    '(${scaled.line.hold}) but was multiplied to '
-                    '${scaled.scaledQuantity}');
-            expect(scaled.scaledText, isNull);
-            expect(scaled.changed, isFalse);
+          for (final multiplier in multipliers) {
+            final got = barrioScaledAmount(line, multiplier);
+            if (got == null) continue;
+            expect(_kAmountShape.hasMatch(got), isTrue,
+                reason: '${entry.key}: "${line.raw}" at $multiplier times '
+                    'produced "$got", which is not an amount');
+            checked += 1;
           }
         }
       }
-      expect(heldSeen, greaterThan(0),
-          reason: 'no held line was reached, so this guard proved nothing');
-      expect(scaledSeen, greaterThan(0),
-          reason: 'no scalable line was reached, so this guard could pass '
-              'against a calculator that scales nothing at all');
-      expect(reasonsSeen, BarrioIngredientHold.values.toSet(),
-          reason: 'the sweep must exercise every hold reason');
+      expect(checked, greaterThan(500),
+          reason: 'only $checked strings were checked, so the corpus '
+              'collapsed and this proved nothing');
     });
 
-    test('a recipe where every line is held scales to itself', () {
-      for (final unitId in <String>[_kSoftBoiledEggs, _kTortillaChips]) {
-        final lines = _linesOf(unitId);
-        expect(barrioScalableLines(lines), isEmpty);
-        final scale = barrioScaleRecipe(lines: lines);
-        expect(scale.anchor, isNull);
-        expect(scale.multiplier, 1.0);
-        expect(scale.isAsWritten, isTrue);
-        expect(scale.lines.map((entry) => entry.line.raw).toList(),
-            lines.map((line) => line.raw).toList(),
-            reason: '$unitId: a card with nothing to scale still shows every '
-                'line it printed');
-        expect(scale.lines.every((entry) => !entry.scaled), isTrue);
+    test('the multiplier readout is a number', () {
+      expect(barrioFormatMultiplier(2.5), '2.5');
+      expect(barrioFormatMultiplier(0.4), '0.4');
+      expect(barrioFormatMultiplier(3), '3');
+      expect(barrioFormatMultiplier(1), '1');
+      expect(barrioFormatMultiplier(1 / 3), '0.333');
+      for (final multiplier in <double>[0.4, 1, 2.4, 100]) {
+        expect(RegExp(r'^\d+(\.\d+)?$')
+            .hasMatch(barrioFormatMultiplier(multiplier)), isTrue,
+            reason: 'the readout must be digits, not words');
       }
     });
+  });
 
-    test('every hold reason is its own sentence a cook can act on', () {
-      final said = <String>{};
-      for (final hold in BarrioIngredientHold.values) {
-        final reason = barrioHoldReason(hold);
-        expect(reason.trim(), isNotEmpty, reason: '$hold says nothing');
-        expect(said.add(reason), isTrue,
-            reason: '$hold repeats another reason word for word, so a cook '
-                'cannot tell the two situations apart');
-        expect(reason.contains('—'), isFalse,
-            reason: 'UX no-em-dash law');
+  group('an amount is spaced and worded the way its own line wrote it', () {
+    test('at one times the recipe every line reprints its own amount', () {
+      // A calculator that printed '1TSP' where the card printed '1 TSP' is
+      // showing a cook something they did not read. At a multiplier of 1
+      // the amount must be the literal text the line printed, except where
+      // the source wrote its number as a fraction (which prints as the
+      // decimal it means) or the operator named a unit the card lacks.
+      const fractions = <String, String>{
+        // Hand-written: the fraction lines of the manual and the decimal
+        // each one means.
+        '¼': '0.25',
+        '½ Bunch': '0.5 Bunch',
+        '½ Cup': '0.5 Cup',
+        '1/4 Bunch': '0.25 Bunch',
+        '¼ Bunch': '0.25 Bunch',
+      };
+      final fractionsSeen = <String>{};
+      var literal = 0;
+      var operatorUnits = 0;
+      for (final entry in kBarrioRecipeIngredients.entries) {
+        for (final line in entry.value) {
+          final amount = line.amount;
+          if (amount == null) continue;
+          final got = barrioScaledAmount(line, 1.0);
+          final fraction = fractions[amount];
+          if (fraction != null) {
+            fractionsSeen.add(amount);
+            expect(got, fraction,
+                reason: '${entry.key}: "${line.raw}" writes its number as a '
+                    'fraction, which must print as the decimal it means');
+            continue;
+          }
+          final unit = line.unit;
+          if (unit != null && !amount.contains(unit)) {
+            operatorUnits += 1;
+            expect(got, '$amount $unit',
+                reason: '${entry.key}: "${line.raw}" prints no unit of its '
+                    'own, so the confirmed unit is added after the number '
+                    'the card printed');
+            continue;
+          }
+          literal += 1;
+          expect(got, amount,
+              reason: '${entry.key}: at one times the recipe "${line.raw}" '
+                  'must reprint its own amount, not "$got"');
+        }
       }
-      expect(said, hasLength(BarrioIngredientHold.values.length));
+      expect(literal, greaterThan(100),
+          reason: 'the sweep must cover the manual, not a handful of lines');
+      expect(fractionsSeen, fractions.keys.toSet(),
+          reason: 'the hand-written fraction table no longer matches the '
+              'fractions the manual writes');
+      expect(operatorUnits, greaterThan(0),
+          reason: 'the confirmed-unit branch was never reached, so its '
+              'assertion proved nothing');
     });
   });
 
@@ -557,6 +681,14 @@ void main() {
       expect(barrioFormatRecipeAmount(99.99), '100');
       expect(barrioFormatRecipeAmount(0.125), '0.125');
       expect(barrioFormatRecipeAmount(0.0256), '0.026');
+    });
+
+    test('a count is not rounded to a whole thing', () {
+      // The operator was shown this reading and chose it: 2 stalks at 2.4
+      // times is 4.8 stalks, and how to round that is the cook's call.
+      expect(barrioFormatRecipeAmount(2 * 2.4), '4.8');
+      expect(barrioFormatRecipeAmount(1 * 2.5), '2.5');
+      expect(barrioFormatRecipeAmount(4 * 2.4), '9.6');
     });
 
     test('trailing zeros come off', () {
@@ -583,169 +715,48 @@ void main() {
 
     test('no real line of the manual ever prints as nothing, at any batch '
         'size a kitchen would key in', () {
-      // Property sweep. The reference is the committed quantity times
-      // this file's own multiplier, and the check is on the STRING the
-      // cook would read, parsed back with the language's own parser.
+      // Property sweep. The reference is the committed quantity times this
+      // file's own multiplier, and the check is on the STRING the cook
+      // would read, parsed back with the language's own parser.
       const multipliers = <double>[
         0.01, 0.05, 0.1, 0.25, 1 / 3, 0.5, 1, 2, 7.5, 100,
       ];
       var checked = 0;
       for (final entry in kBarrioRecipeIngredients.entries) {
-        for (final line in barrioScalableLines(entry.value)) {
-          for (final multiplier in multipliers) {
-            final exact = line.quantity! * multiplier;
-            final printed = barrioFormatRecipeAmount(exact);
-            final read = double.parse(printed);
-            expect(read, greaterThan(0),
-                reason: '${entry.key}: "${line.raw}" at $multiplier times is '
-                    '$exact, which printed as "$printed"');
-            // And it is still the same amount. The bar is the definition
-            // of correct rounding, read off the STRING rather than off
-            // the code: whatever precision it chose to show, the number
-            // must be within half of its own last digit. That catches a
-            // multiplier applied twice, a dropped digit, or a truncation,
-            // at every magnitude, without this test having to know which
-            // rung the rule picked.
-            final shown = printed.contains('.')
-                ? printed.length - printed.indexOf('.') - 1
-                : 0;
-            final tolerance = 0.5 * _tenTo(-shown);
-            expect((read - exact).abs(), lessThanOrEqualTo(tolerance * 1.000001),
-                reason: '${entry.key}: "${line.raw}" at $multiplier times is '
-                    '$exact but printed as "$printed", which is further than '
-                    'half of its own last digit');
-            checked += 1;
+        for (final line in entry.value) {
+          for (final number in <double?>[line.quantity, line.quantityHigh]) {
+            if (number == null) continue;
+            for (final multiplier in multipliers) {
+              final exact = number * multiplier;
+              final printed = barrioFormatRecipeAmount(exact);
+              final read = double.parse(printed);
+              expect(read, greaterThan(0),
+                  reason: '${entry.key}: "${line.raw}" at $multiplier times '
+                      'is $exact, which printed as "$printed"');
+              // And it is still the same amount. The bar is the definition
+              // of correct rounding, read off the STRING rather than off
+              // the code: whatever precision it chose to show, the number
+              // must be within half of its own last digit. That catches a
+              // multiplier applied twice, a dropped digit, or a
+              // truncation, at every magnitude, without this test having
+              // to know which rung the rule picked.
+              final shown = printed.contains('.')
+                  ? printed.length - printed.indexOf('.') - 1
+                  : 0;
+              final tolerance = 0.5 * _tenTo(-shown);
+              expect((read - exact).abs(),
+                  lessThanOrEqualTo(tolerance * 1.000001),
+                  reason: '${entry.key}: "${line.raw}" at $multiplier times '
+                      'is $exact but printed as "$printed", which is further '
+                      'than half of its own last digit');
+              checked += 1;
+            }
           }
         }
       }
       expect(checked, greaterThan(500),
           reason: 'the sweep must actually cover the manual; $checked '
               'checks means the corpus or the multiplier list collapsed');
-    });
-
-    test('the multiplier is said the same way an amount is', () {
-      expect(barrioFormatMultiplier(2.5), '2.5');
-      expect(barrioFormatMultiplier(0.4), '0.4');
-      expect(barrioFormatMultiplier(3), '3');
-      expect(barrioFormatMultiplier(1 / 3), '0.333');
-    });
-  });
-
-  group('an amount is spaced the way its own line spaced it', () {
-    test('at one times the recipe every scalable line reprints its own '
-        'opening', () {
-      // A calculator that printed '1TSP' where the card printed '1 TSP'
-      // is showing a cook something they did not read. At a multiplier of
-      // 1 the scaled text must be the literal head of the source line,
-      // except where the source wrote the number as a fraction glyph.
-      var matched = 0;
-      var glyphs = 0;
-      var operatorUnits = 0;
-      for (final entry in kBarrioRecipeIngredients.entries) {
-        final lines = entry.value;
-        final scale = barrioScaleRecipe(lines: lines);
-        expect(scale.multiplier, 1.0);
-        for (final scaled in scale.lines.where((line) => line.scaled)) {
-          final text = scaled.scaledText!;
-          if (scaled.line.unitFromOperator) {
-            // A line whose unit came from the operator CANNOT reprint its
-            // own opening, because its opening has no unit in it. What it
-            // must do instead is keep the card's own number and add only
-            // the confirmed unit: '235 Pumpkin Seeds' reads '235 g' and
-            // never a different number. The number here is re-read off
-            // the raw text rather than taken from the parse.
-            operatorUnits += 1;
-            final printedNumber =
-                RegExp(r'^\d+(?:\.\d+)?').firstMatch(scaled.line.raw)!.group(0);
-            expect(text, '$printedNumber ${scaled.line.unit}',
-                reason: '${entry.key}: at one times the recipe '
-                    '"${scaled.line.raw}" must read as the number the card '
-                    'printed plus the confirmed unit, not "$text"');
-            continue;
-          }
-          if (RegExp(r'^[¼½¾⅓⅔]')
-              .hasMatch(scaled.line.raw)) {
-            // '1/2 Cup' written as a glyph cannot reprint its own
-            // opening; it prints the decimal the parse read.
-            glyphs += 1;
-            expect(text.startsWith('0.5 '), isTrue,
-                reason: '${entry.key}: "${scaled.line.raw}" should read as a '
-                    'decimal amount, not "$text"');
-            continue;
-          }
-          expect(scaled.line.raw.startsWith(text), isTrue,
-              reason: '${entry.key}: at one times the recipe "${scaled.line.raw}" '
-                  'must reprint as its own opening, not "$text"');
-          matched += 1;
-        }
-      }
-      expect(matched, greaterThan(100),
-          reason: 'the sweep must cover the manual, not a handful of lines');
-      expect(glyphs, greaterThan(0),
-          reason: 'the fraction-glyph branch was never reached, so its '
-              'assertion proved nothing');
-      expect(operatorUnits, greaterThan(0),
-          reason: 'the operator-confirmed branch was never reached, so its '
-              'assertion proved nothing');
-    });
-  });
-
-  group('a half-typed number never shows a half-invented recipe', () {
-    test('no amount, zero, a negative, and nonsense all leave the recipe as '
-        'written', () {
-      final lines = _linesOf(_kDressing);
-      final anchor = _lineNamed(_kDressing, '500mL Olive Oil');
-      for (final amount in <double?>[null, 0, -250, double.nan, double.infinity]) {
-        final scale =
-            barrioScaleRecipe(lines: lines, anchor: anchor, amount: amount);
-        expect(scale.multiplier, 1.0,
-            reason: 'an amount of $amount is not a batch size');
-        expect(scale.isAsWritten, isTrue);
-        final oil = scale.lines
-            .firstWhere((entry) => entry.line.raw == '500mL Olive Oil');
-        expect(oil.scaledText, '500mL');
-        expect(oil.changed, isFalse,
-            reason: 'the written amount is the new amount, so there is '
-                'nothing to show as a "was"');
-      }
-    });
-
-    test('a held line can never become the anchor', () {
-      // The sheet only offers scalable lines, but the arithmetic must not
-      // depend on the sheet behaving.
-      final lines = _linesOf(_kDressing);
-      final scale = barrioScaleRecipe(
-        lines: lines,
-        anchor: _lineNamed(_kDressing, '1 Jar Aji Amarillo'),
-        amount: 3,
-      );
-      expect(scale.multiplier, 1.0,
-          reason: 'three jars is not a batch size the recipe can be scaled '
-              'by, so the recipe stays as written');
-      final oil =
-          scale.lines.firstWhere((entry) => entry.line.raw == '500mL Olive Oil');
-      expect(oil.scaledText, '500mL');
-    });
-
-    test('the written amount is kept beside the new one whenever it '
-        'changed', () {
-      final lines = _linesOf(_kDressing);
-      final scale = barrioScaleRecipe(
-        lines: lines,
-        anchor: _lineNamed(_kDressing, '500mL Olive Oil'),
-        amount: 1250,
-      );
-      for (final entry in scale.lines.where((line) => line.scaled)) {
-        expect(entry.changed, isTrue,
-            reason: '"${entry.line.raw}" moved, so the cook must be able to '
-                'see what it was');
-      }
-      expect(
-        scale.lines
-            .firstWhere((entry) => entry.line.raw == '10g Ginger')
-            .originalText,
-        '10g',
-      );
     });
   });
 }

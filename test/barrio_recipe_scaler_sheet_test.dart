@@ -1,22 +1,33 @@
 // The recipe calculator as the cook meets it: where the way in appears,
-// that it cannot cost the reader a page turn, and what the sheet says.
+// that it cannot cost the reader a page turn, and that what is on screen
+// is a list of amounts and nothing else.
 //
 // HOW THIS STAYS AN HONEST GUARD (see
-// `feedback_negative_controls_can_be_vacuous`): the amounts asserted
-// below are hand-worked from the committed ingredient lines, never read
-// back out of the calculator. The gating tests assert the RENDERED
-// button against an independently stated fact about the data (that
+// `feedback_negative_controls_can_be_vacuous`): the amounts asserted below
+// are hand-worked from the committed ingredient lines, never read back out
+// of the calculator. The gating tests assert the RENDERED button against
+// an independently stated fact about the data (that
 // `barrioRecipeIngredientsForUnit` answers empty for that card), so a
-// button that appeared everywhere and a button that appeared nowhere
-// both fail. Every sweep counts what it touched and fails on zero.
+// button that appeared everywhere and a button that appeared nowhere both
+// fail. Every sweep counts what it touched and fails on zero.
 //
-// Every test runs at a 390x844 phone viewport and asserts
-// takeException() is null, the same bar as the rest of the Barrio
-// widget suites (RenderFlex overflow throws in tests).
+// THE NO-VERBIAGE GUARD (operator direction, REC-6) is the last group.
+// One half sweeps every recipe card's sheet and requires every rendered
+// string to be an ingredient's own name, an amount, a unit, or the
+// multiplier, against shapes this file states by hand. The other half
+// scans the calculator's source for the exact sentences REC-6 deleted, and
+// proves the scanner works by running it over a string that contains one.
+//
+// Every test runs at a phone-width viewport and asserts takeException() is
+// null, the same bar as the rest of the Barrio widget suites (RenderFlex
+// overflow throws in tests).
+
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/internal/barrio/content/company_handbook_content.dart';
+import 'package:forge_and_flow/internal/barrio/content/recipes/barrio_recipe_ingredients.dart';
 import 'package:forge_and_flow/internal/barrio/content/recipes/barrio_recipe_models.dart';
 import 'package:forge_and_flow/internal/barrio/content/training/training_docs.dart';
 import 'package:forge_and_flow/internal/barrio/screens/training_doc_screen.dart';
@@ -26,25 +37,84 @@ import 'package:forge_and_flow/internal/barrio/widgets/handbook_lesson_card.dart
 import 'package:shared_preferences/shared_preferences.dart';
 
 const Size _phoneSize = Size(390, 844);
+
+/// Tall enough that every row of every recipe card is built, so the
+/// no-verbiage sweep sees the whole sheet rather than the first screenful.
+const Size _tallSize = Size(390, 1600);
+
 const String _kRecipesDocId = 'training_recipes';
 
 /// The first recipe card of the manual (Aji Amarillo Dressing): nine
-/// ingredient lines, three of them scalable.
+/// ingredient lines covering a jar, stalks, cloves, a fraction glyph and
+/// one line with no number at all.
 const String _kDressingUnitId = 'training_recipes_c0_u0';
 
 /// The method card that follows it: prose, no ingredient list.
 const String _kMethodUnitId = 'training_recipes_c0_u1';
 
-/// A recipe card where nothing at all may be scaled.
-const String _kAllHeldUnitId = 'training_recipes_c22_u0';
+/// Pickled Beets: carries the range '8-10lbs of beets'.
+const String _kBeetsUnitId = 'training_recipes_c3_u0';
 
-/// Beef Skewer Topping: five gram lines, one of which ('235 Pumpkin
-/// Seeds') the card prints with no unit at all and the operator confirmed
-/// as grams on 2026-08-13.
+/// Beef Skewer Topping: carries '235 Pumpkin Seeds', which the card prints
+/// with no unit and the operator confirmed as grams on 2026-08-13.
 const String _kConfirmedUnitId = 'training_recipes_c8_u0';
 
 final ValueKey<String> _kScaleButton =
     const ValueKey<String>('barrio_recipe_scale_button');
+
+final ValueKey<String> _kAmountField =
+    const ValueKey<String>('barrio_recipe_scale_amount');
+
+/// The shape of an amount, written by hand: digits, a fraction glyph,
+/// amount punctuation, and at most the unit word or two a range repeats.
+final RegExp _kAmountShape = RegExp(
+  r'^(?:\d+(?:\.\d+)?(?:/\d+)?|[¼½¾⅓⅔])\s?[A-Za-z]*'
+  r'(?:-(?:\d+(?:\.\d+)?)\s?[A-Za-z]*)?$',
+);
+
+/// The multiplier readout, which is the only thing on the sheet that is
+/// not part of an ingredient line.
+final RegExp _kMultiplierShape = RegExp(r'^x\d+(\.\d+)?$');
+
+/// Every sentence REC-6 deleted, written out by hand. None of these may
+/// come back into the calculator's source, as copy or as an identifier.
+const List<String> _kDeletedWording = <String>[
+  'Counted in containers.',
+  'Counted as whole items.',
+  'No amount to scale.',
+  'The recipe gives a range.',
+  'Round it yourself.',
+  'Go by taste and by eye.',
+  'Pick a number inside it.',
+  'The recipe prints no unit here.',
+  'Every amount below is',
+  'Type an amount to see',
+  'That is the recipe exactly as it is written',
+  'Nothing in this recipe can be scaled',
+  'cannot be multiplied honestly',
+  'Scales with your amount',
+  'Stays as the recipe wrote it',
+  'Starting from this one',
+  'do you have?',
+  'BarrioIngredientHold',
+  'barrioHoldReason',
+  'barrioUnitSourceNote',
+  'unitFromOperator',
+];
+
+/// The calculator, source file by source file.
+const List<String> _kCalculatorSources = <String>[
+  'lib/internal/barrio/content/recipes/barrio_recipe_models.dart',
+  'lib/internal/barrio/content/recipes/barrio_recipe_scaler.dart',
+  'lib/internal/barrio/content/recipes/barrio_recipe_ingredients.dart',
+  'lib/internal/barrio/widgets/barrio_recipe_scaler_sheet.dart',
+];
+
+/// Which of [_kDeletedWording] [source] still contains.
+List<String> _deletedWordingIn(String source) => <String>[
+      for (final phrase in _kDeletedWording)
+        if (source.contains(phrase)) phrase,
+    ];
 
 /// Every card of one registered manual, in reading order.
 List<HandbookUnit> _unitsOf(String docId) {
@@ -68,8 +138,8 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
   });
 
-  void usePhone(WidgetTester tester) {
-    tester.view.physicalSize = _phoneSize;
+  void useViewport(WidgetTester tester, Size size) {
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
   }
@@ -77,7 +147,7 @@ void main() {
   /// One reading card on its own, the way the deck builds it.
   Future<void> pumpCard(WidgetTester tester, HandbookUnit unit,
       {double textScale = 1.0}) async {
-    usePhone(tester);
+    useViewport(tester, _phoneSize);
     await tester.pumpWidget(
       MaterialApp(
         home: MediaQuery(
@@ -96,6 +166,47 @@ void main() {
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
+  }
+
+  /// The sheet on its own, so the assertions are about the calculator
+  /// rather than about the reader around it.
+  Future<void> pumpLines(
+    WidgetTester tester,
+    List<BarrioRecipeIngredient> lines, {
+    double textScale = 1.0,
+    Size size = _phoneSize,
+  }) async {
+    useViewport(tester, size);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: MediaQueryData(
+            size: size,
+            textScaler: TextScaler.linear(textScale),
+          ),
+          child: Scaffold(
+            backgroundColor: BarrioColors.shellDeep,
+            body: BarrioRecipeScalerSheet(
+              lines: lines,
+              accent: BarrioColors.accentHerb,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+  }
+
+  Future<void> pumpSheet(
+    WidgetTester tester,
+    String unitId, {
+    double textScale = 1.0,
+    Size size = _phoneSize,
+  }) async {
+    final lines = barrioRecipeIngredientsForUnit(unitId);
+    expect(lines, isNotEmpty, reason: '$unitId carries no ingredient lines');
+    await pumpLines(tester, lines, textScale: textScale, size: size);
   }
 
   group('the way in appears on recipe cards and nowhere else', () {
@@ -123,9 +234,9 @@ void main() {
     });
 
     testWidgets('no card of any other manual does', (tester) async {
-      // Swept across manuals rather than asserted on one, because the
-      // card looks its own ingredients up and the lookup is what has to
-      // stay quiet everywhere else.
+      // Swept across manuals rather than asserted on one, because the card
+      // looks its own ingredients up and the lookup is what has to stay
+      // quiet everywhere else.
       const otherDocIds = <String>[
         'training_wine',
         'training_latin_ingredients',
@@ -153,12 +264,14 @@ void main() {
   });
 
   group('the reader still turns the page', () {
-    /// Pumps the real Recipes manual in the reader. Card 1 is the
-    /// dressing recipe, card 2 its method.
+    /// Pumps the real Recipes manual in the reader. Card 1 is the dressing
+    /// recipe, card 2 its method.
     Future<void> pumpReader(WidgetTester tester) async {
-      usePhone(tester);
+      useViewport(tester, _phoneSize);
       await tester.pumpWidget(
-        MaterialApp(home: TrainingDocScreen(doc: kBarrioTrainingDocs[_kRecipesDocId]!)),
+        MaterialApp(
+          home: TrainingDocScreen(doc: kBarrioTrainingDocs[_kRecipesDocId]!),
+        ),
       );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 800));
@@ -227,252 +340,247 @@ void main() {
   });
 
   group('the calculator', () {
-    /// The sheet on its own, so the assertions are about the calculator
-    /// rather than about the reader around it.
-    Future<void> pumpSheet(
-      WidgetTester tester,
-      String unitId, {
-      double textScale = 1.0,
-    }) async {
-      usePhone(tester);
-      final lines = barrioRecipeIngredientsForUnit(unitId);
-      expect(lines, isNotEmpty, reason: '$unitId carries no ingredient lines');
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MediaQuery(
-            data: MediaQueryData(
-              size: _phoneSize,
-              textScaler: TextScaler.linear(textScale),
-            ),
-            child: Scaffold(
-              backgroundColor: BarrioColors.shellDeep,
-              body: BarrioRecipeScalerSheet(
-                recipeTitle: _unit(_kRecipesDocId, unitId).title,
-                lines: lines,
-                accent: BarrioColors.accentHerb,
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-    }
-
-    /// Brings [text] on screen, scrolling the sheet's list if it has not
-    /// been built yet.
-    Future<void> reveal(WidgetTester tester, String text) async {
-      final finder = find.text(text);
-      if (finder.evaluate().isEmpty) {
-        await tester.scrollUntilVisible(
-          finder,
-          100,
-          scrollable: find.byType(Scrollable).last,
-          maxScrolls: 60,
-        );
-      }
-      await tester.pump();
-      expect(finder, findsWidgets, reason: '"$text" never came on screen');
-    }
-
     testWidgets('opens on the recipe exactly as it is written',
         (tester) async {
       await pumpSheet(tester, _kDressingUnitId);
-      // Hand-read off the card: the first scalable line is 500mL of oil.
-      expect(find.text('How much Olive Oil do you have?'), findsOneWidget);
-      expect(find.text('500mL'), findsOneWidget);
-      expect(find.text('That is the recipe exactly as it is written.'),
-          findsOneWidget);
-      expect(find.textContaining('was '), findsNothing,
-          reason: 'nothing has changed yet, so there is no old amount to '
-              'show beside a new one');
+      // Hand-read off the card: the first line a cook can type against is
+      // the 500mL of oil, so its box shows 500 and its unit, and every
+      // other amount is the one the card printed.
+      expect(find.text('500'), findsOneWidget,
+          reason: 'an untouched box shows the amount the recipe wrote');
+      expect(find.text('mL'), findsOneWidget);
+      expect(find.text('x1'), findsOneWidget,
+          reason: 'nothing has been typed, so this is one times the recipe');
+      expect(find.text('1 Jar'), findsOneWidget);
+      expect(find.text('2 Stalks'), findsOneWidget);
+      expect(find.text('4 Cloves'), findsOneWidget);
+      expect(find.text('10g'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('typing one amount moves every amount that can move',
+    testWidgets('typing one amount moves every amount that has a number',
         (tester) async {
       await pumpSheet(tester, _kDressingUnitId);
-      await tester.enterText(
-        find.byKey(const ValueKey<String>('barrio_recipe_scale_amount')),
-        '1250',
-      );
+      await tester.enterText(find.byKey(_kAmountField), '1250');
       await tester.pump();
 
-      // Worked by hand from the card: 1250mL of a 500mL line is 2.5
-      // times, so 50ml of water becomes 125ml and 10g of ginger 25g.
-      expect(find.text('Every amount below is 2.5 times the recipe.'),
-          findsOneWidget);
-      expect(find.text('1250mL'), findsOneWidget);
+      // Worked by hand from the card: 1250mL of a 500mL line is 2.5 times,
+      // so the jar count reads 2.5 and the celery reads 5 stalks. Both are
+      // amounts the first release refused to move.
+      expect(find.text('x2.5'), findsOneWidget);
+      expect(find.text('2.5 Jar'), findsOneWidget);
       expect(find.text('125ml'), findsOneWidget);
+      expect(find.text('5 Stalks'), findsOneWidget);
+      expect(find.text('10 Cloves'), findsOneWidget);
+      expect(find.text('0.625'), findsOneWidget);
       expect(find.text('25g'), findsOneWidget);
-      // The written amount stays beside the new one.
-      expect(find.text('was 500mL'), findsOneWidget);
-      expect(find.text('was 50ml'), findsOneWidget);
-      expect(find.text('was 10g'), findsOneWidget);
+      expect(find.text('10'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
     testWidgets('starting from a different ingredient re-reads the recipe '
         'from that one', (tester) async {
       await pumpSheet(tester, _kDressingUnitId);
-      // The ginger row is the third scalable line of this card.
       await tester.tap(find.text('Ginger'));
       await tester.pump();
-      expect(find.text('How much Ginger do you have?'), findsOneWidget);
+      // The box moved to the ginger line, showing that line's own amount.
+      expect(find.text('10'), findsOneWidget);
+      expect(find.text('g'), findsOneWidget);
+      expect(find.text('x1'), findsOneWidget,
+          reason: 'picking a different ingredient goes back to the recipe '
+              'as written rather than carrying an amount across');
 
-      await tester.enterText(
-        find.byKey(const ValueKey<String>('barrio_recipe_scale_amount')),
-        '30',
-      );
+      await tester.enterText(find.byKey(_kAmountField), '24');
       await tester.pump();
 
-      // 30g of a 10g line is 3 times, so the oil is 1500mL. If the
-      // multiplier were still read off the oil line, 30 would make this
-      // 0.06 times and the oil would read 30mL.
-      expect(find.text('Every amount below is 3 times the recipe.'),
-          findsOneWidget);
-      expect(find.text('1500mL'), findsOneWidget);
-      expect(find.text('150ml'), findsOneWidget);
-      expect(find.text('30g'), findsOneWidget);
+      // THE OPERATOR'S OWN EXAMPLE. 24g of a 10g line is 2.4 times, so the
+      // celery reads 4.8 stalks. If the multiplier were still read off the
+      // oil, 24 would make this 0.048 times and the oil would read 24mL.
+      expect(find.text('x2.4'), findsOneWidget);
+      expect(find.text('1200mL'), findsOneWidget);
+      expect(find.text('4.8 Stalks'), findsOneWidget);
+      expect(find.text('9.6 Cloves'), findsOneWidget);
+      expect(find.text('2.4 Jar'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('every line that cannot be scaled is shown, unchanged, with '
-        'the reason', (tester) async {
+    testWidgets('a range moves on both of its numbers', (tester) async {
+      // The gate, stated independently of the widget.
+      final beets = barrioRecipeIngredientsForUnit(_kBeetsUnitId)
+          .where((line) => line.quantityHigh != null)
+          .toList();
+      expect(beets, hasLength(1),
+          reason: 'this card is the range case');
+
+      await pumpSheet(tester, _kBeetsUnitId);
+      expect(find.text('8-10lbs'), findsOneWidget,
+          reason: 'the untouched sheet shows the range the card printed');
+
+      // 6L of water is 2 times the recipe, worked by hand, so 8-10 becomes
+      // 16-20 rather than 16-10 or 8-20.
+      await tester.enterText(find.byKey(_kAmountField), '6');
+      await tester.pump();
+      expect(find.text('x2'), findsOneWidget);
+      expect(find.text('16-20lbs'), findsOneWidget);
+      expect(find.text('400mL'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a line with no number prints exactly as written and says '
+        'nothing about it', (tester) async {
       await pumpSheet(tester, _kDressingUnitId);
-      await tester.enterText(
-        find.byKey(const ValueKey<String>('barrio_recipe_scale_amount')),
-        '1250',
-      );
+      await tester.enterText(find.byKey(_kAmountField), '1250');
       await tester.pump();
 
-      // Hand-read off the card: these six lines and these reasons.
-      // '¼ Red Onion' and '4 Juiced Limes' count whole things the same
-      // way '2 Stalks Celery' does; the counted noun is just in the
-      // ingredient's name rather than in a unit word (REC-4).
-      const heldLines = <String, String>{
-        '1 Jar Aji Amarillo': 'Counted in containers. Round it yourself.',
-        '2 Stalks Celery': 'Counted as whole items. Round it yourself.',
-        '4 Cloves of garlic': 'Counted as whole items. Round it yourself.',
-        '¼ Red Onion': 'Counted as whole items. Round it yourself.',
-        '4 Juiced Limes': 'Counted as whole items. Round it yourself.',
-        'Salt TT': 'No amount to scale. Go by taste and by eye.',
-      };
-      var shown = 0;
-      for (final entry in heldLines.entries) {
-        await reveal(tester, entry.key);
-        expect(find.text(entry.value), findsWidgets,
-            reason: '"${entry.key}" must say why it did not move');
-        shown += 1;
-      }
-      expect(shown, heldLines.length);
-
-      // And the numbers on those lines were never multiplied: 2.5 jars,
-      // 5 stalks and 10 cloves are what a silent scaler would have shown.
-      for (final wrong in <String>['2.5 Jar', '5 Stalks', '10 Cloves']) {
-        expect(find.textContaining(wrong), findsNothing,
-            reason: 'a held line was scaled anyway');
+      // Hand-read off the card: this is the one line of the dressing with
+      // no number in it.
+      expect(find.text('Salt TT'), findsOneWidget,
+          reason: 'the line still shows, word for word as the card wrote it');
+      for (final gone in _kDeletedWording) {
+        expect(find.textContaining(gone), findsNothing,
+            reason: '"$gone" is wording REC-6 deleted');
       }
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('an amount that is not a batch size asks again instead of '
-        'pretending', (tester) async {
-      await pumpSheet(tester, _kDressingUnitId);
-      for (final typed in <String>['', '0', '.', '0.0']) {
-        await tester.enterText(
-          find.byKey(const ValueKey<String>('barrio_recipe_scale_amount')),
-          typed,
-        );
-        await tester.pump();
-        expect(
-          find.text('Type an amount to see the rest of the recipe change.'),
-          findsOneWidget,
-          reason: '"$typed" is not a batch size, so the calculator must ask '
-              'again rather than call the written recipe an answer',
-        );
-        expect(find.text('500mL'), findsOneWidget,
-            reason: 'the recipe stays as written meanwhile');
-      }
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('a recipe with nothing to scale says so instead of offering '
-        'a box to type in', (tester) async {
-      expect(
-        barrioRecipeIngredientsForUnit(_kAllHeldUnitId)
-            .every((line) => !line.scalable),
-        isTrue,
-        reason: 'this card is the every-line-is-held case',
-      );
-
-      await pumpSheet(tester, _kAllHeldUnitId);
-      expect(find.byKey(const ValueKey<String>('barrio_recipe_scale_amount')),
-          findsNothing,
-          reason: 'there is no ingredient to start from, so there is nothing '
-              'to type');
-      expect(
-        find.textContaining('Nothing in this recipe can be scaled'),
-        findsOneWidget,
-      );
-      // The line itself is still shown, with its reason. A cook reading
-      // '12 Eggs' is told it counts whole things, not that the recipe
-      // failed to say what the 12 measures (REC-4).
-      expect(find.text('12 Eggs'), findsOneWidget);
-      expect(find.text('Counted as whole items. Round it yourself.'),
-          findsOneWidget);
-      expect(find.textContaining('does not say what this number measures'),
-          findsNothing,
-          reason: 'that sentence was removed: it read as a broken app '
-              'beside a line that plainly counts eggs');
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('a unit the operator gave says where it came from',
-        (tester) async {
-      // The gate, stated independently of the widget: this card carries
-      // a line the recipe prints with no unit at all.
+    testWidgets('a unit the recipe never printed comes along with the '
+        'number, and explains nothing', (tester) async {
+      // The gate, stated independently of the widget.
       final confirmed = barrioRecipeIngredientsForUnit(_kConfirmedUnitId)
-          .where((line) => line.unitFromOperator)
+          .where((line) =>
+              line.unit != null && !line.raw.contains(line.unit!))
           .toList();
       expect(confirmed, hasLength(1),
-          reason: 'this card is the operator-confirmed-unit case');
-      expect(confirmed.single.raw.contains(confirmed.single.unit!), isFalse,
-          reason: 'the note only makes sense because the line prints no '
-              'unit of its own');
+          reason: 'this card is the unit-the-recipe-never-printed case');
 
-      await pumpSheet(tester, _kConfirmedUnitId);
-      await reveal(tester, 'Pumpkin Seeds');
-      expect(
-        find.text(
-            'The recipe prints no unit here. The operator confirmed grams.'),
-        findsOneWidget,
-        reason: 'the calculator shows grams on a line the card printed '
-            'without a unit, so it has to say where the grams came from',
-      );
+      await pumpSheet(tester, _kConfirmedUnitId, size: _tallSize);
+      expect(find.text('235 g'), findsOneWidget,
+          reason: 'the card prints 235 with no unit; the calculator shows '
+              'the confirmed gram beside it');
 
-      // And the line really does scale: 940g of corn nuts is 2 times the
-      // recipe, worked by hand, so 235 becomes 470.
-      await tester.enterText(
-        find.byKey(const ValueKey<String>('barrio_recipe_scale_amount')),
-        '940',
-      );
+      // 940g of corn nuts is 2 times the recipe, worked by hand, so the
+      // 235 becomes 470.
+      await tester.enterText(find.byKey(_kAmountField), '940');
       await tester.pump();
-      expect(find.text('Every amount below is 2 times the recipe.'),
-          findsOneWidget);
-      await reveal(tester, '470 g');
-      expect(find.text('was 235 g'), findsWidgets,
-          reason: 'the written amount stays beside the new one here too');
-
-      // The note is for the lines that need it and nowhere else.
-      expect(
-        find.text(
-            'The recipe prints no unit here. The operator confirmed grams.'),
-        findsOneWidget,
-        reason: 'four other lines of this card print their own grams and '
-            'need no explanation',
-      );
+      expect(find.text('x2'), findsOneWidget);
+      expect(find.text('470 g'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('an amount that is not a batch size leaves the recipe as '
+        'written', (tester) async {
+      await pumpSheet(tester, _kDressingUnitId);
+      for (final typed in <String>['', '0', '.', '0.0']) {
+        await tester.enterText(find.byKey(_kAmountField), typed);
+        await tester.pump();
+        expect(find.text('x1'), findsOneWidget,
+            reason: '"$typed" is not a batch size, so the recipe stays as '
+                'written');
+        expect(find.text('1 Jar'), findsOneWidget);
+      }
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a recipe with no number anywhere shows its lines and no '
+        'box to type in', (tester) async {
+      // Hand-built, because no card of the manual is like this: the lines
+      // are the two the manual writes with no number at all, so the sheet
+      // has nothing to anchor on.
+      const lines = <BarrioRecipeIngredient>[
+        BarrioRecipeIngredient(raw: 'Salt TT', name: 'Salt TT'),
+        BarrioRecipeIngredient(raw: 'L5S TT', name: 'L5S TT'),
+      ];
+      await pumpLines(tester, lines);
+      expect(find.byKey(_kAmountField), findsNothing,
+          reason: 'there is no number to start from, so there is nothing to '
+              'type');
+      expect(find.text('Salt TT'), findsOneWidget);
+      expect(find.text('L5S TT'), findsOneWidget);
+      expect(find.text('x1'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('nothing on the sheet is a sentence', () {
+    testWidgets('every rendered string is a name, an amount, a unit, or the '
+        'multiplier', (tester) async {
+      // THE NO-VERBIAGE GUARD. Swept over every recipe card of the manual,
+      // against shapes stated by hand at the top of this file. A heading,
+      // an instruction, a hold reason or any other prose put back on the
+      // sheet fails here naming itself.
+      var cardsChecked = 0;
+      var stringsChecked = 0;
+      for (final unitId in kBarrioRecipeIngredients.keys) {
+        final lines = barrioRecipeIngredientsForUnit(unitId);
+        expect(lines, isNotEmpty);
+        await pumpSheet(tester, unitId, size: _tallSize);
+
+        final names = lines.map((line) => line.name).toSet();
+        final units = lines
+            .map((line) => line.unit)
+            .whereType<String>()
+            .toSet();
+        var seenOnThisCard = 0;
+        for (final text in tester.widgetList<Text>(find.byType(Text))) {
+          final data = text.data;
+          if (data == null || data.trim().isEmpty) continue;
+          seenOnThisCard += 1;
+          stringsChecked += 1;
+          final allowed = names.contains(data) ||
+              units.contains(data) ||
+              _kAmountShape.hasMatch(data) ||
+              _kMultiplierShape.hasMatch(data);
+          expect(allowed, isTrue,
+              reason: '$unitId renders "$data", which is not one of this '
+                  "recipe's own ingredient names, an amount, a unit, or the "
+                  'multiplier');
+        }
+        expect(seenOnThisCard, greaterThanOrEqualTo(lines.length),
+            reason: '$unitId rendered only $seenOnThisCard strings for '
+                '${lines.length} ingredient lines, so the sheet did not '
+                'build and this card proved nothing');
+        expect(tester.takeException(), isNull);
+        cardsChecked += 1;
+      }
+      expect(cardsChecked, greaterThan(25),
+          reason: 'the sweep covered $cardsChecked recipe cards');
+      expect(stringsChecked, greaterThan(300),
+          reason: 'only $stringsChecked strings were checked, so the sheets '
+              'did not render and this proved nothing');
+    });
+
+    test('the wording REC-6 deleted is gone from the source, not hidden',
+        () {
+      // A rendered sweep cannot see a sentence that is one flag away from
+      // being shown again, so the source is scanned too.
+      var filesScanned = 0;
+      final offenders = <String>[];
+      for (final path in _kCalculatorSources) {
+        final file = File(path);
+        expect(file.existsSync(), isTrue,
+            reason: '$path is not where this guard expects the calculator');
+        final source = file.readAsStringSync();
+        expect(source.length, greaterThan(1000),
+            reason: '$path is too small to be the real file');
+        for (final phrase in _deletedWordingIn(source)) {
+          offenders.add('$path still contains "$phrase"');
+        }
+        filesScanned += 1;
+      }
+      expect(filesScanned, _kCalculatorSources.length);
+      expect(offenders, isEmpty, reason: offenders.join('\n'));
+    });
+
+    test('the scanner would notice if it did come back', () {
+      // Non-vacuity for the scan above: prove the matcher fires, so an
+      // empty offender list means something.
+      expect(_kDeletedWording, isNotEmpty);
+      for (final phrase in _kDeletedWording) {
+        expect(_deletedWordingIn('prefix $phrase suffix'), contains(phrase),
+            reason: 'the scanner cannot see "$phrase"');
+      }
+      expect(_deletedWordingIn('500mL Olive Oil'), isEmpty,
+          reason: 'an ordinary ingredient line is not an offender');
     });
   });
 
@@ -480,36 +588,12 @@ void main() {
     for (final scale in <double>[1.3, 2.0]) {
       testWidgets('the calculator renders at ${scale}x with no overflow',
           (tester) async {
-        usePhone(tester);
-        final lines = barrioRecipeIngredientsForUnit(_kDressingUnitId);
-        await tester.pumpWidget(
-          MaterialApp(
-            home: MediaQuery(
-              data: MediaQueryData(
-                size: _phoneSize,
-                textScaler: TextScaler.linear(scale),
-              ),
-              child: Scaffold(
-                backgroundColor: BarrioColors.shellDeep,
-                body: BarrioRecipeScalerSheet(
-                  recipeTitle: _unit(_kRecipesDocId, _kDressingUnitId).title,
-                  lines: lines,
-                  accent: BarrioColors.accentHerb,
-                ),
-              ),
-            ),
-          ),
-        );
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
+        await pumpSheet(tester, _kDressingUnitId, textScale: scale);
         expect(tester.takeException(), isNull);
 
-        await tester.enterText(
-          find.byKey(const ValueKey<String>('barrio_recipe_scale_amount')),
-          '1250',
-        );
+        await tester.enterText(find.byKey(_kAmountField), '1250');
         await tester.pump();
-        expect(find.text('1250mL'), findsOneWidget);
+        expect(find.text('2.5 Jar'), findsOneWidget);
         expect(tester.takeException(), isNull);
 
         await tester.drag(find.byType(Scrollable).last, const Offset(0, -400));
