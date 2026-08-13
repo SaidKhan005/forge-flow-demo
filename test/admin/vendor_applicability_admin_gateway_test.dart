@@ -107,19 +107,140 @@ void main() {
       expect(endBody['admin_reason'], 'Ticket VA-124 retire stale default');
       expect(endBody['reason_note'], 'retired');
     });
+
+    test('list forwards operator + location filters as query params', () async {
+      late http.Request captured;
+      final gateway = HttpVendorApplicabilityAdminGateway(
+        baseUri: Uri.parse(proxyBase),
+        bearerTokenProvider: tokenProvider,
+        httpClient: MockClient((request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode(<String, Object?>{'rows': <Object?>[]}),
+            200,
+          );
+        }),
+      );
+
+      await gateway.list(
+        filter: const VendorApplicabilityAdminFilter(
+          operatorId: '22222222-2222-4222-8222-222222222222',
+          locationId: '33333333-3333-4333-8333-333333333333',
+          settingKind: 'wage',
+        ),
+      );
+
+      expect(
+        captured.url.queryParameters['operator_id'],
+        '22222222-2222-4222-8222-222222222222',
+      );
+      expect(
+        captured.url.queryParameters['location_id'],
+        '33333333-3333-4333-8333-333333333333',
+      );
+    });
+
+    test('upsert + end emit location_id only when set', () async {
+      final captured = <http.Request>[];
+      final gateway = HttpVendorApplicabilityAdminGateway(
+        baseUri: Uri.parse(proxyBase),
+        bearerTokenProvider: tokenProvider,
+        httpClient: MockClient((request) async {
+          captured.add(request);
+          return http.Response(
+            jsonEncode(<String, Object?>{'row': _row()}),
+            200,
+          );
+        }),
+      );
+
+      // No location set: location_id must be absent (operator-level row).
+      await gateway.upsert(
+        const VendorApplicabilityUpsertCommand(
+          operatorId: '22222222-2222-4222-8222-222222222222',
+          settingKind: 'wage',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+          enabled: true,
+          adminReason: 'admin.vendor_applicability.upsert',
+          idempotencyKey: 'idem-operator-only',
+        ),
+      );
+      // Location set: location_id present on both upsert + end.
+      await gateway.upsert(
+        const VendorApplicabilityUpsertCommand(
+          operatorId: '22222222-2222-4222-8222-222222222222',
+          locationId: '33333333-3333-4333-8333-333333333333',
+          settingKind: 'wage',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+          enabled: true,
+          adminReason: 'admin.vendor_applicability.upsert',
+          idempotencyKey: 'idem-location',
+        ),
+      );
+      await gateway.end(
+        const VendorApplicabilityEndCommand(
+          operatorId: '22222222-2222-4222-8222-222222222222',
+          locationId: '33333333-3333-4333-8333-333333333333',
+          settingKind: 'wage',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+          adminReason: 'admin.vendor_applicability.end',
+          idempotencyKey: 'idem-location-end',
+        ),
+      );
+
+      final operatorOnly = jsonDecode(captured[0].body) as Map<String, Object?>;
+      expect(operatorOnly.containsKey('location_id'), isFalse);
+      final withLocation = jsonDecode(captured[1].body) as Map<String, Object?>;
+      expect(
+        withLocation['location_id'],
+        '33333333-3333-4333-8333-333333333333',
+      );
+      final endBody = jsonDecode(captured[2].body) as Map<String, Object?>;
+      expect(endBody['location_id'], '33333333-3333-4333-8333-333333333333');
+    });
+
+    test('row parses location_id from the proxy payload', () async {
+      final gateway = HttpVendorApplicabilityAdminGateway(
+        baseUri: Uri.parse(proxyBase),
+        bearerTokenProvider: tokenProvider,
+        httpClient: MockClient((request) async {
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'rows': <Object?>[
+                _row(
+                  operatorId: '22222222-2222-4222-8222-222222222222',
+                  locationId: '33333333-3333-4333-8333-333333333333',
+                ),
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+
+      final rows = await gateway.list();
+
+      expect(rows.single.operatorId, '22222222-2222-4222-8222-222222222222');
+      expect(rows.single.locationId, '33333333-3333-4333-8333-333333333333');
+    });
   });
 }
 
-Map<String, Object?> _row() => const <String, Object?>{
-  'id': '44444444-4444-4444-8444-444444444444',
-  'operator_id': null,
-  'setting_kind': 'wage',
-  'setting_key': 'tip_credit',
-  'vendor_slug': 'toast',
-  'enabled': true,
-  'metadata': <String, Object?>{'authority_basis': 'job_code'},
-  'effective_from': '2026-05-13T15:00:00.000Z',
-  'effective_until': null,
-  'created_at': '2026-05-13T15:00:00.000Z',
-  'created_by': '11111111-1111-4111-8111-111111111111',
-};
+Map<String, Object?> _row({String? operatorId, String? locationId}) =>
+    <String, Object?>{
+      'id': '44444444-4444-4444-8444-444444444444',
+      'operator_id': operatorId,
+      'location_id': locationId,
+      'setting_kind': 'wage',
+      'setting_key': 'tip_credit',
+      'vendor_slug': 'toast',
+      'enabled': true,
+      'metadata': const <String, Object?>{'authority_basis': 'job_code'},
+      'effective_from': '2026-05-13T15:00:00.000Z',
+      'effective_until': null,
+      'created_at': '2026-05-13T15:00:00.000Z',
+      'created_by': '11111111-1111-4111-8111-111111111111',
+    };
