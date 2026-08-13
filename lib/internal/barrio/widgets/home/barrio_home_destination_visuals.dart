@@ -54,6 +54,7 @@ const Map<String, IconData> _kBarrioHomeIcons = <String, IconData>{
   'training_host_manual': Icons.support_agent,
   'training_bar_manual': Icons.local_bar,
   'training_drink_specs': Icons.wine_bar,
+  'training_recipes': Icons.soup_kitchen,
 };
 
 /// Hub-exact accent overrides, mirroring `barrio_bubble_hub.dart`'s

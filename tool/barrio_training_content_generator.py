@@ -190,6 +190,10 @@ DOCS = [
          const='kTrainingBarManual', title='Bar Manual', kind='prose'),
     dict(md='Barrio Drink Specs.md', id='training_drink_specs',
          const='kTrainingDrinkSpecs', title='Drink Specs', kind='prose'),
+    # Manual-drop slice (2026-08-13): the operator's kitchen recipes, one
+    # chapter per recipe, sitting with their Food & Drink neighbours.
+    dict(md='Barrio Recipes.md', id='training_recipes',
+         const='kTrainingRecipes', title='Recipes', kind='prose'),
 ]
 
 CHAPTER_ICON = '0xe865'  # Icons.menu_book glyph, used by the chapter rail

@@ -143,11 +143,14 @@ void main() {
       }
     });
 
-    test('a universal word reaches all 24 docs', () {
+    test('a universal word reaches all 25 docs', () {
       final ids = BarrioTrainingSearch.search('the')
           .map((r) => r.destinationId)
           .toSet();
-      expect(kBarrioTrainingDocs.length, 24);
+      // Count guard, bumped deliberately when a manual is added: it is what
+      // stops the set comparison below going vacuous on an empty registry.
+      // 25 as of 2026-08-13 (training_recipes added).
+      expect(kBarrioTrainingDocs.length, 25);
       expect(ids, kBarrioTrainingDocs.keys.toSet(),
           reason: 'every registered doc must be searchable');
     });

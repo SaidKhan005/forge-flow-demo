@@ -25,6 +25,7 @@ import 'training_latin_ingredients_content.dart';
 import 'training_mastering_metrics_content.dart';
 import 'training_menu_content.dart';
 import 'training_push_sop_content.dart';
+import 'training_recipes_content.dart';
 import 'training_strong_foundation_content.dart';
 import 'training_suggestive_selling_content.dart';
 import 'training_table_manicuring_content.dart';
@@ -76,6 +77,9 @@ final Map<String, BarrioTrainingDoc> kBarrioTrainingDocs = {
   'training_host_manual': kTrainingHostManual,
   'training_bar_manual': kTrainingBarManual,
   'training_drink_specs': kTrainingDrinkSpecs,
+  // Manual-drop slice (2026-08-13): the kitchen recipes sit with Drink
+  // Specs, so the food recipes read next to the cocktail recipes.
+  'training_recipes': kTrainingRecipes,
 };
 
 /// Per-destination accent bloom color (same convention as the
@@ -111,4 +115,10 @@ const Map<String, Color> kBarrioTrainingAccents = {
   'training_host_manual': BarrioColors.accentPlum, // plum
   'training_bar_manual': BarrioColors.gold, // gold
   'training_drink_specs': BarrioColors.accentHerb, // herb green
+  // Manual-drop slice (2026-08-13): steel blue for the stainless steel the
+  // recipes themselves call for, and the only cool colour in Food & Drink,
+  // so it cannot be confused with its neighbours (MENU warm teal, Drink
+  // Specs herb green, Tequila gold, Wine plum, Coffee roasted brown, Latin
+  // Dishes brick red, Latin Ingredients herb green).
+  'training_recipes': BarrioColors.accentSteel, // steel blue
 };

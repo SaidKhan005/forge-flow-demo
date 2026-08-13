@@ -27,8 +27,10 @@ void main() {
         // 24 as of 2026-07-28: host_manual + bar_manual + drink_specs added
         // (operator host, bar, and combined drink-spec training manuals).
         // 25 as of 2026-08-06: wine_training added (operator wine manual).
-        expect(result.manifest.documents, hasLength(25));
-        expect(result.activeMarkdownFiles, hasLength(25));
+        // 26 as of 2026-08-13: recipes added (the operator's 29 kitchen
+        // recipe .docx files, 33 recipes in one manual).
+        expect(result.manifest.documents, hasLength(26));
+        expect(result.activeMarkdownFiles, hasLength(26));
         expect(
           result.activeMarkdownFiles,
           isNot(contains(excludedEmptyApronFileName)),
