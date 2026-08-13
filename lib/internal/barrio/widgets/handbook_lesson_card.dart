@@ -7,12 +7,14 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'barrio_celebration_overlay.dart';
 import 'barrio_destination_scaffold.dart';
+import 'barrio_recipe_scaler_sheet.dart';
 import 'barrio_training_image_viewer.dart';
 import '../content/barrio_body_chunks.dart';
 import '../content/company_handbook_content.dart';
 import '../content/highlight/barrio_key_terms.dart';
 import '../content/highlight/cards/barrio_card_keys_index.dart';
 import '../content/quiz/barrio_quiz_models.dart';
+import '../content/recipes/barrio_recipe_models.dart';
 import '../content/training/training_docs.dart';
 import '../search/barrio_training_search.dart';
 import '../services/barrio_highlight_anchors.dart';
@@ -203,6 +205,14 @@ class _HandbookLessonCardState extends State<HandbookLessonCard>
     // (proved by `test/barrio_card_key_sets_test.dart`); authored sets then
     // land as pure data, doc by doc, with no further renderer change.
     final keyTerms = barrioCardKeysForUnit(unit.id);
+
+    // Recipe calculator (operator request, 2026-08-13). Same self-lookup
+    // shape as the two above: the card asks whether IT carries parsed
+    // ingredient lines, so no call site changes and no new constructor
+    // param. [barrioRecipeIngredientsForUnit] answers with an empty list
+    // for every method card and for every card of every other manual, so
+    // the button appears on recipe cards and nowhere else.
+    final recipeLines = barrioRecipeIngredientsForUnit(unit.id);
 
     // Accessibility (rec #12): a collapsed interactive card is one big
     // tap target, so ONLY that state gets a button-role wrapper (its
@@ -451,6 +461,25 @@ class _HandbookLessonCardState extends State<HandbookLessonCard>
                     ),
                   );
                 }),
+              ],
+              // The recipe calculator's way in. Sits under the body, so
+              // it appears once the ingredient list has actually been
+              // read, and centered, so it never lands in the carousel's
+              // left/right page-turn gutters.
+              if (recipeLines.isNotEmpty &&
+                  (!_isInteractive || _expanded || carousel)) ...[
+                const SizedBox(height: 16),
+                Center(
+                  child: _ScaleRecipeButton(
+                    accent: _numberAccent,
+                    onTap: () => showBarrioRecipeScaler(
+                      context,
+                      recipeTitle: unit.title,
+                      lines: recipeLines,
+                      accent: _numberAccent,
+                    ),
+                  ),
+                ),
               ],
               if (!_isInteractive) ...[
                 const SizedBox(height: 12),
@@ -2333,6 +2362,67 @@ class _SlidePositionStrip extends StatelessWidget {
 /// Quiet bookmark toggle in the badge row (rec #8). Small icon-only
 /// tap target next to the type badge, deliberately far from the
 /// carousel's edge tap gutters so saving never turns the page.
+/// The way into the recipe calculator, on recipe cards only.
+///
+/// A button, deliberately, and nothing typed inline. A [TextField] in the
+/// card body would plant its own recognizers in the same gesture arena
+/// the reader's page turns live in, which is exactly the failure slice A9
+/// measured and had rejected. Opening a modal sheet moves the whole
+/// calculator onto its own Navigator entry, above that arena.
+///
+/// Kept to its own width and centered, so it never covers the carousel's
+/// left/right edge tap zones (the outer 22% of the card area on each
+/// side), matching why the bookmark toggle sits where it does.
+class _ScaleRecipeButton extends StatelessWidget {
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _ScaleRecipeButton({required this.accent, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return MergeSemantics(
+      child: Semantics(
+        button: true,
+        child: GestureDetector(
+          key: const ValueKey<String>('barrio_recipe_scale_button'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            HapticFeedback.lightImpact();
+            onTap();
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(BarrioRadii.card),
+              border: Border.all(color: accent.withValues(alpha: 0.45)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.calculate_rounded, size: 16, color: accent),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    'Scale this recipe',
+                    style: GoogleFonts.ibmPlexMono(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
+                      color: accent,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _BookmarkToggle extends StatelessWidget {
   final bool saved;
   final Color accent;

@@ -83,6 +83,11 @@ const List<String> kUxCopyRoots = <String>[
   // Review every mark in one manual: the "Your highlights" sheet
   // (Slice D). Its group headings and row labels are reader copy.
   'lib/internal/barrio/widgets/training_doc_highlights_sheet.dart',
+  // Recipe calculator (2026-08-13): the sheet is reader copy, and the
+  // scaler carries the plain-English reason every held ingredient line
+  // did not move, which a cook reads word for word.
+  'lib/internal/barrio/widgets/barrio_recipe_scaler_sheet.dart',
+  'lib/internal/barrio/content/recipes/barrio_recipe_scaler.dart',
 ];
 
 /// The banned code point: EM DASH (U+2014).
