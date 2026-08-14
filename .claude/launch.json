@@ -103,6 +103,18 @@
         "docs/_mockups"
       ],
       "port": 8190
+    },
+    {
+      "name": "admin-kb-qa",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8222",
+        "--directory",
+        "C:/Git Local Repos/ff_shots/build/web"
+      ],
+      "port": 8222
     }
   ]
 }
