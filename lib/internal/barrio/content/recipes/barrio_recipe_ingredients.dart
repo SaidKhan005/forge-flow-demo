@@ -17,6 +17,11 @@
 // A line with a `quantity` can be multiplied; a line without one has
 // nothing to multiply and prints as written. `quantityHigh` is the
 // second number of a range, and it scales alongside the first.
+//
+// `nameNumbers` is one entry per number written inside the ingredient
+// itself, in the order it is written: the value it scales from, or
+// null for a number that stays exactly as written (a percentage, or a
+// digit inside a word). Absent when the name holds no number at all.
 
 import 'barrio_recipe_models.dart';
 
@@ -270,6 +275,7 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
       amount: '70g',
       quantity: 70,
       unit: 'g',
+      nameNumbers: <double?>[null],
     ),
   ],
   'training_recipes_c5_u0': <BarrioRecipeIngredient>[
@@ -492,6 +498,7 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
       amount: '180g',
       quantity: 180,
       unit: 'g',
+      nameNumbers: <double?>[90],
     ),
     BarrioRecipeIngredient(
       raw: '35g Maldon Salt',
@@ -713,6 +720,7 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
       amount: '200g',
       quantity: 200,
       unit: 'g',
+      nameNumbers: <double?>[7],
     ),
     BarrioRecipeIngredient(
       raw: '120g Lime Juice',
@@ -898,6 +906,7 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
     BarrioRecipeIngredient(
       raw: 'L5S TT',
       name: 'L5S TT',
+      nameNumbers: <double?>[null],
     ),
     BarrioRecipeIngredient(
       raw: 'Salt TT',
@@ -998,6 +1007,7 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
       amount: '591mL',
       quantity: 591,
       unit: 'mL',
+      nameNumbers: <double?>[1],
     ),
     BarrioRecipeIngredient(
       raw: '125mL Soy Sauce',
@@ -1258,6 +1268,7 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
     BarrioRecipeIngredient(
       raw: '(30g) 4-5 Habanero Peppers (deseeded and deribbed)',
       name: '(30g) 4-5 Habanero Peppers (deseeded and deribbed)',
+      nameNumbers: <double?>[30, 4, 5],
     ),
     BarrioRecipeIngredient(
       raw: '75g Garlic',
@@ -1371,6 +1382,7 @@ const Map<String, List<BarrioRecipeIngredient>> kBarrioRecipeIngredients =
     BarrioRecipeIngredient(
       raw: 'L5S TT',
       name: 'L5S TT',
+      nameNumbers: <double?>[null],
     ),
     BarrioRecipeIngredient(
       raw: '¼ Bunch Cilantro',

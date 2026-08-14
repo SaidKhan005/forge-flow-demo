@@ -66,8 +66,44 @@ const String _kShrimpStock = 'training_recipes_c31_u0';
 const String _kTortillaChips = 'training_recipes_c32_u0';
 
 /// Pumpkin Seed Salsa: carries '9-10 Roma Tomatoes' (a range with no unit)
-/// and the habanero line the parser deliberately leaves alone.
+/// and the habanero line, which has no amount column of its own.
 const String _kSeedSalsa = 'training_recipes_c27_u0';
+
+/// Chipotle Mayo: carries '200g Chipotle (One 7oz Can)', a can size
+/// written inside the ingredient.
+const String _kChipotleMayo = 'training_recipes_c14_u0';
+
+/// Pickled Ginger: carries '591mL Rice Wine Vinegar ( 1 Bottle)', a bottle
+/// count written inside the ingredient.
+const String _kPickledGinger = 'training_recipes_c23_u0';
+
+/// Every number a scaled line prints, in the order it prints them. Written
+/// out here so the contradiction sweep reads the calculator's OUTPUT with
+/// its own eyes rather than asking the calculator what it meant.
+final RegExp _kNumberInText = RegExp(r'[¼½¾⅓⅔⅛⅜⅝⅞]|\d+(?:\.\d+)?(?:/\d+)?');
+
+/// The number tokens inside [text], exactly as it printed them, glyphs
+/// excluded (no line that writes a number inside its ingredient writes one
+/// as a glyph).
+List<String> _numberTokensIn(String text) => <String>[
+      for (final m in _kNumberInText.allMatches(text))
+        if (double.tryParse(m.group(0)!) != null) m.group(0)!,
+    ];
+
+/// The numbers inside [text] as doubles.
+List<double> _numbersIn(String text) =>
+    _numberTokensIn(text).map(double.parse).toList(growable: false);
+
+/// Half of [printed]'s own last digit, which is the definition of correct
+/// rounding read off the STRING: whatever precision the calculator chose to
+/// show, the number has to be within half of it. Stated here so the checks
+/// below never have to know which rung the rounding rule picked.
+double _slackFor(String printed) {
+  final shown = printed.contains('.')
+      ? printed.length - printed.indexOf('.') - 1
+      : 0;
+  return 0.5 * _tenTo(-shown) * 1.000001;
+}
 
 /// Ten to the power of [exponent], written out here so the tolerance check
 /// below borrows nothing from the code it is checking.
@@ -481,8 +517,10 @@ void main() {
       // 75 -> 37.5, 30 -> 15.
       //
       // The habanero line carries a parenthesised weight AND a count of
-      // peppers, so no rule reads one without leaving the other lying. It
-      // prints exactly as written, with nothing said about it.
+      // peppers, neither of which can be singled out as THE amount, so it
+      // has no amount column of its own. Its numbers are not stranded: they
+      // move together inside the ingredient's own text, which the REC-8
+      // group below pins amount by amount.
       _expectRecipe(
         _kSeedSalsa,
         anchorRaw: '750g Pumpkin Seeds',
@@ -777,6 +815,209 @@ void main() {
       expect(checked, greaterThan(150),
           reason: 'only $checked lines were checked, so the corpus '
               'collapsed and this proved nothing');
+    });
+  });
+
+  group('a number written inside the ingredient moves with the amount', () {
+    // REC-8, THE DEFECT. '180g White/Black Sesame Seed (90g each)' at twice
+    // the batch printed '360g White/Black Sesame Seed (90g each)'. The
+    // parenthesis is the operator's split between the two seed types, so a
+    // cook weighing to it put in 180g where the dish needed 360g. Two
+    // numbers on one line, saying different batches, with nothing to say
+    // which one was stale.
+    //
+    // Every expectation in this group is worked by hand from the committed
+    // line. Nothing asks the scaler what it produced.
+
+    test('the manual really writes numbers inside ingredient names', () {
+      // NON-VACUITY. Every sweep below is trivially true against a manual
+      // whose ingredients are words only, so prove both branches exist
+      // first, and prove they are the lines this group names by hand.
+      final withNumbers = <String>[];
+      final holding = <String>[];
+      for (final entry in kBarrioRecipeIngredients.entries) {
+        for (final line in entry.value) {
+          if (line.nameNumbers.isEmpty) continue;
+          withNumbers.add(line.raw);
+          if (line.nameNumbers.contains(null)) holding.add(line.raw);
+        }
+      }
+      expect(withNumbers.toSet(), <String>{
+        '70g Salt ( 1.75% weight of beets)',
+        '180g White/Black Sesame Seed (90g each)',
+        '200g Chipotle (One 7oz Can)',
+        '591mL Rice Wine Vinegar ( 1 Bottle)',
+        'L5S TT',
+        '(30g) 4-5 Habanero Peppers (deseeded and deribbed)',
+      }, reason: 'the manual writes numbers inside a different set of '
+          'ingredient names than this group was written against');
+      expect(holding.toSet(), <String>{
+        '70g Salt ( 1.75% weight of beets)',
+        'L5S TT',
+      }, reason: 'a different set of in-name numbers is held still, so the '
+          'held-number cases below prove nothing');
+    });
+
+    test('the sesame split moves with the weight in front of it', () {
+      // Worked by hand: 180 doubles to 360, so the 90g each doubles to
+      // 180g each, and 180 + 180 is the 360 the line now asks for.
+      final sesame =
+          _lineNamed(_kSkewerTopping, '180g White/Black Sesame Seed (90g each)');
+      expect(barrioScaledAmount(sesame, 2), '360g');
+      expect(barrioScaledName(sesame, 2), 'White/Black Sesame Seed (180g each)');
+      expect(barrioScaledAmount(sesame, 0.5), '90g');
+      expect(barrioScaledName(sesame, 0.5), 'White/Black Sesame Seed (45g each)');
+    });
+
+    test('a can size and a bottle count move too', () {
+      // Worked by hand: 200g is one 7oz can, so 400g is 14oz of chipotle;
+      // 591mL is one bottle, so 1182mL is two.
+      final chipotle = _lineNamed(_kChipotleMayo, '200g Chipotle (One 7oz Can)');
+      expect(barrioScaledAmount(chipotle, 2), '400g');
+      expect(barrioScaledName(chipotle, 2), 'Chipotle (One 14oz Can)');
+
+      final vinegar =
+          _lineNamed(_kPickledGinger, '591mL Rice Wine Vinegar ( 1 Bottle)');
+      expect(barrioScaledAmount(vinegar, 2), '1182mL');
+      expect(barrioScaledName(vinegar, 2), 'Rice Wine Vinegar ( 2 Bottle)');
+    });
+
+    test('a percentage stays a percentage at every batch size', () {
+      // THE HELD CASE, and the reason the rule has an exception at all. The
+      // salt is 1.75% of the beets whether the cook makes one batch or ten;
+      // doubling the ratio as well as the weights would count it twice.
+      final salt = _lineNamed(_kBeets, '70g Salt ( 1.75% weight of beets)');
+      for (final multiplier in <double>[0.5, 1, 2, 7.5, 100]) {
+        expect(barrioScaledName(salt, multiplier),
+            'Salt ( 1.75% weight of beets)',
+            reason: 'at $multiplier times the batch the salt is still 1.75% '
+                'of the beets');
+      }
+      expect(barrioScaledAmount(salt, 2), '140g',
+          reason: 'the weight itself still moves');
+    });
+
+    test('a digit inside a word is part of the word', () {
+      // THE OTHER HELD CASE. 'L5S' is a product code; 'L10S' at twice the
+      // batch would be an ingredient that does not exist.
+      final code = _lineNamed(_kGuacamole, 'L5S TT');
+      for (final multiplier in <double>[0.5, 1, 2, 7.5, 100]) {
+        expect(barrioScaledName(code, multiplier), 'L5S TT',
+            reason: 'at $multiplier times the batch the product code is '
+                'still the product code');
+      }
+      expect(barrioScaledAmount(code, 2), isNull,
+          reason: 'the line carries no amount to move');
+    });
+
+    test('the habanero weight and the habanero count move together', () {
+      // No one part of this line is THE amount: '(30g)' and '4-5' are the
+      // same quantity said twice. They are not stranded for it. Worked by
+      // hand: at twice the batch 30 -> 60 and 4-5 -> 8-10, which is still
+      // the same peppers; at half, 30 -> 15 and 4-5 -> 2-2.5.
+      final habanero = _lineNamed(
+          _kSeedSalsa, '(30g) 4-5 Habanero Peppers (deseeded and deribbed)');
+      expect(barrioScaledName(habanero, 2),
+          '(60g) 8-10 Habanero Peppers (deseeded and deribbed)');
+      expect(barrioScaledName(habanero, 0.5),
+          '(15g) 2-2.5 Habanero Peppers (deseeded and deribbed)');
+      expect(barrioScaledName(habanero, 1.0),
+          '(30g) 4-5 Habanero Peppers (deseeded and deribbed)',
+          reason: 'untouched, the calculator is the recipe as written');
+    });
+
+    test('an amount and the number inside its own ingredient can never '
+        'disagree about the batch', () {
+      // THE PROPERTY THIS SLICE EXISTS FOR, swept rather than named. For
+      // every line that writes a number into its ingredient, at every batch
+      // size, the two numbers a cook reads on that ROW must stand in the
+      // ratio the card wrote them in. The reference is the committed
+      // quantity and this file's own multiplication; both sides are read
+      // back off the STRINGS the calculator produced.
+      const multipliers = <double>[0.25, 0.5, 2, 2.4, 7.5, 100];
+      var pairsChecked = 0;
+      var heldChecked = 0;
+      for (final entry in kBarrioRecipeIngredients.entries) {
+        for (final line in entry.value) {
+          if (line.nameNumbers.isEmpty) continue;
+          for (final multiplier in multipliers) {
+            final tokens = _numberTokensIn(barrioScaledName(line, multiplier));
+            final written = _numberTokensIn(line.name);
+            final printed = tokens.map(double.parse).toList(growable: false);
+            expect(tokens, hasLength(line.nameNumbers.length),
+                reason: '${entry.key}: "${line.raw}" at $multiplier times '
+                    'printed ${tokens.length} numbers inside its '
+                    'ingredient, not ${line.nameNumbers.length}');
+            for (var i = 0; i < line.nameNumbers.length; i++) {
+              final base = line.nameNumbers[i];
+              if (base == null) {
+                heldChecked += 1;
+                expect(tokens[i], written[i],
+                    reason: '${entry.key}: "${line.raw}" rewrote a number '
+                        'that must stay exactly as written');
+                continue;
+              }
+              final want = base * multiplier;
+              expect(printed[i], closeTo(want, _slackFor(tokens[i])),
+                  reason: '${entry.key}: "${line.raw}" at $multiplier times '
+                      'printed ${tokens[i]} where $base times $multiplier '
+                      'is $want');
+              pairsChecked += 1;
+            }
+
+            // And the ratio between the amount and that number is the one
+            // the card wrote, which is the contradiction stated directly.
+            final quantity = line.quantity;
+            final amount = barrioScaledAmount(line, multiplier);
+            if (quantity == null || amount == null) continue;
+            final amountNumbers = _numbersIn(amount);
+            if (amountNumbers.isEmpty) continue;
+            for (var i = 0; i < line.nameNumbers.length; i++) {
+              final base = line.nameNumbers[i];
+              if (base == null || printed[i] == 0) continue;
+              expect(amountNumbers.first / printed[i],
+                  closeTo(quantity / base, (quantity / base).abs() * 0.01),
+                  reason: '${entry.key}: "${line.raw}" at $multiplier times '
+                      'reads ${amountNumbers.first} beside ${printed[i]}, '
+                      'but the card wrote $quantity beside $base');
+            }
+          }
+        }
+      }
+      expect(pairsChecked, greaterThan(20),
+          reason: 'only $pairsChecked moving in-name numbers were checked, '
+              'so the corpus collapsed and this proved nothing');
+      expect(heldChecked, greaterThan(0),
+          reason: 'the held-number branch was never reached');
+    });
+
+    test('every other ingredient name is printed exactly as the card wrote '
+        'it, at every batch size', () {
+      // The other direction: an ingredient whose name carries no number is
+      // never rewritten, and NOTHING is rewritten at one times the recipe.
+      const multipliers = <double>[0.25, 1, 2, 12];
+      var wordsOnly = 0;
+      var untouched = 0;
+      for (final entry in kBarrioRecipeIngredients.entries) {
+        for (final line in entry.value) {
+          expect(barrioScaledName(line, 1.0), line.name,
+              reason: '${entry.key}: at one times the recipe "${line.raw}" '
+                  'must reprint its own ingredient');
+          untouched += 1;
+          if (line.nameNumbers.isNotEmpty) continue;
+          for (final multiplier in multipliers) {
+            expect(barrioScaledName(line, multiplier), line.name,
+                reason: '${entry.key}: "${line.raw}" carries no number in '
+                    'its ingredient, so nothing there may change');
+            wordsOnly += 1;
+          }
+        }
+      }
+      expect(untouched, greaterThan(150),
+          reason: 'only $untouched lines were checked at one times');
+      expect(wordsOnly, greaterThan(500),
+          reason: 'only $wordsOnly words-only checks ran, so the corpus '
+              'collapsed');
     });
   });
 
