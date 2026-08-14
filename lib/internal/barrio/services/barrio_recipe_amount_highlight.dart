@@ -97,32 +97,53 @@ class BarrioRecipeAmountHighlight {
     if (text.isEmpty || lines.isEmpty) {
       return const <BarrioRecipeAmountMatch>[];
     }
-    final candidates = <BarrioRecipeAmountMatch>[];
-    for (final line in lines) {
-      final amount = line.amount;
-      if (amount == null || amount.isEmpty || line.raw.isEmpty) continue;
-      var from = 0;
-      while (from <= text.length - line.raw.length) {
-        final lineAt = text.indexOf(line.raw, from);
-        if (lineAt < 0) break;
-        final lineEnd = lineAt + line.raw.length;
-        if (_standsAlone(text, lineAt, lineEnd)) {
-          final amountAt = text.indexOf(amount, lineAt);
-          if (amountAt >= 0 && amountAt + amount.length <= lineEnd) {
-            candidates.add(
-              BarrioRecipeAmountMatch(amountAt, amountAt + amount.length),
-            );
-          }
-        }
-        from = lineEnd;
-      }
-    }
+    final candidates = <BarrioRecipeAmountMatch>[
+      for (final line in lines) ..._spansOfLine(text, line),
+    ];
     if (candidates.isEmpty) return const <BarrioRecipeAmountMatch>[];
     // Earliest first; at the same start the longer amount wins, which is
     // how one line that is a prefix of another cannot shorten the span.
     candidates.sort((a, b) => a.start != b.start
         ? a.start.compareTo(b.start)
         : b.end.compareTo(a.end));
+    return _acceptNonOverlapping(candidates, blockedRanges);
+  }
+
+  /// Where [line]'s amount sits inside [text], once per occurrence of the
+  /// whole line. Unsorted; the caller orders and de-overlaps them.
+  static List<BarrioRecipeAmountMatch> _spansOfLine(
+    String text,
+    BarrioRecipeIngredient line,
+  ) {
+    final amount = line.amount;
+    if (amount == null || amount.isEmpty || line.raw.isEmpty) {
+      return const <BarrioRecipeAmountMatch>[];
+    }
+    final spans = <BarrioRecipeAmountMatch>[];
+    var from = 0;
+    while (from <= text.length - line.raw.length) {
+      final lineAt = text.indexOf(line.raw, from);
+      if (lineAt < 0) break;
+      final lineEnd = lineAt + line.raw.length;
+      final amountAt = _standsAlone(text, lineAt, lineEnd)
+          ? text.indexOf(amount, lineAt)
+          : -1;
+      if (amountAt >= 0 && amountAt + amount.length <= lineEnd) {
+        spans.add(
+          BarrioRecipeAmountMatch(amountAt, amountAt + amount.length),
+        );
+      }
+      from = lineEnd;
+    }
+    return spans;
+  }
+
+  /// The sorted [candidates] thinned to a mutually non-overlapping run,
+  /// with anything a higher tier already claimed dropped whole.
+  static List<BarrioRecipeAmountMatch> _acceptNonOverlapping(
+    List<BarrioRecipeAmountMatch> candidates,
+    List<List<int>> blockedRanges,
+  ) {
     final accepted = <BarrioRecipeAmountMatch>[];
     for (final match in candidates) {
       if (accepted.isNotEmpty && match.start < accepted.last.end) continue;
