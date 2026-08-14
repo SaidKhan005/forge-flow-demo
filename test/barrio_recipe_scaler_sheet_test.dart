@@ -29,6 +29,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/internal/barrio/content/company_handbook_content.dart';
 import 'package:forge_and_flow/internal/barrio/content/recipes/barrio_recipe_ingredients.dart';
 import 'package:forge_and_flow/internal/barrio/content/recipes/barrio_recipe_models.dart';
+import 'package:forge_and_flow/internal/barrio/content/recipes/barrio_recipe_scaler.dart';
 import 'package:forge_and_flow/internal/barrio/content/training/training_docs.dart';
 import 'package:forge_and_flow/internal/barrio/screens/training_doc_screen.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/barrio_destination_scaffold.dart';
@@ -497,6 +498,187 @@ void main() {
       expect(find.text('Salt TT'), findsOneWidget);
       expect(find.text('L5S TT'), findsOneWidget);
       expect(find.text('x1'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('untouched, the calculator is the recipe as written', () {
+    testWidgets('the fraction the operator typed is the fraction on screen',
+        (tester) async {
+      // THE DEFECT (REC-7, seen on a real device): the card prints '¼ Red
+      // Onion' and the calculator opened showing '0.25'. The glyph is
+      // hand-read off that card body.
+      final quarter = barrioRecipeIngredientsForUnit(_kDressingUnitId)
+          .where((line) => line.amount == '¼')
+          .toList();
+      expect(quarter, hasLength(1),
+          reason: 'the dressing card no longer carries the fraction line '
+              'this test is written against');
+
+      await pumpSheet(tester, _kDressingUnitId);
+      expect(find.text('¼'), findsOneWidget,
+          reason: 'an untouched calculator says the amount the card wrote');
+      expect(find.text('0.25'), findsNothing,
+          reason: 'the card never wrote 0.25');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('and the box the cook types in opens on it too',
+        (tester) async {
+      // The other place that number shows: picking the fraction line moves
+      // the box onto it, and an empty box has to read back the glyph
+      // rather than the decimal behind it.
+      await pumpSheet(tester, _kDressingUnitId);
+      await tester.tap(find.text('Red Onion'));
+      await tester.pump();
+
+      final field = tester.widget<TextField>(find.byKey(_kAmountField));
+      expect(field.decoration?.hintText, '¼',
+          reason: "an empty box shows the recipe's own number");
+      expect(find.text('x1'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('scaled, it shows the number, and the number is right',
+        (tester) async {
+      // The other half of the one rule. Worked by hand: 24g of the 10g
+      // ginger line is 2.4 times, and a quarter onion at 2.4 times is 0.6.
+      await pumpSheet(tester, _kDressingUnitId);
+      await tester.tap(find.text('Ginger'));
+      await tester.pump();
+      await tester.enterText(find.byKey(_kAmountField), '24');
+      await tester.pump();
+
+      expect(find.text('x2.4'), findsOneWidget);
+      expect(find.text('0.6'), findsOneWidget,
+          reason: 'once the cook scales, the computed number is the honest '
+              'answer and it is what shows');
+      expect(find.text('¼'), findsNothing,
+          reason: 'no glyph is invented on the way back');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('every card of the manual opens on its own amounts',
+        (tester) async {
+      // SWEPT, so a fraction on a card nobody named cannot stay broken.
+      // The expected string is sliced out of the committed line here, never
+      // read back out of the calculator, and the decimal each fraction used
+      // to print is named by hand and asserted absent.
+      const wasPrintedAs = <String, String>{
+        '¼': '0.25',
+        '½ Bunch': '0.5 Bunch',
+        '½ Cup': '0.5 Cup',
+        '1/4 Bunch': '0.25 Bunch',
+        '¼ Bunch': '0.25 Bunch',
+      };
+      //
+      // The sheet's list is lazy, so a row that never got built cannot be
+      // asserted about. A row counts as built when its ingredient NAME is
+      // on screen, which is a fact about that row and not about its amount;
+      // an unbuilt row is skipped and the totals at the end refuse to let
+      // that quietly become most of the manual.
+      final fractionsSeen = <String>{};
+      var cardsChecked = 0;
+      var amountsChecked = 0;
+      var anchorsChecked = 0;
+      var skipped = 0;
+      for (final unitId in kBarrioRecipeIngredients.keys) {
+        final lines = barrioRecipeIngredientsForUnit(unitId);
+        await pumpSheet(tester, unitId, size: _tallSize);
+        final anchors = barrioAnchorLines(lines);
+        final anchor = anchors.isEmpty ? null : anchors.first;
+        for (final line in lines) {
+          final amount = line.amount;
+          if (amount == null) continue;
+          final decimal = wasPrintedAs[amount];
+          if (identical(line, anchor)) {
+            // The picked line's amount lives in the box's hint, with its
+            // unit beside it, so it is read off the field rather than
+            // looked for as a rendered string.
+            final field = find.byKey(_kAmountField);
+            if (field.evaluate().isEmpty) {
+              skipped += 1;
+              continue;
+            }
+            if (decimal != null) fractionsSeen.add(amount);
+            amountsChecked += 1;
+            anchorsChecked += 1;
+            final hint = tester.widget<TextField>(field).decoration?.hintText;
+            expect(hint, isNotNull, reason: '$unitId: "${line.raw}"');
+            expect(amount.startsWith(hint!), isTrue,
+                reason: '$unitId: the box for "${line.raw}" opens on "$hint", '
+                    'which is not how its amount "$amount" starts');
+            continue;
+          }
+          if (find.text(line.name).evaluate().isEmpty) {
+            skipped += 1;
+            continue;
+          }
+          if (decimal != null) fractionsSeen.add(amount);
+          amountsChecked += 1;
+          final unit = line.unit;
+          final want = (unit != null && !amount.contains(unit))
+              ? '$amount $unit'
+              : amount;
+          expect(find.text(want), findsWidgets,
+              reason: '$unitId: "${line.raw}" does not show its own amount '
+                  '"$want" on an untouched sheet');
+          if (decimal != null) {
+            expect(find.text(decimal), findsNothing,
+                reason: '$unitId: "${line.raw}" printed "$decimal", which '
+                    'the card never wrote');
+          }
+        }
+        expect(tester.takeException(), isNull);
+        cardsChecked += 1;
+      }
+      expect(cardsChecked, greaterThan(25),
+          reason: 'the sweep covered $cardsChecked recipe cards');
+      expect(amountsChecked, greaterThan(150),
+          reason: 'only $amountsChecked amounts were checked, so the corpus '
+              'collapsed and this proved nothing');
+      expect(anchorsChecked, greaterThan(25),
+          reason: 'only $anchorsChecked picked lines were checked, so the '
+              'box-hint half of this sweep proved nothing');
+      expect(skipped, lessThan(20),
+          reason: '$skipped rows never got built, which is too much of the '
+              'manual to be skipping');
+      expect(fractionsSeen, wasPrintedAs.keys.toSet(),
+          reason: 'the hand-written fraction table no longer matches the '
+              'fractions the manual writes, so the part of this sweep that '
+              'is about REC-7 proved nothing');
+    });
+
+    testWidgets('handed a different recipe, the sheet starts from that '
+        "recipe's own first line", (tester) async {
+      // Found by the sweep above. The starting line is held by identity
+      // against the current lines, so one left over from another recipe
+      // matches no row and the cook is left with no box to type in at all.
+      // In the app the sheet is always a fresh modal route, which is why
+      // this only showed up once 31 recipes were pumped in a row.
+      final dressing = barrioRecipeIngredientsForUnit(_kDressingUnitId);
+      final beets = barrioRecipeIngredientsForUnit(_kBeetsUnitId);
+      expect(dressing, isNotEmpty);
+      expect(beets, isNotEmpty);
+
+      await pumpLines(tester, dressing);
+      expect(find.byKey(_kAmountField), findsOneWidget);
+      expect(find.text('1 Jar'), findsOneWidget,
+          reason: 'the dressing is on screen');
+
+      await pumpLines(tester, beets);
+      expect(find.byKey(_kAmountField), findsOneWidget,
+          reason: 'the second recipe must still have a box to type in');
+      // Hand-read off the beets card: 3L of water is its first line a cook
+      // can type against, because the 8-10lbs of beets above it is a range.
+      final hint = tester
+          .widget<TextField>(find.byKey(_kAmountField))
+          .decoration
+          ?.hintText;
+      expect(hint, '3');
+      expect(find.text('8-10lbs'), findsOneWidget);
+      expect(find.text('x1'), findsOneWidget,
+          reason: 'a new recipe starts at one times itself');
       expect(tester.takeException(), isNull);
     });
   });

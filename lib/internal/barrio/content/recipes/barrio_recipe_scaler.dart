@@ -70,7 +70,49 @@ List<BarrioRecipeIngredient> barrioAnchorLines(
         if ((line.quantity ?? 0) > 0 && line.quantityHigh == null) line,
     ];
 
+/// [line]'s amount exactly as the card printed it, or null when the line
+/// has no amount at all.
+///
+/// The operator writes kitchen fractions ('¼ Red Onion', '½ Cup', '1/4
+/// Bunch cilantro'), and untouched the calculator has to be the recipe:
+/// what the card wrote, character for character, glyph and all. Rewriting
+/// the number would turn '¼' into '0.25' before the cook has typed
+/// anything.
+///
+/// The one line shape that needs more than the text is a unit the recipe
+/// never printed: '235 Pumpkin Seeds' carries the operator-confirmed 'g'
+/// in [BarrioRecipeIngredient.unit] and nowhere in its own text, so the
+/// unit is appended. That is the same rule [barrioScaledAmount] applies,
+/// stated once and used by both.
+String? barrioWrittenAmount(BarrioRecipeIngredient line) {
+  final amount = line.amount;
+  if (amount == null) return null;
+  return _withUnit(amount, line.unit);
+}
+
+/// The number [line]'s amount opens with, exactly as the card wrote it:
+/// '500', '2', '¼', '1/4', '8'. Null when the line carries no amount.
+///
+/// This is what an empty amount box shows, so an untouched box reads back
+/// the recipe's own number rather than a decimal the card never printed.
+/// The unit is NOT included: the box shows it separately, and doubling it
+/// would read '¼ Bunch' beside 'Bunch'.
+String? barrioWrittenNumber(BarrioRecipeIngredient line) {
+  final amount = line.amount;
+  if (amount == null) return null;
+  return _numberInAnAmount.firstMatch(amount)?.group(0);
+}
+
 /// [line]'s amount at [multiplier], or null when the line has no number.
+///
+/// At exactly one times the recipe nothing is rewritten: the line prints
+/// [barrioWrittenAmount], which is the card's own text. That is the whole
+/// of the fraction rule. A cook who has typed nothing, and a cook who has
+/// typed the amount the recipe already says, are both looking at the
+/// recipe as written, and '¼ Red Onion' has to read '¼' for them both.
+/// Once the multiplier really moves the computed number is the honest
+/// answer and it is shown: a quarter onion at 2.4 times is '0.6', not a
+/// glyph invented to look like the source.
 ///
 /// The scaled text is [BarrioRecipeIngredient.amount] with its numbers
 /// rewritten and every other character left alone, so '500mL' becomes
@@ -86,6 +128,7 @@ String? barrioScaledAmount(BarrioRecipeIngredient line, double multiplier) {
   final amount = line.amount;
   final quantity = line.quantity;
   if (amount == null || quantity == null) return null;
+  if (multiplier == 1.0) return barrioWrittenAmount(line);
   final scaled = <double>[
     quantity * multiplier,
     if (line.quantityHigh != null) line.quantityHigh! * multiplier,
@@ -98,9 +141,17 @@ String? barrioScaledAmount(BarrioRecipeIngredient line, double multiplier) {
     index += 1;
     return barrioFormatRecipeAmount(value);
   });
-  final unit = line.unit;
-  if (unit == null || amount.contains(unit)) return rewritten;
-  return '$rewritten $unit';
+  return _withUnit(rewritten, line.unit, source: amount);
+}
+
+/// [text] with [unit] appended, unless the amount already spells it.
+///
+/// [source] is the amount the decision is made against, which is the
+/// line's own text: a scaled '235' still needs its 'g' even though the
+/// number changed, and '500mL' still must not gain a second 'mL'.
+String _withUnit(String text, String? unit, {String? source}) {
+  if (unit == null || (source ?? text).contains(unit)) return text;
+  return '$text $unit';
 }
 
 /// The derived multiplier as a cook would say it: '2.5', '0.5', '3'.
