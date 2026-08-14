@@ -56,12 +56,36 @@ THE FOUR SHAPES A LINE CAN TAKE.
                 Dice'. These carry no amount and the calculator prints them
                 exactly as written, with nothing said about it.
 
-ONE LINE IS DELIBERATELY LEFT UNPARSED. '(30g) 4-5 Habanero Peppers (deseeded
-and deribbed)' opens with a parenthesised weight and then gives a count of
-peppers, so it carries two different quantities that mean the same thing. No
-rule that reads one of them leaves the other honest, and a rule for a leading
-parenthesis would fire on exactly this one line. It is treated as a line with
-no number and printed as written.
+ONE LINE HAS NO AMOUNT COLUMN OF ITS OWN. '(30g) 4-5 Habanero Peppers
+(deseeded and deribbed)' opens with a parenthesised weight and then gives a
+count of peppers, so it carries two quantities that mean the same thing and
+neither of them can be THE amount. It is parsed as a line with no amount, so
+the calculator gives it no box to type in. Its numbers still move: see THE
+NUMBERS INSIDE A NAME below.
+
+THE NUMBERS INSIDE A NAME (REC-8, 2026-08-14). An amount is not the only place
+a recipe line writes a number. Five lines of the manual write a second one
+into the ingredient itself, and until REC-8 the calculator moved the amount
+and left that one standing, so '180g White/Black Sesame Seed (90g each)' at
+twice the batch read '360g White/Black Sesame Seed (90g each)': two numbers on
+one line contradicting each other, and a cook weighing to the parenthesis puts
+in half what the dish needs.
+
+The rule, in one sentence: EVERY number written in an ingredient line is an
+amount of that ingredient and moves with the batch, except a percentage and a
+digit that is part of a word.
+
+  * a PERCENTAGE is a ratio between two amounts of the same recipe ('70g Salt
+    ( 1.75% weight of beets)'). Scaling both amounts leaves the ratio exactly
+    where it was, so scaling the ratio too would be counting it twice.
+  * a DIGIT GLUED TO THE LETTER BEFORE IT is part of a word, not a number:
+    'L5S TT' is a product code, and 'L10S' at twice the batch would be an
+    ingredient that does not exist.
+
+NAME_NUMBERS_HELD lists, by hand, every number the manual actually holds back
+under those two clauses, and `check_name_numbers` fails the run if the rule
+starts holding a different set. That is what stops a future line quietly
+shipping a number that sits still while the line around it moves.
 
 OPERATOR-CONFIRMED UNITS. Two lines of the manual are weights the source never
 spelled out. See OPERATOR_CONFIRMED_UNITS.
@@ -153,15 +177,40 @@ OPERATOR_CONFIRMED_UNITS = {
     '654 Canola Oil': 'g',
 }
 
+# Every number this file deliberately leaves standing inside an ingredient
+# NAME, taken by hand off the manual on 2026-08-14: the exact line, the exact
+# number, and why it does not move.
+#
+# WHY IT IS A HAND-WRITTEN TABLE. `name_numbers` below decides for itself
+# which numbers hold, so a check that re-asked it would prove nothing. This
+# table is the independent reference: `check_name_numbers` fails the run when
+# the rule holds back a number that is not listed here, or stops holding one
+# that is. A new recipe line carrying a number that would sit still while the
+# line around it moves therefore stops the generator instead of shipping a
+# contradiction to a cook.
+NAME_NUMBERS_HELD = {
+    # Pickled Beets. Salt is 1.75% of the beets at every batch size.
+    ('70g Salt ( 1.75% weight of beets)', '1.75'):
+        'a percentage is a ratio between two amounts of the same recipe, so '
+        'scaling both of them leaves it exactly where it was',
+    # Guacamole and Pico de Gallo both print this one.
+    ('L5S TT', '5'):
+        'the digit sits inside a word, so it is part of the product code and '
+        'not a number',
+}
+
 # One parsed ingredient line. Named rather than positional because the reader
 # below has to be able to see which field is which. `unit_from_operator` is
 # NOT emitted to Dart: nothing renders it any more (the calculator says
 # nothing about where a unit came from), and it is kept here only so
 # `check_operator_confirmations` can prove the confirmation still lands.
 Parsed = collections.namedtuple(
-    'Parsed', 'quantity quantity_high unit amount name unit_from_operator')
+    'Parsed',
+    'quantity quantity_high unit amount name unit_from_operator name_numbers')
 Row = collections.namedtuple(
-    'Row', 'raw quantity quantity_high unit amount name unit_from_operator')
+    'Row',
+    'raw quantity quantity_high unit amount name unit_from_operator '
+    'name_numbers')
 
 
 def to_number(token):
@@ -191,6 +240,33 @@ def is_unit(word):
     return word is not None and word.lower() in UNIT_WORDS
 
 
+def name_numbers(name):
+    """One entry per number inside [name], in the order it is written.
+
+    The entry is the number's own value when it moves with the batch, and
+    None when it stays exactly as written. The two None clauses are stated
+    once in this file's header and listed line by line in NAME_NUMBERS_HELD.
+
+    The order and the count have to match what Dart's own number pattern
+    finds in the same string, because `barrioScaledName` walks the two in
+    step. `test/barrio_recipe_ingredients_test.dart` re-derives both from
+    the live manual and fails if they ever disagree.
+    """
+    out = []
+    for m in re.finditer(_NUM, name):
+        before = name[m.start() - 1] if m.start() else ''
+        ratio = re.match(r'\s*(?:%|percent\b)', name[m.end():], re.I)
+        held = ratio is not None or before.isalnum()
+        out.append(None if held else to_number(m.group(0)))
+    return out
+
+
+def _parsed(quantity, quantity_high, unit, amount, name, from_operator):
+    """A [Parsed] with its name's own numbers read off that name."""
+    return Parsed(quantity, quantity_high, unit, amount, name, from_operator,
+                  name_numbers(name))
+
+
 def parse_line(raw):
     """One ingredient line -> a [Parsed]. The whole rule lives here."""
     text = raw.strip()
@@ -209,8 +285,8 @@ def parse_line(raw):
             unit, cut = low_unit, m.end(3)
         else:
             unit, cut = None, m.end(3)
-        return Parsed(to_number(low), to_number(high), unit,
-                      text[:cut], clean_name(text[cut:]), False)
+        return _parsed(to_number(low), to_number(high), unit,
+                       text[:cut], clean_name(text[cut:]), False)
 
     m = SINGLE_RE.match(text)
     if m:
@@ -218,25 +294,25 @@ def parse_line(raw):
         quantity = to_number(number)
         if quantity is not None:
             if is_unit(unit):
-                return Parsed(quantity, None, unit, text[:m.end(2)],
-                              clean_name(rest), False)
+                return _parsed(quantity, None, unit, text[:m.end(2)],
+                               clean_name(rest), False)
             # The word attached to the number is not a unit, so it belongs to
             # the ingredient's own name and the amount is the bare number:
             # '12 Eggs', '3 Corn Tortillas', '1 Whole Can Chipotle Pepper'.
             name = clean_name('{} {}'.format(unit, rest) if unit else rest)
             confirmed = OPERATOR_CONFIRMED_UNITS.get(text)
-            return Parsed(quantity, None, confirmed, text[:m.end(1)], name,
-                          confirmed is not None)
+            return _parsed(quantity, None, confirmed, text[:m.end(1)], name,
+                           confirmed is not None)
 
     m = TRAILING_RE.search(text)
     if m and is_unit(m.group(2)):
         quantity = to_number(m.group(1))
         name = clean_name(text[:m.start()])
         if quantity is not None and name:
-            return Parsed(quantity, None, m.group(2), text[m.start():], name,
-                          False)
+            return _parsed(quantity, None, m.group(2), text[m.start():], name,
+                           False)
 
-    return Parsed(None, None, None, None, text, False)
+    return _parsed(None, None, None, None, text, False)
 
 
 # --- Reading the generated content file -----------------------------------
@@ -330,6 +406,48 @@ def check_row_shapes(rows_by_unit):
                          + '\n  '.join(problems))
 
 
+def check_name_numbers(rows_by_unit):
+    """Fail the run if a number inside an ingredient NAME stops moving.
+
+    A number the calculator leaves standing while the line around it moves
+    is the REC-8 defect: two numbers on one line saying different batches.
+    Exactly two clauses may hold a number back, and every line they fire on
+    is written out by hand in NAME_NUMBERS_HELD, so this compares the rule's
+    behaviour against a reference the rule did not produce.
+
+    Both directions fail loudly:
+
+      * a held number that is not in the table means a new line ships a
+        number that will contradict its own amount;
+      * a table entry the rule no longer holds means the line changed and
+        the hand-written reason is now about nothing.
+    """
+    held = set()
+    for _unit_id, rows in rows_by_unit:
+        for row in rows:
+            tokens = re.findall(_NUM, row.name)
+            for token, value in zip(tokens, row.name_numbers):
+                if value is None:
+                    held.add((row.raw, token))
+
+    problems = []
+    for key in sorted(held - set(NAME_NUMBERS_HELD)):
+        problems.append(f'{key[1]!r} in {key[0]!r} is held back with no '
+                        f'reason on record, so it would sit still while the '
+                        f'rest of that line moves')
+    for key in sorted(set(NAME_NUMBERS_HELD) - held):
+        problems.append(f'{key[1]!r} in {key[0]!r} is listed as held back '
+                        f'but the rule now moves it (or the line is gone), '
+                        f'so the recorded reason is about nothing')
+    if problems:
+        raise SystemExit(
+            'the numbers written inside ingredient names no longer match '
+            'the hand-written record:\n  ' + '\n  '.join(problems)
+            + '\nDecide whether the new number is an amount (it moves) or a '
+              'ratio (it holds), then update NAME_NUMBERS_HELD in '
+              'tool/barrio_recipe_ingredients_generator.py.')
+
+
 def check_operator_confirmations(rows_by_unit):
     """Fail the run if an operator-confirmed line stopped being what it was.
 
@@ -413,6 +531,11 @@ def emit(rows_by_unit):
     a('// A line with a `quantity` can be multiplied; a line without one has')
     a('// nothing to multiply and prints as written. `quantityHigh` is the')
     a('// second number of a range, and it scales alongside the first.')
+    a('//')
+    a('// `nameNumbers` is one entry per number written inside the ingredient')
+    a('// itself, in the order it is written: the value it scales from, or')
+    a('// null for a number that stays exactly as written (a percentage, or a')
+    a('// digit inside a word). Absent when the name holds no number at all.')
     a('')
     a("import 'barrio_recipe_models.dart';")
     a('')
@@ -435,6 +558,11 @@ def emit(rows_by_unit):
                 a(f'      quantityHigh: {dart_number(row.quantity_high)},')
             if row.unit is not None:
                 a(f"      unit: '{esc(row.unit)}',")
+            if row.name_numbers:
+                inner = ', '.join(
+                    'null' if v is None else dart_number(v)
+                    for v in row.name_numbers)
+                a(f'      nameNumbers: <double?>[{inner}],')
             a('    ),')
         a('  ],')
     a('};')
@@ -507,6 +635,49 @@ def check_rule_probes():
             + '\n  '.join(problems))
 
 
+# (ingredient name, the value each of its numbers scales from) that
+# `name_numbers` must produce. None is a number that stays as written.
+#
+# WHY THESE ARE HERE. NAME_NUMBERS_HELD pins the rule against the lines the
+# manual prints today; these pin its BOUNDARY, which the manual has no line
+# sitting on. Both a percentage spelled with a space or as a word and a digit
+# glued into a product code have to keep holding, and an ordinary
+# parenthesised weight has to keep moving, whatever else is edited here.
+NAME_NUMBER_PROBES = [
+    # Nothing to move.
+    ('Olive Oil', []),
+    ('Pork Belly ( Half a Slab)', []),
+    # The REC-8 defect itself: the split instruction moves with the amount.
+    ('White/Black Sesame Seed (90g each)', [90.0]),
+    ('Chipotle (One 7oz Can)', [7.0]),
+    ('Rice Wine Vinegar ( 1 Bottle)', [1.0]),
+    # A ratio holds, however it is written.
+    ('Salt ( 1.75% weight of beets)', [None]),
+    ('Salt ( 1.75 % weight of beets)', [None]),
+    ('Salt ( 1.75 percent weight of beets)', [None]),
+    # A digit inside a word is part of the word.
+    ('L5S TT', [None]),
+    ('Sanitizer Q7 Solution', [None]),
+    # Every number of a line with no amount column of its own still moves,
+    # together, so the weight and the count never disagree.
+    ('(30g) 4-5 Habanero Peppers (deseeded and deribbed)', [30.0, 4.0, 5.0]),
+]
+
+
+def check_name_number_probes():
+    """Fail the run if the in-name number rule stops meaning what it says."""
+    problems = []
+    for name, want in NAME_NUMBER_PROBES:
+        got = name_numbers(name)
+        if got != want:
+            problems.append('{!r}: expected {!r}, got {!r}'
+                            .format(name, want, got))
+    if problems:
+        raise SystemExit(
+            'the in-name number rule no longer holds:\n  '
+            + '\n  '.join(problems))
+
+
 def rendered_bytes(out_path, text):
     """Match the line endings the checkout already uses (see the content
     generator's identical note: a CRLF checkout must not read as drift)."""
@@ -530,8 +701,10 @@ def main():
             f'barrio_recipe_ingredients_generator.py [--check] [--report]')
 
     check_rule_probes()
+    check_name_number_probes()
     rows_by_unit = collect(CONTENT)
     check_row_shapes(rows_by_unit)
+    check_name_numbers(rows_by_unit)
     check_operator_confirmations(rows_by_unit)
     total = sum(len(rows) for _uid, rows in rows_by_unit)
     scales = sum(1 for _uid, rows in rows_by_unit
@@ -557,6 +730,16 @@ def main():
             for row in rows:
                 if row.quantity is None:
                     print(f'   {unit_id}: {row.raw!r}')
+        print()
+        print('numbers written inside an ingredient name:')
+        for unit_id, rows in rows_by_unit:
+            for row in rows:
+                if not row.name_numbers:
+                    continue
+                for token, value in zip(re.findall(_NUM, row.name),
+                                        row.name_numbers):
+                    verdict = 'HOLDS' if value is None else 'moves'
+                    print(f'   {verdict:<6} {token:<6} in {row.raw!r}')
         print()
 
     print(f'recipes with ingredients: {len(rows_by_unit)}')

@@ -8,10 +8,26 @@
 // recipe title, no section labels, and no sentence explaining any line.
 // The first release carried all of those; they were deleted, not hidden.
 //
-// HOW IT WORKS. Every amount is a box. Tapping one picks that ingredient
-// and puts the cursor in it; typing an amount moves every other amount.
-// An empty box shows what the recipe wrote, greyed, so the list opens as
-// the recipe was written.
+// HOW IT WORKS. Every amount the calculator can start from is a box.
+// Tapping one picks that ingredient and puts the cursor in it; typing an
+// amount moves every other amount. An empty box shows what the recipe
+// wrote, greyed, so the list opens as the recipe was written.
+//
+// ONLY A LINE THE CALCULATOR CAN ACTUALLY START FROM IS TAPPABLE (REC-8,
+// 2026-08-14). Every line used to be tappable, including the ones no
+// multiplier can be read off, and the sheet said nothing when it could
+// not use what was typed. A cook with 20lbs of beets tapped '8-10lbs of
+// beets' (the first line of that card), watched the box open on '8',
+// typed 20, and nothing moved: the brine stayed built for 8 to 10lbs.
+// Three lines of the manual are ranges, where an amount typed against two
+// numbers does not say which one it meant, and nine carry no number at
+// all, where the box would open empty with nothing to read it against.
+// Those twelve lines still print their amount; they are simply not tap
+// targets, and a screen reader is not told they are buttons.
+//
+// NOTHING IS SAID ABOUT WHY. The line just is not tappable. REC-6 deleted
+// every explanatory sentence from this sheet at the operator's direction,
+// and `test/barrio_recipe_scaler_sheet_test.dart` fails if one comes back.
 //
 // A LINE WITH NO NUMBER JUST SITS THERE. 'Salt TT' has nothing to
 // multiply, so it prints exactly as the card printed it, with no box, no
@@ -85,6 +101,16 @@ class _BarrioRecipeScalerSheetState extends State<BarrioRecipeScalerSheet> {
   /// number anywhere in it, which the manual does not currently contain.
   BarrioRecipeIngredient? _anchor;
 
+  /// The lines a cook may start from, which is exactly the set the
+  /// arithmetic can derive a multiplier from ([barrioAnchorLines]).
+  ///
+  /// The same predicate that chooses the opening line decides what is
+  /// tappable, so the sheet can never offer a line it would then ignore.
+  /// Compared by IDENTITY: two ingredient lines with the same text and
+  /// numbers are one canonical const object, and identity is what the
+  /// picked-line check already uses.
+  Set<BarrioRecipeIngredient> _pickable = <BarrioRecipeIngredient>{};
+
   @override
   void initState() {
     super.initState();
@@ -112,6 +138,7 @@ class _BarrioRecipeScalerSheetState extends State<BarrioRecipeScalerSheet> {
 
   void _anchorOnFirstLine() {
     final anchors = barrioAnchorLines(widget.lines);
+    _pickable = Set<BarrioRecipeIngredient>.identity()..addAll(anchors);
     if (anchors.isNotEmpty) _anchor = anchors.first;
   }
 
@@ -185,6 +212,7 @@ class _BarrioRecipeScalerSheetState extends State<BarrioRecipeScalerSheet> {
                 itemBuilder: (BuildContext context, int index) {
                   final line = widget.lines[index];
                   final isAnchor = identical(line, _anchor);
+                  final canPick = !isAnchor && _pickable.contains(line);
                   return _IngredientRow(
                     index: index,
                     line: line,
@@ -194,7 +222,7 @@ class _BarrioRecipeScalerSheetState extends State<BarrioRecipeScalerSheet> {
                     controller: isAnchor ? _amount : null,
                     focusNode: isAnchor ? _focus : null,
                     onChanged: isAnchor ? () => setState(() {}) : null,
-                    onPick: isAnchor ? null : () => _pick(line),
+                    onPick: canPick ? () => _pick(line) : null,
                   );
                 },
               ),
@@ -255,13 +283,20 @@ class _TopBar extends StatelessWidget {
 
 /// One ingredient line: its amount, then what it is an amount of.
 ///
-/// Three shapes, and the row picks its own:
+/// Four shapes, and the row picks its own:
 ///
 ///   * the picked line puts the cook's box where its amount goes;
-///   * any other line with a number shows that amount in a box the cook
-///     can tap to start typing there instead;
+///   * a line the calculator could start from instead shows its amount in
+///     a box the cook can tap to move the typing there;
+///   * a line the calculator cannot start from (a range, which is two
+///     numbers) still shows its amount, moved with the batch like every
+///     other, but is not a tap target and carries no button semantics;
 ///   * a line with no number shows nothing in the amount column and
 ///     prints its own text, exactly as the card printed it.
+///
+/// The ingredient text itself is [barrioScaledName], not [line.name]: a
+/// number the operator wrote inside the ingredient moves with the batch
+/// too, so the two halves of the row can never say different batches.
 class _IngredientRow extends StatelessWidget {
   final int index;
   final BarrioRecipeIngredient line;
@@ -292,7 +327,7 @@ class _IngredientRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = Text(
-      line.name,
+      barrioScaledName(line, multiplier),
       style: GoogleFonts.ibmPlexSans(
         fontSize: 14,
         height: 1.4,

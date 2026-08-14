@@ -71,14 +71,18 @@ const Map<String, String> _kOperatorConfirmedUnits = <String, String>{
   '654 Canola Oil': 'g', // Pork Belly Glaze
 };
 
-/// Every line of the manual the calculator must print exactly as written,
-/// because it carries no number to multiply. Hand-listed 'cardId|line'.
+/// Every line of the manual with no amount column of its own, because no
+/// one part of it is THE amount. Hand-listed 'cardId|line'.
 ///
 /// EIGHT OF THE NINE ARE PLAIN: they open with a word, not a number, and
-/// they end with a word, not a measurement. The ninth is the habanero
-/// line, which carries a parenthesised weight AND a count of peppers, so
-/// scaling either one leaves the other lying; it is deliberately left
-/// unparsed rather than given a rule that fires on one line of the manual.
+/// they end with a word, not a measurement, so there is nothing to
+/// multiply and the calculator prints them exactly as written. The ninth
+/// is the habanero line, which carries a parenthesised weight AND a count
+/// of peppers: two ways of saying the same quantity, neither of which can
+/// be singled out as the amount. Its numbers are not stranded, though.
+/// They move together with the batch through
+/// [BarrioRecipeIngredient.nameNumbers], which is what keeps the weight
+/// and the count from drifting apart (see _kNumbersInsideNames).
 const Set<String> _kLinesWithNoNumber = <String>{
   'training_recipes_c0_u0|Salt TT',
   'training_recipes_c5_u0|Salt TT',
@@ -90,6 +94,50 @@ const Set<String> _kLinesWithNoNumber = <String>{
   'training_recipes_c30_u0|Salt TT',
   'training_recipes_c30_u0|L5S TT',
 };
+
+/// Every number written INSIDE an ingredient's own name, and whether it
+/// moves with the batch. Hand-listed 'cardId|line|number' off the manual on
+/// 2026-08-14, with the value it must scale from, or null for the two the
+/// calculator holds still.
+///
+/// REC-8. An amount is not the only place a recipe line writes a number:
+/// '180g White/Black Sesame Seed (90g each)' writes the operator's split
+/// between the two seed types into the ingredient itself. Moving the amount
+/// and leaving that behind puts two numbers on one line that mean different
+/// batches. So every number on the line moves, except a ratio (a percentage
+/// stays a percentage at every batch size) and a digit inside a word ('L5S'
+/// is a product code, not five of something).
+///
+/// Written out entry by entry, both directions asserted, because a number
+/// that quietly stopped moving is a contradiction shipped to a cook and a
+/// number that quietly started moving is an ingredient name rewritten.
+const Map<String, double?> _kNumbersInsideNames = <String, double?>{
+  // Pickled Beets: a ratio, invariant under scaling.
+  'training_recipes_c3_u0|70g Salt ( 1.75% weight of beets)|1.75': null,
+  // Beef Skewer Topping: the split between white and black sesame.
+  'training_recipes_c8_u0|180g White/Black Sesame Seed (90g each)|90': 90,
+  // Chipotle Mayo: the size of the can 200g comes out of.
+  'training_recipes_c14_u0|200g Chipotle (One 7oz Can)|7': 7,
+  // Guacamole and Pico de Gallo: a product code, not a count.
+  'training_recipes_c19_u0|L5S TT|5': null,
+  'training_recipes_c30_u0|L5S TT|5': null,
+  // Pickled Ginger: 591mL is one bottle, so two batches is two bottles.
+  'training_recipes_c23_u0|591mL Rice Wine Vinegar ( 1 Bottle)|1': 1,
+  // Pumpkin Seed Salsa: the one line with no amount column of its own. Its
+  // weight and its pepper count are the same quantity said twice, so they
+  // move together or they start disagreeing.
+  'training_recipes_c27_u0|(30g) 4-5 Habanero Peppers (deseeded and deribbed)'
+      '|30': 30,
+  'training_recipes_c27_u0|(30g) 4-5 Habanero Peppers (deseeded and deribbed)'
+      '|4': 4,
+  'training_recipes_c27_u0|(30g) 4-5 Habanero Peppers (deseeded and deribbed)'
+      '|5': 5,
+};
+
+/// Any number, wherever it sits in a line, built from this file's own
+/// number vocabulary so the count and the order below are read here rather
+/// than taken from what the data claims.
+final RegExp _kAnyNumber = RegExp(_kNumber);
 
 /// Fraction glyphs the operator's kitchen types, decoded here so the
 /// quantity check never borrows the generator's table.
@@ -437,6 +485,85 @@ void main() {
       expect(ordinary, greaterThan(100),
           reason: 'the ordinary branch was barely reached, so the corpus '
               'collapsed');
+    });
+
+    test('the numbers written inside an ingredient name are the numbers the '
+        'line prints, and only those', () {
+      // REC-8. `nameNumbers` is what tells the calculator to move '(90g
+      // each)' along with the 180g in front of it. Read here off the name's
+      // own characters with this file's regex and its own decoder, so a
+      // generator that miscounted, misordered, or invented an entry fails
+      // against a reading it did not produce.
+      final held = <String>{};
+      final moving = <String>{};
+      var namesWithNumbers = 0;
+      var namesWithout = 0;
+      for (final row in _everyParsedLine()) {
+        final line = row.line;
+        final tokens = _kAnyNumber
+            .allMatches(line.name)
+            .map((m) => m.group(0)!)
+            .toList(growable: false);
+        expect(line.nameNumbers, hasLength(tokens.length),
+            reason: '${row.key}: the name "${line.name}" prints '
+                '${tokens.length} number(s) but the data carries '
+                '${line.nameNumbers.length}, so the calculator would rewrite '
+                'the wrong ones');
+        if (tokens.isEmpty) {
+          namesWithout += 1;
+          continue;
+        }
+        namesWithNumbers += 1;
+        for (var i = 0; i < tokens.length; i++) {
+          final key = '${row.key}|${tokens[i]}';
+          final entry = line.nameNumbers[i];
+          if (entry == null) {
+            held.add(key);
+            continue;
+          }
+          moving.add(key);
+          expect(entry, closeTo(_valueOf(tokens[i])!, 1e-9),
+              reason: '$key scales from $entry, but the line prints '
+                  '${tokens[i]}');
+        }
+      }
+
+      // Both directions, against the hand-written table.
+      final wantHeld = <String>{
+        for (final e in _kNumbersInsideNames.entries)
+          if (e.value == null) e.key,
+      };
+      final wantMoving = <String>{
+        for (final e in _kNumbersInsideNames.entries)
+          if (e.value != null) e.key,
+      };
+      expect(held, wantHeld,
+          reason: 'the manual now holds a different set of in-name numbers '
+              'still than the set this file was written against');
+      expect(moving, wantMoving,
+          reason: 'the manual now moves a different set of in-name numbers '
+              'than the set this file was written against');
+      for (final entry in _kNumbersInsideNames.entries) {
+        final want = entry.value;
+        if (want == null) continue;
+        final raw = entry.key.split('|')[1];
+        final line = _everyParsedLine()
+            .firstWhere((row) => row.key == '${entry.key.split('|')[0]}|$raw')
+            .line;
+        expect(line.nameNumbers, contains(want),
+            reason: '${entry.key} must scale from $want');
+      }
+
+      // NON-VACUITY: both branches of the sweep were reached by real lines.
+      expect(namesWithNumbers, greaterThan(0),
+          reason: 'no ingredient name carries a number, so this proved '
+              'nothing');
+      expect(namesWithout, greaterThan(100),
+          reason: 'only $namesWithout names are words only, so the corpus '
+              'collapsed');
+      expect(held, isNotEmpty, reason: 'the held branch was never reached');
+      expect(moving, isNotEmpty, reason: 'the moving branch was never '
+          'reached');
     });
 
     test('only the two confirmed lines carry a unit their text lacks', () {

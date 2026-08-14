@@ -57,8 +57,49 @@ const String _kMethodUnitId = 'training_recipes_c0_u1';
 const String _kBeetsUnitId = 'training_recipes_c3_u0';
 
 /// Beef Skewer Topping: carries '235 Pumpkin Seeds', which the card prints
-/// with no unit and the operator confirmed as grams on 2026-08-13.
+/// with no unit and the operator confirmed as grams on 2026-08-13, and
+/// '180g White/Black Sesame Seed (90g each)', the line whose ingredient
+/// carries a number of its own.
 const String _kConfirmedUnitId = 'training_recipes_c8_u0';
+
+/// Every line of the manual written as a range, hand-read off the cards on
+/// 2026-08-14. Two of the three open their card, which is why a cook meets
+/// one first.
+const Map<String, String> _kRangeLines = <String, String>{
+  'training_recipes_c3_u0': '8-10lbs of beets',
+  'training_recipes_c27_u0': '9-10 Roma Tomatoes',
+  'training_recipes_c31_u0': '2kg-2.5kg Shrimp Shells',
+};
+
+/// The number an amount opens with, read here with this file's own eyes so
+/// the box-hint sweep never asks the calculator what it should have shown.
+final RegExp _kOpeningNumber =
+    RegExp(r'^(?:[¼½¾⅓⅔⅛⅜⅝⅞]|\d+(?:\.\d+)?(?:/\d+(?:\.\d+)?)?)');
+
+/// The hint the one amount box is currently showing, or null when there is
+/// no box on screen.
+String? _boxHint(WidgetTester tester) {
+  final field = find.byKey(_kAmountField);
+  if (field.evaluate().isEmpty) return null;
+  return tester.widget<TextField>(field).decoration?.hintText;
+}
+
+/// Asserts whether the row the ingredient [name] sits in is offered to a
+/// screen reader as something to press. Both halves are checked, because a
+/// row that announced itself a button with no tap action would be just as
+/// wrong as one that took a tap without saying so.
+void _expectOfferedAsButton(
+  WidgetTester tester,
+  String name, {
+  required bool offered,
+  required String reason,
+}) {
+  expect(
+    tester.getSemantics(find.text(name)),
+    containsSemantics(isButton: offered, hasTapAction: offered),
+    reason: reason,
+  );
+}
 
 final ValueKey<String> _kScaleButton =
     const ValueKey<String>('barrio_recipe_scale_button');
@@ -498,6 +539,250 @@ void main() {
       expect(find.text('Salt TT'), findsOneWidget);
       expect(find.text('L5S TT'), findsOneWidget);
       expect(find.text('x1'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('only a line the calculator can start from can be picked', () {
+    // REC-8, THE DEFECT, seen on a real device. Every line was tappable,
+    // including the ones no multiplier can be read off, and the sheet said
+    // nothing when it could not use what was typed. A cook with 20lbs of
+    // beets tapped '8-10lbs of beets' (the first line of that card), the
+    // box opened on '8', they typed 20, and every other amount stayed
+    // exactly where it was: a brine built for 8 to 10lbs with 20lbs of
+    // beets in it. The same shape of silence swallowed a tap on 'Salt TT',
+    // which left the cook with an empty box, no unit and no calculator.
+    //
+    // The gate below is `barrioAnchorLines`, which is the same predicate
+    // the sheet already used to choose its opening line. Each test states
+    // the case it is about independently of the widget first, so a gate
+    // that closed on everything and a gate that closed on nothing both
+    // fail.
+
+    testWidgets('the range a cook reaches for first is not a tap target',
+        (tester) async {
+      final lines = barrioRecipeIngredientsForUnit(_kBeetsUnitId);
+      final ranges = lines.where((line) => line.quantityHigh != null).toList();
+      expect(ranges, hasLength(1),
+          reason: 'this card is the range case; with no range the tap below '
+              'would prove nothing');
+      expect(identical(lines.first, ranges.single), isTrue,
+          reason: 'the range must still be the FIRST line of this card, '
+              'which is what makes it the one a cook reaches for');
+
+      await pumpSheet(tester, _kBeetsUnitId);
+      // Hand-read off the card: the first line a cook CAN start from is
+      // the 3L of water, because the beets above it are a range.
+      expect(_boxHint(tester), '3');
+
+      await tester.tap(find.text('beets'));
+      await tester.pump();
+
+      expect(_boxHint(tester), '3',
+          reason: 'the one box must not move onto a line the calculator '
+              'cannot read a multiplier off');
+      expect(find.text('8-10lbs'), findsOneWidget,
+          reason: 'the range the card printed is still the range on screen');
+      expect(find.text('8'), findsNothing,
+          reason: 'the written range must never be replaced by just its '
+              'first number');
+      expect(find.text('x1'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a line with no number is not a tap target, and tapping it '
+        'does not cost the cook the calculator', (tester) async {
+      final lines = barrioRecipeIngredientsForUnit(_kDressingUnitId);
+      final blanks = lines.where((line) => !line.scales).toList();
+      expect(blanks, hasLength(1),
+          reason: 'this card is the no-number case');
+      expect(blanks.single.raw, 'Salt TT');
+
+      await pumpSheet(tester, _kDressingUnitId);
+      expect(_boxHint(tester), '500');
+
+      await tester.tap(find.text('Salt TT'));
+      await tester.pump();
+
+      expect(_boxHint(tester), '500',
+          reason: 'the box must not move onto a line with nothing to read '
+              'a typed amount against');
+      expect(find.text('Salt TT'), findsOneWidget,
+          reason: 'the line still prints exactly as the card wrote it');
+
+      // AND THE CALCULATOR STILL WORKS. This is the half of the defect a
+      // cook actually felt: the box moved, typing did nothing, and there
+      // was no way back. Worked by hand: 1250mL of a 500mL line is 2.5
+      // times, so the jar reads 2.5 and the celery reads 5 stalks.
+      await tester.enterText(find.byKey(_kAmountField), '1250');
+      await tester.pump();
+      expect(find.text('x2.5'), findsOneWidget);
+      expect(find.text('2.5 Jar'), findsOneWidget);
+      expect(find.text('5 Stalks'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('and neither is announced to a screen reader as a button',
+        (tester) async {
+      // Both directions on both cards, so a sheet that announced nothing as
+      // a button would fail just as loudly as one that announced everything.
+      final handle = tester.ensureSemantics();
+
+      await pumpSheet(tester, _kBeetsUnitId);
+      _expectOfferedAsButton(tester, 'beets',
+          offered: false,
+          reason: 'a range is not something a cook can start from, so it '
+              'must not be offered as one');
+      _expectOfferedAsButton(tester, 'Red Wine Vinegar',
+          offered: true,
+          reason: 'this line IS one a cook can start from');
+
+      await pumpSheet(tester, _kDressingUnitId);
+      _expectOfferedAsButton(tester, 'Salt TT',
+          offered: false,
+          reason: 'a line with no number is not something to press');
+      _expectOfferedAsButton(tester, 'Celery',
+          offered: true,
+          reason: 'this line IS one a cook can start from');
+
+      expect(tester.takeException(), isNull);
+      handle.dispose();
+    });
+
+    testWidgets('every line the calculator can start from is still tappable, '
+        'and picking it re-reads the recipe from that one', (tester) async {
+      // SWEPT over the whole manual, because a gate that shut too far is
+      // the obvious way to break this and it would only show on a card
+      // nobody named. The expected box hint is sliced out of the committed
+      // line here; the expected multiplier is a literal, reached by typing
+      // four times that line's own committed number, so it is four times
+      // the recipe whichever line was picked.
+      var cardsChecked = 0;
+      var picksChecked = 0;
+      var skipped = 0;
+      for (final unitId in kBarrioRecipeIngredients.keys) {
+        final lines = barrioRecipeIngredientsForUnit(unitId);
+        final anchors = barrioAnchorLines(lines);
+        expect(anchors, isNotEmpty,
+            reason: '$unitId offers no line at all to start from');
+        await pumpSheet(tester, unitId, size: _tallSize);
+        for (final line in anchors) {
+          final name = find.text(line.name);
+          if (name.evaluate().length != 1) {
+            skipped += 1;
+            continue;
+          }
+          await tester.tap(name);
+          await tester.pump();
+
+          expect(find.byKey(_kAmountField), findsOneWidget,
+              reason: '$unitId: "${line.raw}" is a line the calculator can '
+                  'start from, so tapping it must give the cook a box');
+          expect(_boxHint(tester),
+              _kOpeningNumber.firstMatch(line.amount!)?.group(0),
+              reason: '$unitId: the box for "${line.raw}" opened on the '
+                  'wrong number');
+
+          await tester.enterText(
+              find.byKey(_kAmountField), (line.quantity! * 4).toString());
+          await tester.pump();
+          expect(find.text('x4'), findsOneWidget,
+              reason: '$unitId: four times the ${line.quantity} on '
+                  '"${line.raw}" is four times the recipe');
+          picksChecked += 1;
+
+          // Back to the recipe as written, so the next line is found by
+          // the name the card wrote rather than a scaled one.
+          await tester.enterText(find.byKey(_kAmountField), '');
+          await tester.pump();
+        }
+        expect(tester.takeException(), isNull);
+        cardsChecked += 1;
+      }
+      expect(cardsChecked, greaterThan(25),
+          reason: 'the sweep covered $cardsChecked recipe cards');
+      expect(picksChecked, greaterThan(150),
+          reason: 'only $picksChecked lines were picked, so the gate shut on '
+              'most of the manual or the sweep collapsed');
+      expect(skipped, lessThan(20),
+          reason: '$skipped rows could not be found by name, which is too '
+              'much of the manual to be skipping');
+    });
+
+    testWidgets('no range anywhere in the manual is replaced by its first '
+        'number, before or after a tap', (tester) async {
+      // The written range is what a cook reads off the card, and the box
+      // can only ever show one number. Hand-listed cards, hand-worked
+      // doubles: 8-10 -> 16-20, 9-10 -> 18-20, 2-2.5 -> 4-5.
+      final found = <String, String>{
+        for (final entry in kBarrioRecipeIngredients.entries)
+          for (final line in entry.value)
+            if (line.quantityHigh != null) entry.key: line.raw,
+      };
+      expect(found, _kRangeLines,
+          reason: 'the manual now writes a different set of ranges than the '
+              'set this test was written against');
+
+      const doubled = <String, List<String>>{
+        'training_recipes_c3_u0': <String>['8-10lbs', '16-20lbs', '3L', '6'],
+        'training_recipes_c27_u0': <String>['9-10', '18-20', '750g', '1500'],
+        'training_recipes_c31_u0': <String>['2kg-2.5kg', '4kg-5kg', '7L', '14'],
+      };
+      for (final entry in doubled.entries) {
+        final lines = barrioRecipeIngredientsForUnit(entry.key);
+        final range = lines.singleWhere((l) => l.quantityHigh != null);
+        await pumpSheet(tester, entry.key, size: _tallSize);
+
+        expect(find.text(entry.value[0]), findsOneWidget,
+            reason: '${entry.key}: the untouched sheet shows the whole range');
+        await tester.tap(find.text(range.name));
+        await tester.pump();
+        expect(find.text(entry.value[0]), findsOneWidget,
+            reason: '${entry.key}: tapping a range must not swap it for its '
+                'first number');
+        expect(_boxHint(tester), isNot(entry.value[0].split('-').first),
+            reason: '${entry.key}: the box must not have opened on the low '
+                'end of a range');
+
+        // And the range still moves on BOTH numbers when the cook starts
+        // from a line the calculator can read.
+        await tester.enterText(find.byKey(_kAmountField), entry.value[3]);
+        await tester.pump();
+        expect(find.text('x2'), findsOneWidget, reason: entry.key);
+        expect(find.text(entry.value[1]), findsOneWidget,
+            reason: '${entry.key}: both numbers of the range must move');
+        expect(tester.takeException(), isNull);
+      }
+    });
+
+    testWidgets('a number the operator wrote inside the ingredient moves '
+        'with the amount in front of it', (tester) async {
+      // REC-8's other half, at the surface. '(90g each)' is the split
+      // between the white and the black sesame; it used to stay at the
+      // written batch while the 180g in front of it doubled, so a cook
+      // weighing to the parenthesis put in half of what the dish needed.
+      final sesame = barrioRecipeIngredientsForUnit(_kConfirmedUnitId)
+          .where((line) => line.nameNumbers.isNotEmpty)
+          .toList();
+      expect(sesame, hasLength(1),
+          reason: 'this card is the number-inside-the-ingredient case');
+      expect(sesame.single.raw, '180g White/Black Sesame Seed (90g each)');
+
+      await pumpSheet(tester, _kConfirmedUnitId, size: _tallSize);
+      expect(find.text('White/Black Sesame Seed (90g each)'), findsOneWidget,
+          reason: 'untouched, the sheet is the recipe as written');
+
+      // 940g of corn nuts is 2 times the recipe, worked by hand, so the
+      // 180g becomes 360g and the 90g each becomes 180g each: 180 and 180
+      // is the 360 the line now asks for.
+      await tester.enterText(find.byKey(_kAmountField), '940');
+      await tester.pump();
+      expect(find.text('x2'), findsOneWidget);
+      expect(find.text('360g'), findsWidgets);
+      expect(find.text('White/Black Sesame Seed (180g each)'), findsOneWidget);
+      expect(find.text('White/Black Sesame Seed (90g each)'), findsNothing,
+          reason: 'the split must not stay at the written batch while the '
+              'weight in front of it doubles');
       expect(tester.takeException(), isNull);
     });
   });

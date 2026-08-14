@@ -17,6 +17,9 @@
 // `barrio_recipe_models.dart` for why the old held/scalable split and its
 // four explanations were deleted rather than hidden.
 //
+// AND IT IS EVERY NUMBER ON THE LINE, not just the one in the amount
+// column: see [barrioScaledName].
+//
 // PLAIN ARITHMETIC, NO CATEGORIES. Counts are multiplied like anything
 // else, so '2 Stalks Celery' at 2.4 times reads '4.8 Stalks'. Rounding
 // that back to a whole stalk is the cook's call and the calculator does
@@ -142,6 +145,42 @@ String? barrioScaledAmount(BarrioRecipeIngredient line, double multiplier) {
     return barrioFormatRecipeAmount(value);
   });
   return _withUnit(rewritten, line.unit, source: amount);
+}
+
+/// [line]'s ingredient text at [multiplier]: the same words the card
+/// wrote, with any number inside them moved by the same factor the amount
+/// moved.
+///
+/// WHY AN INGREDIENT'S OWN TEXT HAS TO MOVE (REC-8, 2026-08-14). '180g
+/// White/Black Sesame Seed (90g each)' at twice the batch used to print
+/// '360g White/Black Sesame Seed (90g each)': two numbers on one line
+/// saying different batches, with nothing to tell a cook which one to
+/// weigh to. The parenthesis is the operator's split between the two seed
+/// types, so a cook following it puts in half of what the dish needs. Now
+/// it reads '(180g each)' and the line agrees with itself.
+///
+/// WHICH NUMBERS MOVE is decided once, by the generator, and recorded in
+/// [BarrioRecipeIngredient.nameNumbers]: a null entry stays exactly as
+/// written (a percentage is a ratio; a digit inside a word is part of the
+/// word). Nothing is re-decided here, so this function cannot disagree
+/// with the data about what a number means.
+///
+/// At exactly one times the recipe the name is returned untouched, which
+/// is the same rule [barrioScaledAmount] follows: an untouched calculator
+/// is the recipe as it was written, character for character. A line whose
+/// data records fewer numbers than its text holds leaves the extra ones
+/// alone rather than guessing at them.
+String barrioScaledName(BarrioRecipeIngredient line, double multiplier) {
+  final numbers = line.nameNumbers;
+  if (multiplier == 1.0 || numbers.isEmpty) return line.name;
+  var index = 0;
+  return line.name.replaceAllMapped(_numberInAnAmount, (match) {
+    final source = match.group(0)!;
+    final base = index < numbers.length ? numbers[index] : null;
+    index += 1;
+    if (base == null) return source;
+    return barrioFormatRecipeAmount(base * multiplier);
+  });
 }
 
 /// [text] with [unit] appended, unless the amount already spells it.

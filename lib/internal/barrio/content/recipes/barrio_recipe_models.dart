@@ -25,6 +25,13 @@
 // them; the operator chose plain arithmetic instead, knowing that '2
 // Stalks Celery' at 2.4 times reads '4.8 Stalks'. Rounding a jar count is
 // the cook's call, and it does not need saying.
+//
+// EVERY number on the line, not just the one in the amount column
+// (REC-8, 2026-08-14). Five lines write a second number into the
+// ingredient itself, and a line that moved one number and not the other
+// was printing two amounts that meant different batches. See
+// [BarrioRecipeIngredient.nameNumbers] for the rule and its two
+// exceptions.
 
 import 'package:flutter/foundation.dart';
 
@@ -40,6 +47,7 @@ class BarrioRecipeIngredient {
     this.quantity,
     this.quantityHigh,
     this.unit,
+    this.nameNumbers = const <double?>[],
   });
 
   /// The line exactly as the card body prints it, bullet stripped. An
@@ -80,6 +88,31 @@ class BarrioRecipeIngredient {
   /// the operator confirmed both as grams on 2026-08-13, so those two
   /// carry a unit their own text does not print.
   final String? unit;
+
+  /// One entry per number written inside [name], in the order the line
+  /// writes them: the value that number scales from, or null when it
+  /// stays exactly as written. Empty for the great majority of lines,
+  /// whose ingredient is words only.
+  ///
+  /// WHY AN INGREDIENT NAME CARRIES NUMBERS AT ALL. [amount] is not the
+  /// only place a recipe line writes one. The operator writes '180g
+  /// White/Black Sesame Seed (90g each)', and the parenthesis is the
+  /// split between the two seeds, not decoration. Moving [amount] and
+  /// leaving that behind puts two numbers on one line that mean
+  /// different batches, and a cook weighing to the parenthesis puts in
+  /// half of what the dish needs.
+  ///
+  /// So every number on the line moves together, with two exceptions
+  /// this list records as null: a percentage ('70g Salt ( 1.75% weight
+  /// of beets)') is a ratio between two amounts of the same recipe and
+  /// scaling both leaves it exactly where it was, and a digit inside a
+  /// word ('L5S TT') is part of the ingredient's name rather than a
+  /// number at all.
+  ///
+  /// The entries line up one-for-one with the numbers [barrioScaledName]
+  /// finds in [name]; `test/barrio_recipe_ingredients_test.dart` re-reads
+  /// both off the live manual and fails if they ever fall out of step.
+  final List<double?> nameNumbers;
 
   /// Whether this line has a number to multiply.
   bool get scales => quantity != null;
