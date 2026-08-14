@@ -20,6 +20,7 @@ import '../search/barrio_training_search.dart';
 import '../services/barrio_highlight_anchors.dart';
 import '../services/barrio_highlights_service.dart';
 import '../services/barrio_numeric_highlight.dart';
+import '../services/barrio_recipe_amount_highlight.dart';
 import '../services/barrio_term_links.dart';
 
 final _whitespaceRegExp = RegExp(r'\s+');
@@ -212,6 +213,13 @@ class _HandbookLessonCardState extends State<HandbookLessonCard>
     // param. [barrioRecipeIngredientsForUnit] answers with an empty list
     // for every method card and for every card of every other manual, so
     // the button appears on recipe cards and nowhere else.
+    //
+    // The same list is handed to [_UnitBody] (REC-7, 2026-08-14), where it
+    // is the ingredient-amount emphasis tier: every amount the card prints
+    // carries the manual's accent, instead of only the ones that happen to
+    // spell a unit the general numeric matcher knows. See
+    // `../services/barrio_recipe_amount_highlight.dart` for the precedence
+    // decision that keeps it from fighting the numeric pops.
     final recipeLines = barrioRecipeIngredientsForUnit(unit.id);
 
     // Accessibility (rec #12): a collapsed interactive card is one big
@@ -393,6 +401,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard>
                   accent: _numberAccent,
                   answerEvidence: answerEvidence,
                   keyTerms: keyTerms,
+                  recipeLines: recipeLines,
                   highlights: widget.highlights,
                   anchorRegistry: widget.anchorRegistry,
                   onHighlightTap: widget.onHighlightTap,
@@ -431,6 +440,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard>
                   accent: _numberAccent,
                   answerEvidence: answerEvidence,
                   keyTerms: keyTerms,
+                  recipeLines: recipeLines,
                   highlights: widget.highlights,
                   anchorRegistry: widget.anchorRegistry,
                   onHighlightTap: widget.onHighlightTap,
@@ -764,6 +774,16 @@ class _UnitBody extends StatelessWidget {
   /// render unchanged.
   final List<String> keyTerms;
 
+  /// This card's own committed ingredient lines (REC-7, 2026-08-14). Every
+  /// [BarrioRecipeIngredient.amount] they name renders in [accent], the
+  /// SAME treatment a numeric fact pop gets, so a recipe card's amounts
+  /// read as one thing rather than as the arbitrary-looking few that
+  /// happened to spell a unit the general numeric matcher knows. Styling
+  /// only; the body string is never altered (verbatim law). Empty for
+  /// every method card and every card of every other manual, which render
+  /// exactly as they did before this tier existed.
+  final List<BarrioRecipeIngredient> recipeLines;
+
   /// The reader's marked passages in this card (Slice B). Painted as a
   /// translucent wash UNDER every tier above, never competing with
   /// them. Empty renders exactly as before.
@@ -786,6 +806,7 @@ class _UnitBody extends StatelessWidget {
     this.onTermTap,
     this.answerEvidence = const [],
     this.keyTerms = const [],
+    this.recipeLines = const [],
     this.highlights = const [],
     this.anchorRegistry,
     this.onHighlightTap,
@@ -814,6 +835,7 @@ class _UnitBody extends StatelessWidget {
         highlightTerms: highlightTerms,
         answerEvidence: answerEvidence,
         keyTerms: keyTerms,
+        recipeLines: recipeLines,
         highlights: plan,
         onHighlightTap: onHighlightTap,
       );
@@ -1093,14 +1115,28 @@ class _UnitBody extends StatelessWidget {
   }
 
   /// Composes one text chunk: plain, search-highlighted, term-linked,
-  /// number-popped, answer-evidence, and/or key-term-emphasized. The
-  /// search fold is length-preserving per code unit, so fold-space match
-  /// offsets index the original string directly. Precedence (highest
-  /// first): search highlights, term links, numeric pops, answer evidence,
+  /// recipe-amount-emphasized, number-popped, answer-evidence, and/or
+  /// key-term-emphasized. The search fold is length-preserving per code
+  /// unit, so fold-space match offsets index the original string directly.
+  /// Precedence (highest first): search highlights, term links, recipe
+  /// ingredient amounts, numeric pops, answer evidence,
   /// then curated key terms. Each lower tier passes the higher tiers'
   /// ranges as [blockedRanges] and drops any overlap whole, so no span
   /// fights another. The text itself is NEVER altered: styling only
   /// (verbatim law). Returns null when nothing needs styling.
+  ///
+  /// WHY INGREDIENT AMOUNTS OUTRANK NUMERIC POPS. The two tiers claim
+  /// overlapping characters on a recipe card ('500mL' is both), and an
+  /// overlap is dropped whole, so one of them had to be named the winner
+  /// rather than left to chance. The amount tier wins because it knows the
+  /// WHOLE amount: '2kg-2.5kg' is one amount but two numeric tokens, and
+  /// '1 Jar' is an amount the numeric matcher cannot see at all. Both tiers
+  /// paint the same style, so a '500mL' that popped before this tier
+  /// existed renders identically; what changes is that '1 Jar' now pops
+  /// too. The numeric tier keeps running on everything else in the chunk,
+  /// which is how the method prose that shares four recipe cards with their
+  /// ingredient lists ('cook for 15-20 minutes') keeps its pop. Full
+  /// rationale: `../services/barrio_recipe_amount_highlight.dart`.
   ///
   /// [marks] are the reader's own highlights on this chunk. They are NOT
   /// a sixth tier and take no part in the precedence contest above: a
@@ -1129,17 +1165,33 @@ class _UnitBody extends StatelessWidget {
             alreadyLinked: linked,
             blockedRanges: highlightRanges,
           );
+    // Ingredient amounts (REC-7): every amount THIS recipe card names, in
+    // the same accent a numeric pop uses, so the card's amount column is
+    // one treatment instead of the few the general matcher happened to
+    // recognise. Empty for every card that is not a recipe ingredient
+    // list, which is every card of the other 25 manuals.
+    final recipeAmountMatches = recipeLines.isEmpty
+        ? const <BarrioRecipeAmountMatch>[]
+        : BarrioRecipeAmountHighlight.matchesIn(
+            text,
+            recipeLines,
+            blockedRanges: [
+              ...highlightRanges,
+              for (final t in termMatches) [t.start, t.end],
+            ],
+          );
     final numericMatches = BarrioNumericHighlight.matchesIn(
       text,
       blockedRanges: [
         ...highlightRanges,
         for (final t in termMatches) [t.start, t.end],
+        for (final a in recipeAmountMatches) [a.start, a.end],
       ],
     );
     // Answer highlight ranges: any that overlap a search highlight, term
-    // link, or numeric pop are dropped whole, so the teal answer wording
-    // never fights another span (verbatim substrings, so plain
-    // case-sensitive matching).
+    // link, ingredient amount, or numeric pop are dropped whole, so the
+    // teal answer wording never fights another span (verbatim substrings,
+    // so plain case-sensitive matching).
     final answerRanges = answerEvidence.isEmpty
         ? const <List<int>>[]
         : _answerEvidenceRanges(
@@ -1147,14 +1199,16 @@ class _UnitBody extends StatelessWidget {
             blockedRanges: [
               ...highlightRanges,
               for (final t in termMatches) [t.start, t.end],
+              for (final a in recipeAmountMatches) [a.start, a.end],
               for (final n in numericMatches) [n.start, n.end],
             ],
           );
     // Key-term emphasis is the LOWEST precedence: any curated term that
-    // overlaps a search highlight, term link, numeric pop, or answer span
-    // is dropped whole (the existing span wins). First-occurrence-per-card
-    // and the [kBarrioKeyTermCardCap] density cap are enforced through the
-    // [keyed] set threaded across the card's chunks.
+    // overlaps a search highlight, term link, ingredient amount, numeric
+    // pop, or answer span is dropped whole (the existing span wins).
+    // First-occurrence-per-card and the [kBarrioKeyTermCardCap] density
+    // cap are enforced through the [keyed] set threaded across the card's
+    // chunks.
     final keyTermMatches = keyTerms.isEmpty
         ? const <BarrioKeyTermMatch>[]
         : BarrioKeyTermHighlight.matchesIn(
@@ -1164,6 +1218,7 @@ class _UnitBody extends StatelessWidget {
             blockedRanges: [
               ...highlightRanges,
               for (final t in termMatches) [t.start, t.end],
+              for (final a in recipeAmountMatches) [a.start, a.end],
               for (final n in numericMatches) [n.start, n.end],
               ...answerRanges,
             ],
@@ -1171,6 +1226,7 @@ class _UnitBody extends StatelessWidget {
     final tiers = _TierMatches(
       searchHits: highlightRanges,
       terms: termMatches,
+      recipeAmounts: recipeAmountMatches,
       numerics: numericMatches,
       answers: answerRanges,
       keyTerms: keyTermMatches,
@@ -1255,6 +1311,12 @@ class _UnitBody extends StatelessWidget {
     );
     // Numeric fact pop (rec #3): bold + the manual's accent, colors
     // only; the verbatim substring renders unchanged.
+    //
+    // A recipe card's ingredient amounts share this exact style, and that
+    // is the point of REC-7: '500mL' popped before the amount tier existed
+    // and has to look the same afterwards, while '1 Jar' beside it has to
+    // look the same as '500mL'. One style object, so the two can never
+    // drift apart into two treatments on the same card.
     final numberPop = style.copyWith(
       fontWeight: FontWeight.w700,
       color: accent,
@@ -1284,6 +1346,8 @@ class _UnitBody extends StatelessWidget {
     final segments = <_BodySegment>[
       for (final r in tiers.searchHits) _BodySegment(r[0], r[1], mark: mark),
       for (final t in tiers.terms) _BodySegment(t.start, t.end, term: t),
+      for (final a in tiers.recipeAmounts)
+        _BodySegment(a.start, a.end, mark: numberPop),
       for (final n in tiers.numerics)
         _BodySegment(n.start, n.end, mark: numberPop),
       for (final r in tiers.answers) _BodySegment(r[0], r[1], mark: answerMark),
@@ -1713,6 +1777,13 @@ class _SpanCacheKey {
   final List<String> answerEvidence;
   final List<String> keyTerms;
 
+  /// The card's committed ingredient lines (REC-7). Like [answerEvidence]
+  /// and [keyTerms] this is a pure function of [unitId], so it cannot
+  /// disagree with the rest of the key; it is here for the same reason
+  /// those two are, which is that a reader of this key should be able to
+  /// see every input the span pass reads without going and checking.
+  final List<BarrioRecipeIngredient> recipeLines;
+
   /// The reader's OWN marks, already resolved to per-chunk paint runs.
   ///
   /// WHY THE RESOLVED PLAN AND NOT THE RAW HIGHLIGHT LIST. The marker
@@ -1749,6 +1820,7 @@ class _SpanCacheKey {
     required this.highlightTerms,
     required this.answerEvidence,
     required this.keyTerms,
+    required this.recipeLines,
     required this.highlights,
     required this.onHighlightTap,
   });
@@ -1764,6 +1836,7 @@ class _SpanCacheKey {
         listEquals(other.highlightTerms, highlightTerms) &&
         listEquals(other.answerEvidence, answerEvidence) &&
         listEquals(other.keyTerms, keyTerms) &&
+        listEquals(other.recipeLines, recipeLines) &&
         other.highlights == highlights &&
         other.onHighlightTap == onHighlightTap;
   }
@@ -1777,6 +1850,7 @@ class _SpanCacheKey {
         Object.hashAll(highlightTerms),
         Object.hashAll(answerEvidence),
         Object.hashAll(keyTerms),
+        Object.hashAll(recipeLines),
         highlights,
         onHighlightTap,
       );
@@ -1856,7 +1930,7 @@ void barrioClearBodySpanCache() => _kBodySpanCache.clear();
 @visibleForTesting
 Set<Object> barrioDebugBodySpanCacheOwners() => _kBodySpanCache.owners();
 
-/// What each of the five emphasis tiers matched inside one text chunk,
+/// What each of the six emphasis tiers matched inside one text chunk,
 /// carried as one value so the composer takes a tier bundle instead of a
 /// growing parameter list.
 class _TierMatches {
@@ -1865,6 +1939,11 @@ class _TierMatches {
 
   /// Tap-to-define term occurrences.
   final List<BarrioTermMatch> terms;
+
+  /// A recipe card's own ingredient amounts (REC-7). Above [numerics] on
+  /// purpose: it knows the whole amount, and the numeric tier only ever
+  /// loses the exact duplicates it would have drawn in the same style.
+  final List<BarrioRecipeAmountMatch> recipeAmounts;
 
   /// Number+unit fact tokens.
   final List<BarrioNumericMatch> numerics;
@@ -1878,6 +1957,7 @@ class _TierMatches {
   const _TierMatches({
     required this.searchHits,
     required this.terms,
+    required this.recipeAmounts,
     required this.numerics,
     required this.answers,
     required this.keyTerms,
@@ -1888,6 +1968,7 @@ class _TierMatches {
   bool get isEmpty =>
       searchHits.isEmpty &&
       terms.isEmpty &&
+      recipeAmounts.isEmpty &&
       numerics.isEmpty &&
       answers.isEmpty &&
       keyTerms.isEmpty;

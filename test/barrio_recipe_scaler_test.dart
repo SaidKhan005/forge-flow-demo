@@ -615,19 +615,11 @@ void main() {
     test('at one times the recipe every line reprints its own amount', () {
       // A calculator that printed '1TSP' where the card printed '1 TSP' is
       // showing a cook something they did not read. At a multiplier of 1
-      // the amount must be the literal text the line printed, except where
-      // the source wrote its number as a fraction (which prints as the
-      // decimal it means) or the operator named a unit the card lacks.
-      const fractions = <String, String>{
-        // Hand-written: the fraction lines of the manual and the decimal
-        // each one means.
-        '¼': '0.25',
-        '½ Bunch': '0.5 Bunch',
-        '½ Cup': '0.5 Cup',
-        '1/4 Bunch': '0.25 Bunch',
-        '¼ Bunch': '0.25 Bunch',
-      };
-      final fractionsSeen = <String>{};
+      // the amount is the literal text the line printed, with no exception
+      // for a fraction (REC-7, 2026-08-14: the operator writes '¼ Red
+      // Onion' and an untouched calculator has to say '¼' back), and the
+      // only addition anywhere is a unit the operator confirmed that the
+      // card itself does not print.
       var literal = 0;
       var operatorUnits = 0;
       for (final entry in kBarrioRecipeIngredients.entries) {
@@ -635,14 +627,6 @@ void main() {
           final amount = line.amount;
           if (amount == null) continue;
           final got = barrioScaledAmount(line, 1.0);
-          final fraction = fractions[amount];
-          if (fraction != null) {
-            fractionsSeen.add(amount);
-            expect(got, fraction,
-                reason: '${entry.key}: "${line.raw}" writes its number as a '
-                    'fraction, which must print as the decimal it means');
-            continue;
-          }
           final unit = line.unit;
           if (unit != null && !amount.contains(unit)) {
             operatorUnits += 1;
@@ -660,12 +644,139 @@ void main() {
       }
       expect(literal, greaterThan(100),
           reason: 'the sweep must cover the manual, not a handful of lines');
-      expect(fractionsSeen, fractions.keys.toSet(),
-          reason: 'the hand-written fraction table no longer matches the '
-              'fractions the manual writes');
       expect(operatorUnits, greaterThan(0),
           reason: 'the confirmed-unit branch was never reached, so its '
               'assertion proved nothing');
+    });
+
+    test('a fraction the operator wrote is still that fraction at one times '
+        'the recipe', () {
+      // NON-VACUITY FOR THE SWEEP ABOVE, and the defect REC-7 fixes. That
+      // sweep would pass on a manual with no fractions in it at all, so
+      // the fraction lines are named here by hand, read off the card
+      // bodies, each one beside the decimal it used to print. Both halves
+      // are asserted: the glyph is what shows, and the decimal is what
+      // does not.
+      const fractions = <String, String>{
+        // amount as the card writes it : the decimal it must NOT print as
+        '¼': '0.25',
+        '½ Bunch': '0.5 Bunch',
+        '½ Cup': '0.5 Cup',
+        '1/4 Bunch': '0.25 Bunch',
+        '¼ Bunch': '0.25 Bunch',
+      };
+      final seen = <String>{};
+      for (final entry in kBarrioRecipeIngredients.entries) {
+        for (final line in entry.value) {
+          final amount = line.amount;
+          if (amount == null) continue;
+          final decimal = fractions[amount];
+          if (decimal == null) continue;
+          seen.add(amount);
+          final got = barrioScaledAmount(line, 1.0);
+          expect(got, amount,
+              reason: '${entry.key}: "${line.raw}" is written as a fraction '
+                  'and an untouched calculator must say it back that way');
+          expect(got, isNot(decimal),
+              reason: '${entry.key}: "${line.raw}" printed the decimal the '
+                  'card never wrote');
+        }
+      }
+      expect(seen, fractions.keys.toSet(),
+          reason: 'the hand-written fraction table no longer matches the '
+              'fractions the manual writes, so this guard proved nothing');
+    });
+
+    test('a fraction scaled off one times the recipe shows the number', () {
+      // The other half of the one rule: untouched shows the recipe's own
+      // text, scaled shows the number. No glyph is invented on the way
+      // back, so twice a quarter onion is '0.5', not '½'.
+      //
+      // Hand-built lines, not read out of the manual, so the arithmetic is
+      // checked against numbers written here.
+      const quarter = BarrioRecipeIngredient(
+        raw: '¼ Red Onion',
+        name: 'Red Onion',
+        amount: '¼',
+        quantity: 0.25,
+      );
+      const halfCup = BarrioRecipeIngredient(
+        raw: '½ Cup cornstarch',
+        name: 'cornstarch',
+        amount: '½ Cup',
+        quantity: 0.5,
+        unit: 'Cup',
+      );
+      // 0.25 x 2.4 = 0.6; 0.25 x 2 = 0.5; 0.5 x 3 = 1.5.
+      expect(barrioScaledAmount(quarter, 2.4), '0.6');
+      expect(barrioScaledAmount(quarter, 2), '0.5');
+      expect(barrioScaledAmount(halfCup, 3), '1.5 Cup');
+      // And at exactly one times, both are the card's own text again.
+      expect(barrioScaledAmount(quarter, 1.0), '¼');
+      expect(barrioScaledAmount(halfCup, 1.0), '½ Cup');
+    });
+
+    test('the number an empty box shows is the number the card wrote', () {
+      // What the calculator puts in an untouched amount box. Hand-written
+      // triples: the amount as the manual prints it, its unit, and the
+      // number that opens it. The unit is not in the answer, because the
+      // box shows it separately.
+      const cases = <List<String?>>[
+        <String?>['500mL', 'mL', '500'],
+        <String?>['2 Stalks', 'Stalks', '2'],
+        <String?>['¼', null, '¼'],
+        <String?>['½ Cup', 'Cup', '½'],
+        <String?>['1/4 Bunch', 'Bunch', '1/4'],
+        <String?>['8-10lbs', 'lbs', '8'],
+        <String?>['235', 'g', '235'],
+      ];
+      for (final row in cases) {
+        final line = BarrioRecipeIngredient(
+          raw: '${row[0]} Something',
+          name: 'Something',
+          amount: row[0],
+          quantity: 1,
+          unit: row[1],
+        );
+        expect(barrioWrittenNumber(line), row[2],
+            reason: '"${row[0]}" opens with "${row[2]}"');
+      }
+      // A line with no amount has no number to show.
+      expect(
+        barrioWrittenNumber(
+          const BarrioRecipeIngredient(raw: 'Salt TT', name: 'Salt TT'),
+        ),
+        isNull,
+      );
+    });
+
+    test('every line of the manual opens its box with its own characters',
+        () {
+      // Swept, so a line shape nobody thought of cannot slip past the
+      // hand-written cases above. The expected value is derived from the
+      // line's own amount here, never asked of the scaler.
+      final digitOrGlyph = RegExp(r'^(?:[¼½¾⅓⅔⅛⅜⅝⅞]|\d)');
+      var checked = 0;
+      for (final entry in kBarrioRecipeIngredients.entries) {
+        for (final line in entry.value) {
+          final amount = line.amount;
+          final shown = barrioWrittenNumber(line);
+          if (amount == null) {
+            expect(shown, isNull, reason: '${entry.key}: "${line.raw}"');
+            continue;
+          }
+          checked += 1;
+          expect(shown, isNotNull, reason: '${entry.key}: "${line.raw}"');
+          expect(amount.startsWith(shown!), isTrue,
+              reason: '${entry.key}: "${line.raw}" opens its box with '
+                  '"$shown", which is not how its amount "$amount" starts');
+          expect(digitOrGlyph.hasMatch(shown), isTrue,
+              reason: '${entry.key}: "$shown" is not a number');
+        }
+      }
+      expect(checked, greaterThan(150),
+          reason: 'only $checked lines were checked, so the corpus '
+              'collapsed and this proved nothing');
     });
   });
 

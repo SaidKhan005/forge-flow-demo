@@ -88,6 +88,29 @@ class _BarrioRecipeScalerSheetState extends State<BarrioRecipeScalerSheet> {
   @override
   void initState() {
     super.initState();
+    _anchorOnFirstLine();
+  }
+
+  /// Re-picks the starting line when the sheet is handed a different
+  /// recipe.
+  ///
+  /// The app opens this on its own modal route, so in the app it is always
+  /// a fresh sheet and this never fires. It exists because the state
+  /// outliving its input is the shape of bug that costs a cook the only
+  /// box on the screen: [_anchor] is compared by identity against the
+  /// current [widget.lines], so an anchor left over from another recipe
+  /// matches no row and no box is drawn at all.
+  @override
+  void didUpdateWidget(BarrioRecipeScalerSheet old) {
+    super.didUpdateWidget(old);
+    if (!identical(old.lines, widget.lines)) {
+      _anchor = null;
+      _amount.clear();
+      _anchorOnFirstLine();
+    }
+  }
+
+  void _anchorOnFirstLine() {
     final anchors = barrioAnchorLines(widget.lines);
     if (anchors.isNotEmpty) _anchor = anchors.first;
   }
@@ -379,8 +402,9 @@ class _AmountBox extends StatelessWidget {
 ///
 /// No unit picker and no conversion: the suffix names the unit the recipe
 /// already used, so the number typed here means the same thing the card
-/// meant. Left empty, the hint shows the amount the recipe wrote, which
-/// is what makes an untouched sheet the recipe as written.
+/// meant. Left empty, the hint shows the number the recipe wrote, in the
+/// recipe's own characters, which is what makes an untouched sheet the
+/// recipe as written: the card's '¼ Red Onion' opens as '¼', not '0.25'.
 class _AmountField extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode? focusNode;
@@ -399,7 +423,7 @@ class _AmountField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final unit = line.unit ?? '';
-    final written = line.quantity;
+    final written = barrioWrittenNumber(line);
     return TextField(
       key: const ValueKey<String>('barrio_recipe_scale_amount'),
       controller: controller,
@@ -418,7 +442,7 @@ class _AmountField extends StatelessWidget {
         isDense: true,
         filled: true,
         fillColor: BarrioColors.shellMid,
-        hintText: written == null ? null : barrioFormatRecipeAmount(written),
+        hintText: written,
         hintStyle: GoogleFonts.ibmPlexMono(
           fontSize: 14,
           fontWeight: FontWeight.w600,
